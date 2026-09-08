@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | All tasks M1.1 to M1.10 done; product acceptance met 2026-09-08. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.1, M2.9, M2.13 done; M2.10 in flight; M2.2/M2.3/M2.4 after M2.10. |
+| M2 Companion v1: roster and results | in progress | M2.1, M2.9, M2.10, M2.13 done; M2.2 and M2.14+M2.5 in flight. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -433,7 +433,7 @@ Acceptance: `pnpm -r test` green; a curl with a valid token creates a lobby row 
 
 Goal: a friend runs one exe, and every lobby and game they are in lands in the database with no action.
 
-- [ ] **M2.10** Align the companion payload schemas with the real 16.17 client shapes. `packages/db/src/schemas/companion.ts` was written in M1.2 from the shapes in `03-lcu-reference.md`, before anyone had seen a real response, and M0.3's fixture pass found twelve places where the client disagrees. Fix the schemas, the mapping and the ingest together as one contract, first in M2: **M2.2 and M2.3 both build directly on these payloads and must not start before this lands.** Two owners on one contract — `platform-engineer` for `packages/db/src/schemas/` and the ingest side in `apps/web`, `companion-engineer` for the mapping in `apps/companion`. **Precondition:** `packages/lcu/fixtures/16.17/` must be committed (M0.2) and the lobby, eog and ranked rows in `03-lcu-reference.md` turned `verified` (M0.3); the acceptance check reads those fixtures and today the directory holds only `README.md`.
+- [x] **M2.10** Align the companion payload schemas with the real 16.17 client shapes. `packages/db/src/schemas/companion.ts` was written in M1.2 from the shapes in `03-lcu-reference.md`, before anyone had seen a real response, and M0.3's fixture pass found twelve places where the client disagrees. Fix the schemas, the mapping and the ingest together as one contract, first in M2: **M2.2 and M2.3 both build directly on these payloads and must not start before this lands.** Two owners on one contract — `platform-engineer` for `packages/db/src/schemas/` and the ingest side in `apps/web`, `companion-engineer` for the mapping in `apps/companion`. **Precondition:** `packages/lcu/fixtures/16.17/` must be committed (M0.2) and the lobby, eog and ranked rows in `03-lcu-reference.md` turned `verified` (M0.3); the acceptance check reads those fixtures and today the directory holds only `README.md`.
 
     > **Brief (product, 2026-09-08)**
     >
