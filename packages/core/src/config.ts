@@ -51,8 +51,22 @@ export const config = {
     unrankedSigma: 10,
     /** Leaderboard ordinal is `mu - ordinalSigmaWeight * sigma`. */
     ordinalSigmaWeight: 2,
-    /** Display rating is `round(mu * displayMultiplier)`. */
+    /** Display rating is `round(mu * displayMultiplier)`. Also the unit the balancer scores in. */
     displayMultiplier: 60,
+  },
+  balance: {
+    /**
+     * Effective skill on a role is `mu * multiplier * rating.displayMultiplier`.
+     * `main` is the player's main (or tonight's override, or any role for a flexible player),
+     * `secondary` their backup, `fill` anything else.
+     */
+    roleMultiplier: { main: 1.0, secondary: 0.93, fill: 0.85 },
+    /** Display points added to a split's score per player not on a main role. */
+    offRolePenalty: 120,
+    /** Display points added once when a split puts the same five together as `lastSplit`. */
+    repeatSplitPenalty: 200,
+    /** How many splits `balance` returns at most, best first. Reroll walks this list. */
+    splitsReturned: 3,
   },
 } as const;
 
