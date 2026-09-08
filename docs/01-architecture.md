@@ -55,8 +55,8 @@ players        (id, puuid unique, summoner_id, game_name, tag_line, display_name
                 rank_tier, rank_division, rank_lp, rank_updated_at, created_at)
 ratings        (player_id, season_id, mu, sigma, ordinal generated (mu - 2 * sigma) stored,
                 games, wins, updated_at)  pk (player_id, season_id), index (season_id, ordinal desc)
-lobbies        (id, lcu_party_id unique, status, reported_by_player_id, lobby_name, lobby_password,
-                created_at, updated_at)
+lobbies        (id, lcu_party_id, status, reported_by_player_id, lobby_name, lobby_password,
+                created_at, updated_at)  unique (lcu_party_id) where status in (open, balanced, in_game)
 lobby_members  (lobby_id, player_id, side null, role null, role_override null, is_spectator, created_at)
 splits         (id, lobby_id, rank, blue jsonb, red jsonb, gap, blue_win_prob, score, off_role_count,
                 is_chosen, explanation, roster_key, created_at)
@@ -91,6 +91,11 @@ Also in the schema:
 Rules:
 
 - `players.puuid` is the identity. Riot IDs are display data refreshed from the client.
+- **A `lobbies` row is one game cycle, not one party** (M2.14, `0003_lobby_cycles.sql`). The client keeps the
+  same `partyId` all night, so `lcu_party_id` is unique only among `open`, `balanced` and `in_game` rows:
+  a lobby post lands on the party's live row and starts a new one once the last cycle is `finished` or
+  `abandoned`. A game post resolves to the newest row that already existed when the game started, so a late
+  end-of-game block stays on the lobby it was played from. Closed rows are never rewritten or reused.
 - A player row is created lazily the first time a PUUID appears in a lobby or a game. Discord linking is optional
   and done by an admin (`/admin/players`) or self-service via Discord OAuth.
 - `ratings` is per season. A new season copies `mu` and resets `sigma` to the starting value. `ordinal` is a
@@ -122,6 +127,9 @@ OpenSkill, default Plackett-Luce model, two teams of five.
   player's own `sigma^2`, so a settled player's rating is sticky and a new player's moves fast. Rank does not
   affect the size of a win — two players with the same sigma on the same winning team gain exactly the same amount.
 - Balance on `mu`. Leaderboard sorts on `ordinal = mu - 2 * sigma`. Display rating is `round(mu * 60)`.
+- A game is rated only when its stored row has ten `game_players`, five a side, and `duration_s` over 300
+  seconds: M1.5 stores every `CUSTOM_GAME` block, remakes included. The fold runs exactly once per game, claimed
+  by the null `mu_after` column.
 - After each game call `rate([blueTeam, redTeam], { rank: [winnerRank...] })`. Store before and after on
   `game_players`. Ratings are a pure fold over games ordered by `started_at`, so they can be rebuilt from scratch
   after a backfill or a model change (`pnpm --filter web rebuild-ratings`).
@@ -155,15 +163,26 @@ open ---(10 stable members reported)---> balanced ---(gameflow InProgress)---> i
 ```
 
 - The companion posts the full member list every time it changes. The API debounces: a lobby is balanced when
-  ten non-spectator members are unchanged for 10 seconds.
+  ten or more people around — spectators included — are unchanged for 10 seconds. There is no timer on the
+  server: the roster's identity is `rosterKey()` over everyone around, the clock is the lobby row's own
+  `updated_at`, and the answer carries `recheckInMs` telling the companion when to re-post the identical
+  payload (M2.5). The transition itself is claimed with a compare-and-set on `status`, so two companions in one
+  lobby produce one balance and one set of three splits.
 - A companion may only post a lobby it is in (see "Security"), and the member list is frozen from `in_game` on
   and stays frozen in `finished`: a later post for that party is still accepted and still refreshes the lobby's
   name and password, but no member row is added, changed or removed and the response says `rosterFrozen: true`.
   Once the game has started a player's side comes from `game_players`, not from `lobby_members`.
 - `open`, `balanced` and `abandoned` keep the replace semantics — the posted list is the roster, deletions
   included — because a lobby that dissolves without ever starting has no history worth keeping.
+- An `open` or `balanced` lobby nobody has posted about for two hours is `abandoned`, swept by the next
+  companion post or by `GET /api/cron/sweep` (bearer `CRON_SECRET`). `in_game` is never swept: its roster is
+  frozen and must stay that way, and M5.5 is the surface that lists a game that never landed.
 - Sit-outs: if more than ten people are "around" (in the lobby as spectators, or in the lobby voice channel
-  once M4 exists), the API posts who should sit based on the fewest games tonight, then oldest sit-out.
+  once M4 exists), the API picks who sits: most games tonight first, then longest since they last sat out, then
+  puuid. "Tonight" runs 06:00 to 06:00 in `CUSTOMS_NIGHT_TZ`, and a sit-out is derived, never stored — a
+  `lobby_members` row of a lobby that reached `in_game` or `finished` with no `game_players` row for its game.
+  When the chosen ten include somebody in the spectator slot, each sitter is paired with the person taking
+  their seat; the API only says so, it never moves anyone.
 - The `lastSplit` passed to the balancer is the five puuids on one side of the most recent chosen split whose
   lobby had the same ten players as tonight's; if there is no such split, `lastSplit` is null.
 - Discord posting happens from the API on state transitions, through the webhook stored in `discord_config`.
@@ -210,9 +229,11 @@ watching: on lobby event -> POST /api/companion/lobby
 - Companion tokens are random 32 bytes, stored hashed, one per player, revocable from admin.
 - The API never trusts a PUUID claim beyond what the companion reports; a companion can only report games and
   lobbies it was in. Both checks run before anything is written, so a refusal leaves no row behind.
-  - Games: the token's player PUUID must appear among the participants of the posted game, or the API answers
-    403. The companion's end-of-game payload is flattened and carries no `localPlayer`, so participation is the
-    check. Backfill is the exception, and it is admin-approved the first time per player.
+  - Games: the token's player PUUID must appear among the participants of the posted game, **or** among the
+    members of the lobby that game was played from — `is_spectator` included (M2.8) — or the API answers 403.
+    The companion's end-of-game payload is flattened and carries no `localPlayer`, so participation is the
+    check, and the lobby half is there because the friend sitting out a round is often the one running the
+    companion. Backfill is the exception, and it is admin-approved the first time per player.
   - Lobbies: the token's player PUUID must appear in the posted `members` — `isSpectator: true` counts — or the
     caller must already be that lobby's `reported_by_player_id`, or the API answers 403. The posted list
     replaces the roster, so without this one stale companion could delete another lobby's members. The

@@ -54,15 +54,13 @@ export const companionLobbyResponseSchema = z.object({
   /**
    * **Knock again in this many milliseconds** (M2.5). Vercel gives the API no timer, so
    * "the roster has not changed for ten seconds" is measured on the posts we already get:
-   * when the lobby is still `open` and holds ten or more non-spectators, the server answers
-   * with the milliseconds left on the stability clock (at least 1000, the full window when
-   * the roster just changed) and the companion re-posts the *identical* payload after that
-   * delay unless a real lobby event has produced a newer one first (M2.2).
+   * when the lobby is still `open` and holds ten or more people around — spectators included,
+   * because the eleventh friend has nowhere else to stand — the server answers with the
+   * milliseconds left on the stability clock (at least 1000, the full window when the roster
+   * just changed) and the companion re-posts the *identical* payload after that delay unless a
+   * real lobby event has produced a newer one first (M2.2).
    *
    * `null` means do nothing: fewer than ten, already `balanced`, or any other state.
-   *
-   * M2.10 ships the field; M2.5 is what puts a number in it. Until then it is always `null`,
-   * so a companion built against this contract needs no change when the rule lands.
    */
   recheckInMs: z.number().int().nonnegative().nullable(),
   /**

@@ -57,6 +57,9 @@ if (stack === null) {
   const unknownPartyId = `it-party-${runId}-unknown`;
   const botPartyId = `it-party-${runId}-bots`;
   const ranksPartyId = `it-party-${runId}-ranks`;
+  const cyclePartyId = `it-party-${runId}-cycle`;
+  const oldCyclePartyId = `it-party-${runId}-old-cycle`;
+  const watchedPartyId = `it-party-${runId}-watched`;
   const allPartyIds = [
     partyId,
     otherPartyId,
@@ -66,12 +69,26 @@ if (stack === null) {
     unknownPartyId,
     botPartyId,
     ranksPartyId,
+    cyclePartyId,
+    oldCyclePartyId,
+    watchedPartyId,
   ];
   const gameId = testGameId();
   const rejectedGameId = gameId + 1;
   const scrubGameId = gameId + 2;
   const namedGameId = gameId + 3;
-  const gameIds = [gameId, rejectedGameId, scrubGameId, namedGameId];
+  const cycleGameId = gameId + 4;
+  const oldCycleGameId = gameId + 5;
+  const watchedGameId = gameId + 6;
+  const gameIds = [
+    gameId,
+    rejectedGameId,
+    scrubGameId,
+    namedGameId,
+    cycleGameId,
+    oldCycleGameId,
+    watchedGameId,
+  ];
 
   let ownerToken = '';
   let outsiderToken = '';
@@ -160,12 +177,23 @@ if (stack === null) {
   }
 
   async function setStatus(
-    party: string,
-    status: 'open' | 'balanced' | 'in_game' | 'finished',
+    lobbyId: string,
+    status: 'open' | 'balanced' | 'in_game' | 'finished' | 'abandoned',
   ): Promise<void> {
-    // M2.5 owns the state machine; until it lands the test drives the status itself.
-    const { error } = await db.from('lobbies').update({ status }).eq('lcu_party_id', party);
+    // Drives one row, by id: a party can hold several rows over a night (M2.14) and only one
+    // of them may be live at a time.
+    const { error } = await db.from('lobbies').update({ status }).eq('id', lobbyId);
     if (error) throw new Error(error.message);
+  }
+
+  async function lobbyRowsForParty(party: string): Promise<Record<string, unknown>[]> {
+    const { data, error } = await db
+      .from('lobbies')
+      .select('*')
+      .eq('lcu_party_id', party)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
   }
 
   async function countMembers(lobbyId: string): Promise<number> {
@@ -345,7 +373,7 @@ if (stack === null) {
       expect(membersBefore).toHaveLength(10);
 
       // M2.5 will do this; until then the test drives the status.
-      await setStatus(frozenPartyId, 'in_game');
+      await setStatus(lobbyId, 'in_game');
 
       // A companion that reconnects mid-game and posts a partial list changes nothing.
       const partial = await postLobby(post(lobbyBody(puuids.slice(0, 3), [], frozenPartyId), ownerToken));
@@ -365,15 +393,21 @@ if (stack === null) {
       expect(await emptied.json()).toMatchObject({ memberCount: 10, rosterFrozen: true });
       expect(await memberRows(lobbyId)).toEqual(membersBefore);
 
-      await setStatus(frozenPartyId, 'finished');
-      await postLobby(post(lobbyBody([], [], frozenPartyId), ownerToken));
+      // `finished` is terminal for this row: the next post opens the night's next cycle
+      // (M2.14) and these ten stay exactly where they are.
+      await setStatus(lobbyId, 'finished');
+      const nextCycle = await postLobby(post(lobbyBody(puuids, [], frozenPartyId), ownerToken));
+      const nextCycleJson = await nextCycle.json();
+      expect(nextCycleJson).toMatchObject({ ok: true, created: true, status: 'open', memberCount: 10 });
+      expect(nextCycleJson.lobbyId).not.toBe(lobbyId);
       expect(await memberRows(lobbyId)).toEqual(membersBefore);
 
-      // Still `open`, someone leaving is a real leave: the deletes apply as they did before.
-      await setStatus(frozenPartyId, 'open');
+      // That new row is `open`, so someone leaving is a real leave: the deletes apply as they
+      // did before, and they apply to the new row only.
       const reopened = await postLobby(post(lobbyBody(puuids.slice(0, 3), [], frozenPartyId), ownerToken));
       expect(await reopened.json()).toMatchObject({ memberCount: 3, rosterFrozen: false });
-      expect(await memberRows(lobbyId)).toHaveLength(3);
+      expect(await memberRows(nextCycleJson.lobbyId as string)).toHaveLength(3);
+      expect(await memberRows(lobbyId)).toEqual(membersBefore);
     });
 
     it("stores the client's numeric summonerId as text (M2.10, no migration)", async () => {
@@ -463,6 +497,108 @@ if (stack === null) {
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ ok: false, error: 'companion token has been revoked' });
       expect(await countLobbies(otherPartyId)).toBe(0);
+    });
+  });
+
+  describe('POST /api/companion/lobby: a lobby row is one game cycle (M2.14)', () => {
+    // The client keeps one party id all night - fixture evidence: party `e3c69392` played at
+    // 16:37 and was still emitting lobby events at 17:39 with no new id. So the second game
+    // of the night has to get its own row, or it never gets teams.
+    it("starts a new row for the night's next game and leaves the first one alone", async () => {
+      const first = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      const firstJson = await first.json();
+      const firstLobbyId = firstJson.lobbyId as string;
+      expect(firstJson).toMatchObject({ created: true, status: 'open', memberCount: 10 });
+
+      // Game one: it lands on the first row and closes it.
+      const eog = await postGame(
+        post(eogBody({ gameId: cycleGameId, puuids, partyId: cyclePartyId }), ownerToken),
+      );
+      expect(eog.status).toBe(200);
+      expect((await eog.json()).lobbyId).toBe(firstLobbyId);
+      await setStatus(firstLobbyId, 'finished');
+
+      const membersOfFirst = await memberRows(firstLobbyId);
+      const rowOfFirst = (await lobbyRowsForParty(cyclePartyId))[0];
+
+      // Game two, same party id, same ten.
+      const second = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      const secondJson = await second.json();
+      expect(second.status).toBe(200);
+      expect(secondJson).toMatchObject({ created: true, status: 'open', memberCount: 10 });
+      expect(secondJson.lobbyId).not.toBe(firstLobbyId);
+
+      const rowsNow = await lobbyRowsForParty(cyclePartyId);
+      expect(rowsNow).toHaveLength(2);
+      expect(rowsNow[0]).toEqual(rowOfFirst);
+      expect(rowsNow[1]?.status).toBe('open');
+      expect(await memberRows(firstLobbyId)).toEqual(membersOfFirst);
+
+      // A late repost of game one's block still lands on the row it was played from, once.
+      const late = await postGame(
+        post(eogBody({ gameId: cycleGameId, puuids, partyId: cyclePartyId }), ownerToken),
+      );
+      expect(late.status).toBe(200);
+      expect(await late.json()).toMatchObject({ created: false, lobbyId: firstLobbyId });
+      expect(await countGames(cycleGameId)).toBe(1);
+
+      // And a third cycle behaves the same.
+      await setStatus(secondJson.lobbyId as string, 'abandoned');
+      const third = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      const thirdJson = await third.json();
+      expect(thirdJson).toMatchObject({ created: true, status: 'open' });
+      expect(thirdJson.lobbyId).not.toBe(secondJson.lobbyId);
+      expect(await lobbyRowsForParty(cyclePartyId)).toHaveLength(3);
+    });
+
+    it('lands a late game on the cycle that was live when it started, not the one after it', async () => {
+      // Two closed-then-reopened cycles for one party, an hour apart, built by hand so the
+      // timestamps are not a matter of milliseconds.
+      const hour = 60 * 60 * 1000;
+      const now = Date.now();
+      const { data, error } = await db
+        .from('lobbies')
+        .insert([
+          {
+            lcu_party_id: oldCyclePartyId,
+            status: 'finished',
+            created_at: new Date(now - 2 * hour).toISOString(),
+          },
+          {
+            lcu_party_id: oldCyclePartyId,
+            status: 'open',
+            created_at: new Date(now - hour).toISOString(),
+          },
+        ])
+        .select('id, status');
+      if (error) throw new Error(error.message);
+      const first = data?.find((row) => row.status === 'finished')?.id ?? '';
+      const second = data?.find((row) => row.status === 'open')?.id ?? '';
+
+      const response = await postGame(
+        post(
+          eogBody({
+            gameId: oldCycleGameId,
+            puuids,
+            partyId: oldCyclePartyId,
+            startedAt: new Date(now - 90 * 60 * 1000).toISOString(),
+          }),
+          ownerToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.lobbyId).toBe(first);
+      expect(json.lobbyId).not.toBe(second);
+    });
+
+    it('keeps posting to the live row while the cycle is open', async () => {
+      // Idempotency is unchanged: only a closed cycle starts a row, never a repeat post.
+      const before = await lobbyRowsForParty(cyclePartyId);
+      const repeat = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      expect(await repeat.json()).toMatchObject({ created: false });
+      expect(await lobbyRowsForParty(cyclePartyId)).toHaveLength(before.length);
     });
   });
 
@@ -603,7 +739,7 @@ if (stack === null) {
       expect(await gamePlayerRows(gameRowId)).toEqual(playersBefore);
     });
 
-    it('keeps the raw block and leaves the rating columns for M2.5', async () => {
+    it('keeps the raw block and fills the rating columns in (M2.5)', async () => {
       const { data: game } = await db
         .from('games')
         .select('id, raw, source, season_id')
@@ -613,11 +749,31 @@ if (stack === null) {
       expect(game?.season_id).toBe(SEASON_ONE_ID);
       expect(game?.raw).toMatchObject({ gameType: 'CUSTOM_GAME' });
 
+      // Ten players, five a side, over five minutes: the fold ran on the way through.
       const { data: rows } = await db
         .from('game_players')
-        .select('mu_before, mu_after')
+        .select('player_id, mu_before, sigma_before, mu_after, sigma_after')
         .eq('game_id', game?.id ?? '');
-      expect(rows?.every((row) => row.mu_before === null && row.mu_after === null)).toBe(true);
+      expect(rows).toHaveLength(10);
+      expect(
+        rows?.every(
+          (row) =>
+            row.mu_before !== null &&
+            row.sigma_before !== null &&
+            row.mu_after !== null &&
+            row.sigma_after !== null,
+        ),
+      ).toBe(true);
+
+      const { count } = await db
+        .from('ratings')
+        .select('player_id', { count: 'exact', head: true })
+        .eq('season_id', SEASON_ONE_ID)
+        .in(
+          'player_id',
+          (rows ?? []).map((row) => row.player_id),
+        );
+      expect(count).toBe(10);
     });
 
     it('scrubs the chat credentials out of games.raw, which is public-read', async () => {
@@ -685,6 +841,30 @@ if (stack === null) {
         .eq('puuid', puuid)
         .single();
       expect(data).toMatchObject({ game_name: 'Nameless', tag_line: 'EUW', display_name: 'Nameless' });
+    });
+
+    it("accepts a spectator's post for a game they watched from the lobby (M2.8)", async () => {
+      // The friend who sits out a round and runs the companion while watching. Their PUUID is
+      // not on the scoreboard; it is in `lobby_members` with `is_spectator` true.
+      const created = await postLobby(post(lobbyBody(puuids, [spectatorPuuid], watchedPartyId), ownerToken));
+      expect(created.status).toBe(200);
+
+      const response = await postGame(
+        post(eogBody({ gameId: watchedGameId, puuids, partyId: watchedPartyId }), spectatorToken),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, created: true, participants: 10 });
+      expect(await countGames(watchedGameId)).toBe(1);
+    });
+
+    it('still refuses a token whose player is in neither the game nor its lobby (M2.8)', async () => {
+      const response = await postGame(
+        post(eogBody({ gameId: rejectedGameId, puuids, partyId: watchedPartyId }), outsiderToken),
+      );
+
+      expect(response.status).toBe(403);
+      expect(await countGames(rejectedGameId)).toBe(0);
     });
 
     it('answers 403 when the token belongs to someone who was not in the game', async () => {

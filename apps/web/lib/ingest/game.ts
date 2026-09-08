@@ -7,14 +7,16 @@ import {
   scrubRawEogBlock,
 } from '@customs/db';
 import type { ServiceClient } from '../supabase';
+import { selectLatestLobby } from './lobby';
 import { ensurePlayers } from './players';
 
 /**
  * Game ingest from an end-of-game block.
  *
- * Deliberately not here (M2.5): `rateGame`, the `ratings` update, and moving the lobby to
- * `finished`. This writes `games` and `game_players` and keeps the whole block in `games.raw`,
- * which is what every later column can be recomputed from.
+ * Deliberately not here: `rateGame` and the `ratings` update (`rating.ts`) and moving the lobby
+ * to `finished` (`lobbyState.ts`, from the game route). This writes `games` and `game_players`
+ * and keeps the whole block in `games.raw`, which is what every later column can be recomputed
+ * from — including a rebuild (M5.2) that replays the fold from scratch.
  *
  * Idempotency is on `lcu_game_id`: two companions in the same game both post, and the second
  * post changes no rows.
@@ -63,7 +65,7 @@ export async function ingestEogGame(
   client: ServiceClient,
   payload: CompanionGameEogPayloadWithWinner,
 ): Promise<GameIngestResult> {
-  const lobbyId = await findLobbyId(client, payload.partyId ?? null);
+  const lobbyId = await findLobbyId(client, payload.partyId ?? null, payload.startedAt);
 
   const insert: GameInsert = {
     lcu_game_id: payload.gameId,
@@ -113,13 +115,36 @@ async function selectGame(
   return data;
 }
 
-async function findLobbyId(client: ServiceClient, partyId: string | null): Promise<string | null> {
+/**
+ * The lobby this game was played from (M2.14): the party's live row, or the newest row it
+ * has once that cycle closed. An end-of-game block can arrive minutes late — after the group
+ * has already opened the night's next lobby with the same party id — and it still belongs to
+ * the cycle it was played in.
+ *
+ * An `abandoned` row is **not** a lobby a game was played from: the two-hour sweep gave up on
+ * it, so linking a real game to it would say the group played a lobby that dissolved. Such a
+ * game is stored with `lobby_id: null` and still rated — ratings never depended on a lobby
+ * existing, which is also what makes backfill (M5.1) possible.
+ */
+export async function findLobbyId(
+  client: ServiceClient,
+  partyId: string | null,
+  startedAt?: string | null,
+): Promise<string | null> {
   if (partyId === null) return null;
 
-  const { data, error } = await client.from('lobbies').select('id').eq('lcu_party_id', partyId).maybeSingle();
-  if (error) throw new Error(`ingestGame: lobby lookup failed: ${error.message}`);
   // An unknown party id is not an error: the companion may have missed the lobby events.
-  return data?.id ?? null;
+  const lobby = await selectLatestLobby(client, partyId, startedAt);
+  if (lobby === null) return null;
+
+  if (lobby.status === 'abandoned') {
+    console.warn(
+      `ingestGame: party ${partyId} resolves only to abandoned lobby ${lobby.id}; storing the game with no lobby`,
+    );
+    return null;
+  }
+
+  return lobby.id;
 }
 
 /**

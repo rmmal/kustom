@@ -5,6 +5,7 @@ The Next.js app: the API the companion posts to, the public pages, and `/admin`.
 ```
 app/api/companion/*   bearer companion token, zod-validated (M1.5)
 app/api/admin/*       Supabase session + players.is_admin, zod-validated (M1.6)
+app/api/cron/sweep    bearer CRON_SECRET: the scheduled half of the 2-hour idle sweep (M2.5)
 app/admin/*           the admin pages. Server components, plain forms, no client JavaScript
 app/auth/*            sign in with Discord, the OAuth callback, sign out
 lib/                  auth, the service-role client, ingest, admin reads and writes
@@ -30,8 +31,8 @@ body. The token decides who the caller is; nothing in a payload does.
 ```
 GET  /api/companion/me      who this token is: { ok, puuid, playerId, displayName }. Writes nothing.
 POST /api/companion/lobby   the whole member list, every time it changes. Idempotent on partyId.
-                            answers ranksNeeded[] (M2.4) and recheckInMs (null until M2.5).
-POST /api/companion/game    phase in_progress | eog. Idempotent on gameId.
+                            runs the state machine; answers ranksNeeded[] (M2.4) and recheckInMs (M2.5).
+POST /api/companion/game    phase in_progress | eog. Idempotent on gameId; eog runs the rating fold.
 POST /api/companion/rank    one queue's rank reading for one puuid.
 ```
 
@@ -41,6 +42,45 @@ definitions — see "The companion wire contract" in `packages/db/README.md` for
 rules and where each value comes from in the client. Refusals before any write: 403 for a lobby or
 game the caller was not in, 422 for a non-custom game, a block nobody won (a remake or
 `TerminatedInError`) or a duplicated participant, 400 for a body that does not parse.
+
+## The lobby state machine (M2.5)
+
+`lib/lobbyState.ts` holds the transition table and the three numbers — `ROSTER_STABLE_MS`
+(10 s), `IDLE_ABANDON_MS` (2 h), `MIN_RATED_DURATION_S` (300 s) — and nothing else does. The
+moves it allows are the ones in the M2.5 brief; `moveLobby` is a compare-and-set on `status`,
+so two companions posting the same lobby produce one transition. An illegal move
+(`finished -> open`) throws rather than quietly doing nothing.
+
+- **Ten seconds with no timer.** The roster's identity is `rosterKey()` over everyone around,
+  spectators included. When it changes, `lobby_members` is rewritten *and* the lobby row is
+  written, which restarts `updated_at`. When it does not, the lobby row is not touched, and
+  `now - updated_at >= 10 s` with ten or more around is the whole rule. The answer's
+  `recheckInMs` tells the companion when to knock again with the identical payload.
+- **Balancing** is `lib/ingest/balance.ts`: it picks the ten (most games tonight sits, then
+  longest since a sit-out, then puuid), builds one `BalancePlayer` each from `lobby_members`,
+  `players` and `ratings`, seeds anyone with no rating row from their rank *in memory*, and
+  calls `balance()` from `@customs/core`. All three splits are stored with core's explanation
+  strings verbatim; `is_chosen` is on rank 1 and a rebalance moves the flag rather than
+  deleting anything.
+- **The rating fold** is `lib/ingest/rating.ts`: ten `game_players`, five a side, over 300
+  seconds, or the game is stored and left unrated. It runs exactly once per game, claimed by
+  the `mu_after is null` guard on the first row it writes.
+- **Discord** is not here. `lib/ingest/hooks.ts` is the seam M3.1 and M3.3 fill; with no hook
+  registered, everything above behaves identically.
+- **The sweep.** An `open` or `balanced` lobby nobody has posted about for two hours becomes
+  `abandoned`. It runs at the start of every companion lobby and game post, and on demand:
+
+  ```
+  curl -H "authorization: Bearer $CRON_SECRET" https://<host>/api/cron/sweep
+  ```
+
+  With `CRON_SECRET` unset the route answers 503 and sweeps nothing. `in_game` is never swept.
+  An end-of-game block whose party resolves only to an `abandoned` row is stored with
+  `lobby_id: null` and still rated: the sweep gave up on that lobby, so linking a real game to
+  it would be a lie. A move that claims nothing because the lobby is already terminal is one
+  `console.warn` naming the lobby and the move.
+- **`CUSTOMS_NIGHT_TZ`** (default `Africa/Cairo`) is the timezone "tonight" is measured in: a
+  night runs 06:00 to 06:00 there, so a session that ends at 01:30 is one night.
 
 ## The admin area
 

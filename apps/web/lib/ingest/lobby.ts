@@ -1,33 +1,69 @@
-import type {
-  CompanionLobbyPayload,
-  LobbyInsert,
-  LobbyMemberInsert,
-  LobbyStatusValue,
-  LobbyUpdate,
+import {
+  type CompanionLobbyPayload,
+  type LobbyInsert,
+  type LobbyMemberInsert,
+  type LobbyStatusValue,
+  type LobbyUpdate,
+  rosterKey,
 } from '@customs/db';
 import type { CompanionIdentity } from '../companionAuth';
+import {
+  assertLegalTransition,
+  isRosterStable,
+  moveLobby,
+  PLAYERS_PER_GAME,
+  readLobbyStatus,
+  recheckInMs,
+} from '../lobbyState';
+import { DEFAULT_NIGHT_TIME_ZONE } from '../night';
 import type { ServiceClient } from '../supabase';
+import { type BalanceOutcome, balanceLobby, hasChosenSplit } from './balance';
+import { emitLobbyBalanced } from './hooks';
 import { ensurePlayers } from './players';
+import { SelectionError } from './selection';
 
 /**
  * Lobby ingest: the companion posts the whole member list every time it changes and this
  * makes the database match it.
  *
- * Deliberately not here (M2.5): the 10-second stability rule, balancing, and every status
- * transition. A new lobby is `open`; an existing lobby keeps whatever status it has. The
- * status column is written in exactly one place and this is not it.
+ * A lobby row is **one game cycle, not one party** (M2.14). The client keeps the same
+ * `partyId` all night, so a post resolves to the party's *live* row — `open`, `balanced` or
+ * `in_game` — and starts a new row when the latest one is `finished` or `abandoned`.
+ * Migration `0003` is the other half: the partial unique index that allows exactly one live
+ * row per party and any number of closed ones.
+ *
+ * It is also where the lobby state machine turns (M2.5). The whole of "the roster has not
+ * changed for ten seconds" is measured on the posts themselves:
+ *
+ * 1. the roster's **identity** is `rosterKey()` over the puuids of everyone around,
+ *    spectators included — sides, the spectator flag, names and the lobby name are not part
+ *    of it, so a friend swapping from blue to red does not restart the clock;
+ * 2. the **clock** is the lobby row's own `updated_at`, which moves only when we write the
+ *    `lobbies` row, and we write it only when that identity changed. `lobby_members` and
+ *    `players` are written on every post — sides, the spectator flag and Riot IDs stay
+ *    current — and neither touches the clock;
+ * 3. the **knock** is `recheckInMs` in the answer: the companion re-posts the identical
+ *    payload after that many milliseconds, so the rule lives on the server and the companion
+ *    has no rule to get wrong, only a number to obey.
+ *
+ * Balancing itself is `balance.ts` and the maths is `@customs/core`. Discord is M3.1 and
+ * hears about it through `hooks.ts`, never from here.
  */
 
 export interface LobbyIngestResult {
   lobbyId: string;
   status: LobbyStatusValue;
-  /** False when the party id was already known — the idempotent case. */
+  /** False when the party's live row was already known — the idempotent case. */
   created: boolean;
   memberCount: number;
   /** True when the roster was frozen and this post changed no `lobby_members` row (M2.9). */
   rosterFrozen: boolean;
   /** PUUIDs among the posted members whose rank is missing or over a week old (M2.4). */
   ranksNeeded: string[];
+  /** Knock again in this many milliseconds, or `null` for "do nothing" (M2.5). */
+  recheckInMs: number | null;
+  /** Set only by the post that moved this lobby to `balanced`. What M3.1 will render. */
+  balanced: BalanceOutcome | null;
 }
 
 /**
@@ -37,6 +73,21 @@ export interface LobbyIngestResult {
  * this returns, and a puuid drops off the list the moment its rank POST lands.
  */
 export const RANK_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Postgres `unique_violation`. Two companions opening the same cycle in the same millisecond. */
+const UNIQUE_VIOLATION = '23505';
+
+/**
+ * The statuses a lobby row can still be posted to (M2.14). A party has at most one row in
+ * one of these — `lobbies_active_party_idx` enforces it — and `finished` and `abandoned` are
+ * terminal, so the next post for that party starts the night's next cycle.
+ */
+export const ACTIVE_LOBBY_STATUSES: readonly LobbyStatusValue[] = ['open', 'balanced', 'in_game'];
+
+/** Is this row still the party's live lobby, or is its cycle over? */
+export function isActiveLobbyStatus(status: LobbyStatusValue): boolean {
+  return ACTIVE_LOBBY_STATUSES.includes(status);
+}
 
 /**
  * Statuses in which `lobby_members` is history rather than live state (M2.9). From `in_game`
@@ -57,9 +108,8 @@ export function isRosterFrozen(status: LobbyStatusValue): boolean {
  * Is this PUUID in the list? Whole-PUUID equality, spectators included: a friend who watches
  * a round is in the lobby and their companion is a legitimate reporter.
  *
- * Takes anything with a `puuid`, so the same predicate serves the posted member list here
- * and, when M2.8 widens the game check to "a member of the lobby with the same party id",
- * the `lobby_members` rows read out of the database.
+ * Takes anything with a `puuid`, so the same predicate serves the posted member list here and
+ * the `lobby_members` rows the game route reads (M2.8, `isLobbyMemberOfGame` below).
  */
 export function isLobbyMember(members: readonly { puuid: string }[], puuid: string): boolean {
   return members.some((member) => member.puuid === puuid);
@@ -87,17 +137,58 @@ export async function mayReportLobby(
 ): Promise<boolean> {
   if (isLobbyMember(payload.members, identity.puuid)) return true;
 
-  const existing = await selectLobby(client, payload.partyId);
+  // The *live* row only (M2.14): owning a party's finished lobby does not entitle anyone to
+  // open the next cycle with a roster they are not in.
+  const existing = await selectActiveLobby(client, payload.partyId);
   return existing !== null && existing.reportedByPlayerId === identity.playerId;
+}
+
+/**
+ * Was this player in the lobby the posted game was played from (M2.8)?
+ *
+ * The spectator's path into the game route: a friend who sits out a round and runs the
+ * companion while watching is not on the scoreboard, but they are a `lobby_members` row of
+ * that lobby, `is_spectator` and all. On 16.17 a spectator stays in the client's `members[]`
+ * with `isSpectator: true` (M2.13), so this check has something to match.
+ *
+ * A token whose player is in neither list still gets a 403.
+ */
+export async function isLobbyMemberOfGame(
+  client: ServiceClient,
+  partyId: string | null,
+  playerId: string,
+  startedAt?: string | null,
+): Promise<boolean> {
+  if (partyId === null) return false;
+
+  const lobby = await selectLatestLobby(client, partyId, startedAt);
+  if (lobby === null) return false;
+
+  const { count, error } = await client
+    .from('lobby_members')
+    .select('player_id', { count: 'exact', head: true })
+    .eq('lobby_id', lobby.id)
+    .eq('player_id', playerId);
+  if (error) throw new Error(`ingestGame: lobby membership check failed: ${error.message}`);
+  return (count ?? 0) > 0;
+}
+
+export interface LobbyIngestOptions {
+  /** Injected in tests so the ten-second window does not have to be waited out. */
+  now?: Date;
+  /** IANA name for "tonight" (M2.5). `CUSTOMS_NIGHT_TZ` in the route. */
+  timeZone?: string;
 }
 
 export async function ingestLobby(
   client: ServiceClient,
   payload: CompanionLobbyPayload,
   reportedByPlayerId: string,
-  now: Date = new Date(),
+  options: LobbyIngestOptions = {},
 ): Promise<LobbyIngestResult> {
-  const lobby = await upsertLobby(client, payload, reportedByPlayerId);
+  const now = options.now ?? new Date();
+  const timeZone = options.timeZone ?? DEFAULT_NIGHT_TIME_ZONE;
+  const { lobby, created } = await upsertLobby(client, payload, reportedByPlayerId);
 
   // Frozen (M2.9): the lobby is in a game or done, so the roster is a record of what
   // happened. Report what is stored and write nothing to `lobby_members`.
@@ -105,25 +196,171 @@ export async function ingestLobby(
     return {
       lobbyId: lobby.id,
       status: lobby.status,
-      created: lobby.created,
+      created,
       memberCount: await countMembers(client, lobby.id),
       rosterFrozen: true,
       // Still answered while frozen: whoever is on the posted list and has no fresh rank is
       // worth asking about, and the game that froze the roster does not change that.
       ranksNeeded: await selectRanksNeeded(client, payload, now),
+      recheckInMs: null,
+      balanced: null,
     };
   }
 
+  const posted = rosterIdentity(payload.members.map((member) => member.puuid));
+  const stored = created ? null : rosterIdentity(await selectMemberPuuids(client, lobby.id));
+  const rosterChanged = posted !== stored;
+
+  // The members are always written, whether or not the identity moved: a friend swapping side
+  // or stepping into the spectator slot has to land in `lobby_members` (the seat plan reads
+  // it) and a Riot ID that changed has to land in `players` (M1.7). Neither touches
+  // `lobbies`, so neither restarts the clock — only the write below does that.
   const memberCount = await replaceMembers(client, lobby.id, payload);
+
+  let row = lobby;
+  if (rosterChanged && !created) {
+    // Writing the lobby row is what restarts the ten seconds: `lobbies_set_updated_at` does
+    // the rest. A freshly inserted row already has `updated_at = now`, so it is left alone.
+    row = await restartClock(client, lobby);
+  }
+
+  const elapsedMs = now.getTime() - Date.parse(row.updatedAt);
+  const attempt = await maybeBalance(client, {
+    lobby: row,
+    around: memberCount,
+    rosterChanged,
+    elapsedMs,
+    now,
+    timeZone,
+  });
+  const balanced = attempt.kind === 'balanced' ? attempt.outcome : null;
+  // A request that lost the race writes nothing and answers with the status the winner left
+  // behind, because a companion that is told `open` would knock again for no reason.
+  const status =
+    attempt.kind === 'balanced'
+      ? 'balanced'
+      : attempt.kind === 'lost'
+        ? ((await readLobbyStatus(client, lobby.id)) ?? row.status)
+        : row.status;
 
   return {
     lobbyId: lobby.id,
-    status: lobby.status,
-    created: lobby.created,
+    status,
+    created,
     memberCount,
     rosterFrozen: false,
     ranksNeeded: await selectRanksNeeded(client, payload, now),
+    recheckInMs: recheckInMs({ status, around: memberCount, elapsedMs, rosterChanged }),
+    balanced,
   };
+}
+
+/**
+ * The roster's identity: `rosterKey()` over everyone around, sorted, so member order is never
+ * mistaken for a change. Sides, the `isSpectator` flag, names, `role_override`, the lobby
+ * name and the password are deliberately not in it — the balancer assigns sides itself and
+ * the rotation treats a spectator as one of the people who are here.
+ */
+function rosterIdentity(puuids: readonly string[]): string {
+  const unique = [...new Set(puuids)];
+  return unique.length === 0 ? '' : rosterKey(unique);
+}
+
+/** The puuids currently stored for this lobby, in no particular order. */
+async function selectMemberPuuids(client: ServiceClient, lobbyId: string): Promise<string[]> {
+  const { data, error } = await client
+    .from('lobby_members')
+    .select('players!inner(puuid)')
+    .eq('lobby_id', lobbyId);
+  if (error) throw new Error(`ingestLobby: stored roster select failed: ${error.message}`);
+  return (data ?? []).map((row) => row.players.puuid);
+}
+
+/**
+ * The roster changed, so the ten seconds start again and the lobby is `open` — from
+ * `balanced` that is the "someone left" transition, and the earlier splits stay where they
+ * are as history.
+ */
+async function restartClock(client: ServiceClient, lobby: ExistingLobby): Promise<ExistingLobby> {
+  // Through the table like every other move, even though this one writes the row back.
+  assertLegalTransition(lobby.status, 'open');
+
+  const { data, error } = await client
+    .from('lobbies')
+    .update({ status: 'open' })
+    .eq('id', lobby.id)
+    .in('status', ['open', 'balanced'])
+    .select(LOBBY_COLUMNS)
+    .maybeSingle();
+  if (error) throw new Error(`ingestLobby: clock restart failed: ${error.message}`);
+  // No row back means another request moved the lobby out from under us (to `in_game`, say).
+  // Its status wins; this post has already replaced the members and there is nothing to undo.
+  return data ? toExistingLobby(data) : lobby;
+}
+
+interface MaybeBalanceInput {
+  lobby: ExistingLobby;
+  around: number;
+  rosterChanged: boolean;
+  elapsedMs: number;
+  now: Date;
+  timeZone: string;
+}
+
+/**
+ * Balance, if this post is the one that should.
+ *
+ * The transition is claimed with a compare-and-set (`moveLobby`), so two companions posting
+ * the same lobby at the ten-second mark produce one balance and three splits: the loser's
+ * update returns no row, it writes nothing and it answers 200.
+ *
+ * The second branch is the self-healing path, not a bug: if the split insert failed after the
+ * status moved, the lobby sits at `balanced` with no chosen split, and the next post (or the
+ * next recheck) balances again.
+ */
+type BalanceAttempt =
+  /** Not this post's business: too few around, the clock is still running, or already done. */
+  | { kind: 'none' }
+  | { kind: 'balanced'; outcome: BalanceOutcome }
+  /** Another request claimed the transition first. This one writes nothing. */
+  | { kind: 'lost' }
+  /** The ten could not be made or could not be split. The lobby is back at `open`. */
+  | { kind: 'failed' };
+
+async function maybeBalance(client: ServiceClient, input: MaybeBalanceInput): Promise<BalanceAttempt> {
+  const { lobby, around, rosterChanged, elapsedMs } = input;
+  if (around < PLAYERS_PER_GAME) return { kind: 'none' };
+
+  if (lobby.status === 'open') {
+    if (rosterChanged || !isRosterStable(elapsedMs)) return { kind: 'none' };
+    if (!(await moveLobby(client, { lobbyId: lobby.id, from: ['open'], to: 'balanced' }))) {
+      return { kind: 'lost' };
+    }
+  } else if (lobby.status === 'balanced') {
+    if (rosterChanged || (await hasChosenSplit(client, lobby.id))) return { kind: 'none' };
+    console.warn(`lobby ${lobby.id}: balanced with no chosen split; balancing again`);
+  } else {
+    return { kind: 'none' };
+  }
+
+  try {
+    const outcome = await balanceLobby(client, lobby, input.now, input.timeZone);
+    // Discord is M3.1 and hears about it here. Every acceptance check passes with no listener
+    // registered at all, which is the point of the seam.
+    await emitLobbyBalanced(outcome);
+    return { kind: 'balanced', outcome };
+  } catch (error) {
+    // A balance that cannot happen must never reach the companion: one line, the lobby back
+    // where it was, and the next post tries again. A wrong ten is worse than no teams.
+    // `SelectionError` (a pool that cannot make ten) and core's `BalanceError` (ten that
+    // cannot be split) both land here, and both mean nothing was written.
+    console.error(
+      `lobby ${lobby.id}: balancing failed`,
+      error instanceof SelectionError ? error.message : error,
+    );
+    await moveLobby(client, { lobbyId: lobby.id, from: ['balanced'], to: 'open' });
+    return { kind: 'failed' };
+  }
 }
 
 /**
@@ -162,21 +399,22 @@ async function selectRanksNeeded(
 }
 
 interface LobbyRowResult {
-  id: string;
-  status: LobbyStatusValue;
+  lobby: ExistingLobby;
+  /** True when this post started a cycle: an unseen party, or the night's next game (M2.14). */
   created: boolean;
 }
 
 /**
- * Insert on `lcu_party_id`, or refresh the fields the client can tell us about. Reposting an
- * unchanged lobby writes nothing, so `updated_at` still means "something changed".
+ * Find the party's live row, or start a new cycle, then refresh the fields the client can
+ * tell us about. Reposting an unchanged lobby writes nothing, so `updated_at` still means
+ * "something changed" — which is the whole of M2.5's stability clock.
  */
 async function upsertLobby(
   client: ServiceClient,
   payload: CompanionLobbyPayload,
   reportedByPlayerId: string,
 ): Promise<LobbyRowResult> {
-  const existing = await selectLobby(client, payload.partyId);
+  const existing = await selectActiveLobby(client, payload.partyId);
 
   if (existing === null) {
     const insert: LobbyInsert = {
@@ -185,18 +423,19 @@ async function upsertLobby(
       lobby_name: payload.lobbyName,
       lobby_password: payload.lobbyPassword,
     };
-    const { data, error } = await client
-      .from('lobbies')
-      .upsert(insert, { onConflict: 'lcu_party_id', ignoreDuplicates: true })
-      .select('id, status')
-      .maybeSingle();
-    if (error) throw new Error(`ingestLobby: insert failed: ${error.message}`);
-    if (data) return { id: data.id, status: data.status, created: true };
+    // A plain insert, not an upsert: `lcu_party_id` is no longer unique by itself (M2.14) and
+    // `lobbies_active_party_idx` is partial, so there is no constraint for `on conflict` to
+    // infer. The unique violation below is the race, and it is handled by re-reading.
+    const { data, error } = await client.from('lobbies').insert(insert).select(LOBBY_COLUMNS).single();
+    if (!error && data) return { lobby: toExistingLobby(data), created: true };
+    if (error && error.code !== UNIQUE_VIOLATION) {
+      throw new Error(`ingestLobby: insert failed: ${error.message}`);
+    }
 
-    // Another companion inserted the same party between our select and our insert.
-    const raced = await selectLobby(client, payload.partyId);
+    // Another companion opened the same cycle between our select and our insert.
+    const raced = await selectActiveLobby(client, payload.partyId);
     if (raced === null) throw new Error('ingestLobby: lobby vanished after a conflicting insert');
-    return { ...raced, created: false };
+    return { lobby: raced, created: false };
   }
 
   const patch: LobbyUpdate = {};
@@ -211,37 +450,117 @@ async function upsertLobby(
   }
 
   if (Object.keys(patch).length > 0) {
-    const { error } = await client.from('lobbies').update(patch).eq('id', existing.id);
+    // This fires `lobbies_set_updated_at`, so a renamed lobby costs one more recheck before
+    // it balances (M2.5, "How unchanged for 10 seconds is measured"). Read the row back so
+    // the clock the caller measures against is the one the database just wrote.
+    const { data, error } = await client
+      .from('lobbies')
+      .update(patch)
+      .eq('id', existing.id)
+      .select(LOBBY_COLUMNS)
+      .single();
     if (error) throw new Error(`ingestLobby: update failed: ${error.message}`);
+    return { lobby: toExistingLobby(data), created: false };
   }
 
-  return { id: existing.id, status: existing.status, created: false };
+  return { lobby: existing, created: false };
 }
 
-interface ExistingLobby {
+/** A `lobbies` row, as everything downstream of the party-id lookup wants to read it. */
+export interface ExistingLobby {
   id: string;
   status: LobbyStatusValue;
   reportedByPlayerId: string | null;
   lobbyName: string | null;
   lobbyPassword: string | null;
+  /** The stability clock (M2.5): moved by every write to the row, by the `updated_at` trigger. */
+  updatedAt: string;
+  createdAt: string;
 }
 
-async function selectLobby(client: ServiceClient, partyId: string): Promise<ExistingLobby | null> {
+const LOBBY_COLUMNS = 'id, status, reported_by_player_id, lobby_name, lobby_password, updated_at, created_at';
+
+function toExistingLobby(row: {
+  id: string;
+  status: LobbyStatusValue;
+  reported_by_player_id: string | null;
+  lobby_name: string | null;
+  lobby_password: string | null;
+  updated_at: string;
+  created_at: string;
+}): ExistingLobby {
+  return {
+    id: row.id,
+    status: row.status,
+    reportedByPlayerId: row.reported_by_player_id,
+    lobbyName: row.lobby_name,
+    lobbyPassword: row.lobby_password,
+    updatedAt: row.updated_at,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * The party's **live** row: `open`, `balanced` or `in_game`, newest first (M2.14). `null`
+ * means this party has no open cycle — either it has never been seen, or its last cycle is
+ * `finished`/`abandoned` and the next post starts a new row.
+ *
+ * There can be at most one such row (`lobbies_active_party_idx`); the ordering is belt and
+ * braces for a database that somehow holds two.
+ */
+export async function selectActiveLobby(
+  client: ServiceClient,
+  partyId: string,
+): Promise<ExistingLobby | null> {
   const { data, error } = await client
     .from('lobbies')
-    .select('id, status, reported_by_player_id, lobby_name, lobby_password')
+    .select(LOBBY_COLUMNS)
     .eq('lcu_party_id', partyId)
+    .in('status', ACTIVE_LOBBY_STATUSES)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw new Error(`ingestLobby: select failed: ${error.message}`);
-  if (!data) return null;
+  return data ? toExistingLobby(data) : null;
+}
 
-  return {
-    id: data.id,
-    status: data.status,
-    reportedByPlayerId: data.reported_by_player_id,
-    lobbyName: data.lobby_name,
-    lobbyPassword: data.lobby_password,
-  };
+/**
+ * The party's live row, or — when its cycle has closed — the newest row it has (M2.14).
+ *
+ * This is what a **game** post resolves through: an end-of-game block that arrives after the
+ * lobby was already marked `finished`, or after the group opened the night's next cycle,
+ * still belongs to the row it was played from. A lobby post must never use this: it would
+ * write into a frozen row instead of starting the next cycle.
+ */
+export async function selectLatestLobby(
+  client: ServiceClient,
+  partyId: string,
+  /**
+   * When the game started, for an end-of-game block. The cycle a game belongs to is the
+   * newest row that already existed when it kicked off, which is what keeps a late eog on
+   * the lobby it was played from even after the group has opened the night's next one.
+   * Omitted (the `in_progress` ping) means "the live row".
+   */
+  startedAt?: string | null,
+): Promise<ExistingLobby | null> {
+  const { data, error } = await client
+    .from('lobbies')
+    .select(LOBBY_COLUMNS)
+    .eq('lcu_party_id', partyId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) throw new Error(`ingestGame: lobby lookup failed: ${error.message}`);
+
+  const rows = (data ?? []).map(toExistingLobby);
+  const started = startedAt == null ? Number.NaN : Date.parse(startedAt);
+  const byStart = Number.isNaN(started)
+    ? undefined
+    : rows.find((row) => Date.parse(row.createdAt) <= started);
+
+  // Ordered newest first, so the first match is the newest row that predates the game. The
+  // fallbacks cover a companion whose clock is off and a game whose lobby was only reported
+  // after it had started: the live row, and then whatever the party's newest row is.
+  return byStart ?? rows.find((row) => isActiveLobbyStatus(row.status)) ?? rows[0] ?? null;
 }
 
 /**

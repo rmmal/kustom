@@ -128,6 +128,27 @@ and then `active_season_id()` is null and every `games` insert fails on its not-
 - `public.set_active_season(id)` — move the active flag to an existing season. Used by the web
   integration tests to hand the shared local database back with Season 1 active.
 
+## What 0003_lobby_cycles.sql adds (M2.14)
+
+A `lobbies` row is **one game cycle, not one party**. The League client keeps the same
+`partyId` for the whole night (fixture evidence: party `e3c69392` was created at 16:36:41,
+played 16:37:39 to 16:53:05 and was still emitting lobby events at 17:39:27 with no new id),
+so a plain unique key on `lcu_party_id` plus the M2.9 roster freeze means only the first game
+of the night is ever balanced.
+
+- The unique **constraint** `lobbies_lcu_party_id_key` is dropped.
+- `lobbies_active_party_idx` replaces it: unique on `lcu_party_id`
+  `where status in ('open','balanced','in_game')`. At most one *live* lobby per party, any
+  number of closed ones.
+- `lobbies_party_created_at_idx` on `(lcu_party_id, created_at desc)` is the "newest row for
+  this party" lookup a late end-of-game block resolves through.
+
+The ingest side is `apps/web/lib/ingest/lobby.ts`: `selectActiveLobby` (a lobby post lands on
+the live row, and starts a new one when the last cycle is `finished` or `abandoned`) and
+`selectLatestLobby` (a game post lands on the newest row that already existed when the game
+started, so a late block stays on the lobby it was played from). Nothing is rewritten and
+nothing is deleted: the closed row keeps its frozen members and its `games` link.
+
 ## The companion wire contract (M2.10)
 
 `src/schemas/companion.ts` is the **wire contract** for the three bodies the companion POSTs, and
@@ -166,7 +187,7 @@ The **answer** carries two fields the companion acts on, besides `lobbyId`, `sta
 
 | field | meaning |
 |---|---|
-| `recheckInMs: number \| null` | Knock again after this many milliseconds with the *identical* payload, unless a real lobby event produced a newer one first. This is how "the roster has not changed for ten seconds" is measured on a server with no timers (M2.5); `null` means do nothing. **M2.10 ships the field, M2.5 fills it — it is always `null` today.** |
+| `recheckInMs: number \| null` | Knock again after this many milliseconds with the *identical* payload, unless a real lobby event produced a newer one first. This is how "the roster has not changed for ten seconds" is measured on a server with no timers (M2.5). It is a number only while the lobby is `open` with ten or more people around: the full 10 000 when this post changed the roster, the milliseconds left otherwise, never under 1 000. `null` means do nothing — fewer than ten, already `balanced`, or anything else. |
 | `ranksNeeded: string[]` | PUUIDs among the members just posted whose `players` row has no `rank_updated_at`, one older than `RANK_STALE_MS` (7 days), or no row at all. Spectators included; posted member order. Hand it to the rank sweep (M2.4). This is the whole of "once, then weekly": the companion keeps no schedule, only an in-process de-duplicator. |
 
 ### `POST /api/companion/game`
