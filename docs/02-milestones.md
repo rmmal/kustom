@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Open for M4 only: switch-side path, invite body, spectator shape (see docs/03-lcu-reference.md). |
 | M1 Foundation | in progress | M1.1 to M1.6 and M1.8 done; product acceptance met; M1.7 ingest half done (admin field open), M1.9 and M1.10 open. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | not started | M2.9 done early (roster freeze). Needs M0 and M1. |
+| M2 Companion v1: roster and results | in progress | M2.9 done early (roster freeze); M2.1 in flight; M2.10 (payload alignment) next, before M2.2/M2.3. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
