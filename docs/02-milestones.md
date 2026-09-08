@@ -267,8 +267,9 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > number. Verify against the real package before pinning. If it disagrees, pin what the package returns,
     > update this brief and `00-product.md`, and add a row to `04-decisions.md` — do not adjust the roster.
     >
-    > Note: the sample string in `01-architecture.md` ends "gap 300". That was written before this roster
-    > existed and is a format illustration only; 170 is the real next-best gap here.
+    > Note: `01-architecture.md` used to illustrate the format with a string ending "gap 300", written before
+    > this roster existed. It now carries split 1's string above verbatim. If the real `openskill` package moves
+    > a percentage, update both places together.
     >
     > ### Errors
     >
@@ -326,7 +327,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     >   and `04-decisions.md`. Changing one is a decision row and a new task, not a commit.
 
 - [ ] **M1.5** `apps/web` API skeleton: companion token auth middleware, `POST /api/companion/lobby`, `POST /api/companion/game`, `POST /api/companion/rank`, all zod-validated, writing to Supabase with idempotency on `lcu_party_id` and `lcu_game_id`. Lazy player creation by PUUID.
-- [ ] **M1.6** `/admin`: Discord OAuth via Supabase Auth, `is_admin` gate. Pages to list players, set roles, link a Discord ID, mint and revoke companion tokens, edit `discord_config`, create a season. Seed the first admin by PUUID in a migration or env var.
+- [ ] **M1.6** `/admin`: Discord OAuth via Supabase Auth, `is_admin` gate. Pages to list players, set roles, link a Discord ID, mint and revoke companion tokens, edit `discord_config`, create a season. Seed the first admin by PUUID in a migration or env var. The role editor must be able to clear a main or secondary role back to null, not only change it — a null main means flexible (M1.4), and there has to be a way back to it.
 
 Acceptance: `pnpm -r test` green; a curl with a valid token creates a lobby row and a game row; a second identical curl changes nothing.
 
@@ -341,6 +342,14 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
 - [ ] **M2.5** Server: lobby state machine (open, balanced, in_game, finished, abandoned) with the 10-second stability rule; on eog, insert `games` and `game_players`, run `rateGame`, update `ratings`. Ignore eog blocks whose `gameType` is not `CUSTOM_GAME`.
 - [ ] **M2.6** Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
 
+- [ ] **M2.7** `lastSplit` for the balancer: when a lobby reaches `balanced`, the API looks up the most recent chosen split (any night) whose lobby had exactly the same ten puuids as this lobby, and passes the five puuids of one of its sides as `lastSplit`. If no such split exists, it passes null. Never pass a split from a lobby with a different roster.
+
+    > **Acceptance check (product).** With a stored chosen split for the same ten players, a new lobby with those
+    > ten sends a `lastSplit` of exactly five puuids drawn from that stored split's blue or red side, and the
+    > returned split 1 is not the repeat. Change one player in the lobby and `lastSplit` is null on the next
+    > balance. With no history for these ten, `lastSplit` is null. Side colour of the stored split does not
+    > change the result (M1.4 already treats it as colour-agnostic).
+
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
 
 ## M3 Teams in Discord and on the web (2 to 3 days, needs M2)
@@ -354,6 +363,14 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
 - [ ] **M3.4** `/` Tonight page: live via Supabase Realtime; phone-friendly; the link is what gets pasted in WhatsApp. Shows lobby members as they join, then teams, then result.
 - [ ] **M3.5** `/leaderboard` and `/p/[puuid]` with rating history. Nightly leaderboard post to the webhook at a configured time.
 - [ ] **M3.6** Role override for tonight: a player taps their role on the tonight page (Discord login) or an admin sets it. Cleared when the lobby finishes.
+- [ ] **M3.7** Off-role clause end to end: the teams embed and the tonight page show the explanation line of whichever split is currently promoted, including after a reroll, with the off-role clause matching that split.
+
+    > **Acceptance check (product).** Balance a lobby whose split 1 has `offRoleCount` 0 and whose split 2 has
+    > someone off-role. The embed and the tonight page both read `Everyone on a main role.` Reroll to split 2:
+    > both surfaces now read the split 2 sentence verbatim, naming the off-role player and their role
+    > (`{Name} off-role at {role}.`, or `{n} off-role: ...` for two or more), and the roles rendered beside the
+    > names match that split's assignment. Nothing recomputes the explanation — both surfaces render the stored
+    > string for the promoted split from the `splits` table.
 
 Acceptance: a full night with real players, teams posted within 15 seconds of the tenth join, results within 60 seconds of end of game, no human action beyond joining the lobby.
 

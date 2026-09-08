@@ -83,6 +83,9 @@ OpenSkill, default Plackett-Luce model, two teams of five.
   Iron 14, Bronze 17, Silver 20, Gold 23, Platinum 26, Emerald 29, Diamond 32, Master and above 35.
   Add 0.75 per division above IV. Unranked: 20.
 - Seed `sigma` to 8.33 (OpenSkill default) so the first few games move fast. Unranked: 10.
+- Rating movement is driven by uncertainty, not by rank: OpenSkill moves a player's `mu` in proportion to that
+  player's own `sigma^2`, so a settled player's rating is sticky and a new player's moves fast. Rank does not
+  affect the size of a win — two players with the same sigma on the same winning team gain exactly the same amount.
 - Balance on `mu`. Leaderboard sorts on `ordinal = mu - 2 * sigma`. Display rating is `round(mu * 60)`.
 - After each game call `rate([blueTeam, redTeam], { rank: [winnerRank...] })`. Store before and after on
   `game_players`. Ratings are a pure fold over games ordered by `started_at`, so they can be rebuilt from scratch
@@ -101,8 +104,9 @@ split. Output: top three splits with role assignments and explanation.
   (in display-rating units, so divide `mu` sums by 1/60 or apply the weights in `mu` units, either is fine as long
   as tests pin it).
 - `blueWinProb` from OpenSkill `predictWin` on the actual `{ mu, sigma }` values.
-- Explanation string is built in core: `"Blue favored 51%. Everyone on a main role. Gap 100. Next best: swap Hana
-  and Omar, gap 300."` The "swap" line is derived by diffing split 1 and split 2.
+- Explanation string is built in core. Split 1 of the worked example (`00-product.md`, full arithmetic in
+  `02-milestones.md` M1.4) reads: `"Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and
+  Omar, gap 170."` The "swap" line is derived by diffing split 1 and split 2.
 - Reroll returns split 2, then 3. Never random.
 - Fewer than ten or more than ten players is an error at this layer; the API decides who sits (see below).
 
@@ -119,6 +123,8 @@ open ---(10 stable members reported)---> balanced ---(gameflow InProgress)---> i
   ten non-spectator members are unchanged for 10 seconds.
 - Sit-outs: if more than ten people are "around" (in the lobby as spectators, or in the lobby voice channel
   once M4 exists), the API posts who should sit based on the fewest games tonight, then oldest sit-out.
+- The `lastSplit` passed to the balancer is the five puuids on one side of the most recent chosen split whose
+  lobby had the same ten players as tonight's; if there is no such split, `lastSplit` is null.
 - Discord posting happens from the API on state transitions, through the webhook stored in `discord_config`.
 
 ## Companion (`apps/companion`)
