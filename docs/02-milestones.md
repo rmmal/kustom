@@ -433,9 +433,126 @@ Acceptance: `pnpm -r test` green; a curl with a valid token creates a lobby row 
 
 Goal: a friend runs one exe, and every lobby and game they are in lands in the database with no action.
 
+- [ ] **M2.10** Align the companion payload schemas with the real 16.17 client shapes. `packages/db/src/schemas/companion.ts` was written in M1.2 from the shapes in `03-lcu-reference.md`, before anyone had seen a real response, and M0.3's fixture pass found twelve places where the client disagrees. Fix the schemas, the mapping and the ingest together as one contract, first in M2: **M2.2 and M2.3 both build directly on these payloads and must not start before this lands.** Two owners on one contract — `platform-engineer` for `packages/db/src/schemas/` and the ingest side in `apps/web`, `companion-engineer` for the mapping in `apps/companion`. **Precondition:** `packages/lcu/fixtures/16.17/` must be committed (M0.2) and the lobby, eog and ranked rows in `03-lcu-reference.md` turned `verified` (M0.3); the acceptance check reads those fixtures and today the directory holds only `README.md`.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **The scene.** Nothing here is visible to a player, and that is the point: every one of these
+    > mismatches ends the night the same way. The tenth friend joins, the companion posts, zod refuses the
+    > payload, and Discord stays silent while ten people wait — or worse, the post is accepted and teams get
+    > built with two bots and everyone on the same side. The contract has to match the client before anything
+    > is built on it.
+    >
+    > **Lobby (`companionLobbyPayloadSchema`, `companionLobbyMemberSchema`).**
+    >
+    > 1. **`members[].summonerId` is a JSON number, not a string.** `optionalText` refuses a number, so today
+    >    one real lobby response fails the whole payload. Accept `number | string`, normalise to a decimal
+    >    string (`players.summoner_id` is `text`; no migration), null when absent. Do not drop the field —
+    >    M4's invites are the only thing that needs it.
+    > 2. **Lobby members carry no `gameName`/`tagLine`.** The client's lobby member has no Riot ID pair. The
+    >    companion sends what it already has (its own `current-summoner`, anything it looked up via
+    >    `GET /lol-summoner/v2/summoners/puuid/{puuid}`) and the server tolerates null for both. **Posting a
+    >    lobby never waits on a name lookup.** PUUID is the identity; a roster with null names is a correct
+    >    roster, and the names fill in from the next eog block or the M2.4 sweep. A lookup that fails, times
+    >    out or 404s is logged once and the member still goes in the payload.
+    > 3. **`side` comes from `gameConfig.customTeam100` / `customTeam200` membership.** `members[].teamId` is
+    >    always `0` in a custom lobby and must never be read by anything, ever. A puuid in neither array is
+    >    `side: null` (the client has not placed them yet) — that is a valid state, not an error. This answers
+    >    question 3 of "Behaviors to confirm" in `03-lcu-reference.md`; M0.3 records the answer there.
+    >
+    > 4. **Bots have `isBot: true` and `puuid: ""`.** The companion drops them before posting. The server also
+    >    drops any member with an empty or all-zero puuid rather than 400 the whole roster, logging one line —
+    >    a bot leaking through must never cost the group the other nine members. Order matters: filter bots,
+    >    **then** run the M1.8 caller-in-`members` check, then replace. Filtering can leave fewer than ten
+    >    members, which simply means the lobby is not balanced yet.
+    >
+    > **Game, end of game (`companionGamePayloadSchema`, `phase: 'eog'`).**
+    >
+    > 5. **The block has no start time.** `startedAt` stays required in the schema; the companion derives it.
+    >    Prefer the `InProgress` moment it observed for that `gameId` (it already posts one in the
+    >    `phase: 'in_progress'` payload); when it has none — a companion that started or reconnected mid-game
+    >    has none — fall back to `endOfGameTimestamp` minus `gameLength`. The fallback is not optional.
+    >    Confirm the units of both fields against the fixture and write them into `03-lcu-reference.md`
+    >    instead of assuming milliseconds and seconds.
+    > 6. **A `TerminatedInError` block has no winning team.** The companion recognises it and does not post it,
+    >    logging the reason. If one reaches the API anyway it is refused with a message that names the reason;
+    >    nothing is written and nothing is ever rated. The lobby is left alone — it stays `in_game` and ages
+    >    out to `abandoned` on the existing idle rule (M2.5). Do not invent a status for it.
+    > 7. **Role comes from `detectedTeamPosition`:** `TOP -> top`, `JUNGLE -> jungle`, `MIDDLE -> mid`,
+    >    `BOTTOM -> adc`, `UTILITY -> support`. Anything else — `""`, missing, a value we have not seen — is
+    >    `null`. `role` is nullable everywhere for exactly this reason. Never infer a role from the champion.
+    > 8. **Stat keys, exactly:** `CHAMPIONS_KILLED` (not `KILLS`), `NUM_DEATHS` (not `DEATHS`), `ASSISTS`,
+    >    `GOLD_EARNED`, `TOTAL_DAMAGE_DEALT_TO_CHAMPIONS`, and cs is `MINIONS_KILLED` **plus**
+    >    `NEUTRAL_MINIONS_KILLED`. `WIN` is `0 | 1`, a number, not `"Win"`/`"Fail"`. A missing key is 0, which
+    >    the schema already defaults; one absent stat never costs us a game. The stat-key list in the eog row
+    >    of `03-lcu-reference.md` is wrong today and is corrected by this task.
+    > 9. **There is no `queueId` in the block.** Nothing may read one. The custom-game gate is
+    >    `gameType === 'CUSTOM_GAME'`, which is what M2.5 already uses; remove `queueId` from the eog row of
+    >    the reference.
+    > 10. **Bot players have `botPlayer: true` and the all-zero puuid** (`00000000-0000-0000-0000-000000000000`).
+    >    The companion filters them before validation, and `puuidSchema` in `common.ts` rejects the all-zero
+    >    puuid outright: it accepts it today, so a bot game would create a `players` row keyed on a PUUID that
+    >    every bot in every game shares — the one kind of bad row this product cannot tolerate, because PUUID
+    >    is the identity. That change touches every payload; it is a widening of what we refuse, and it needs
+    >    its own test. Filtering can leave fewer than ten participants, and the M2.5 gate (ten participants,
+    >    five a side, over 300 seconds) then correctly stores the game without rating it.
+    > 11. **`games.raw` must be scrubbed of `mucJwtDto` and `multiUserChatPassword` before storage.** The block
+    >    carries live chat credentials and `games` is **public-read** under RLS, so this is a leak, not
+    >    hygiene. Replace the value of both keys with the string `"[redacted]"` at any depth, matching the
+    >    convention `packages/lcu/src/scrub.ts` already uses for WS events. Scrub on the server before insert;
+    >    the companion may scrub too, but the server is the one that has to be right, because old companion
+    >    binaries keep running in people's tray for months.
+    >
+    > **Rank (`companionRankPayloadSchema`).**
+    >
+    > 12. **Unranked is `tier: ""` with `division: "NA"`.** Normalise both to `null`; a null tier forces a null
+    >    division. `optionalText` already folds `""` to null, so `"NA"` is the one that survives today and
+    >    would print on the player page as a division. `losses` reads `0` for every player but yourself, so it
+    >    is not truth: the schema does not carry it and must not gain it. Wins and losses come from our own
+    >    `games` rows, never from the client.
+    >
+    > **Edge cases.** Fewer than ten, or more than ten, are untouched by this task — it is about shape, not
+    > count. Spectators: confirm from the fixture whether `customSpectators[]` members appear in `members` at
+    > all; if they do not, a sitting-out friend cannot be seen in the lobby payload and M2.8's spectator path
+    > rests entirely on the `reported_by_player_id` fallback — say so in the reference rather than guessing.
+    > Someone leaving mid-lobby is unchanged: replace semantics while `open`, frozen from `in_game` (M2.9).
+    > A companion that disconnects and reconnects at `EndOfGame` is the case that makes the `startedAt`
+    > fallback mandatory. An unknown player lands as a `players` row with null names and no rank, and both
+    > fill in later; ingest never blocks on either.
+    >
+    > **One mapper, not two.** The raw-LCU-to-payload mapping is written once and imported by both
+    > `apps/companion` and the fixture test. It is client-shape knowledge, so `packages/lcu` (which would take
+    > `@customs/db` as a dependency — `db` depends only on `core`, so there is no cycle) is the natural home;
+    > a test in `packages/db` reaching for `packages/lcu/fixtures/` is the alternative. **The lead picks the
+    > home**; what this brief requires is that the mapping exists in exactly one place and that no copy of it
+    > lives in `apps/companion`.
+    >
+    > **Acceptance check.**
+    >
+    > 1. A fixture-backed test builds a lobby payload from `packages/lcu/fixtures/16.17/lobby.json` through the
+    >    mapper and `companionLobbyPayloadSchema.parse` succeeds: sides come out five and five from
+    >    `customTeam100`/`customTeam200`, every `summonerId` is a digit string, null `gameName`/`tagLine` pass.
+    > 2. The same for `eog-stats-block.json` through `companionGamePayloadSchema` (`phase: 'eog'`): ten
+    >    participants, `winningSide` 100 or 200, `startedAt` equal to `endOfGameTimestamp` minus `gameLength`,
+    >    roles mapped from `detectedTeamPosition`, and at least one participant's `cs` asserted by hand as
+    >    `MINIONS_KILLED + NEUTRAL_MINIONS_KILLED`.
+    > 3. A bots lobby fixture parses with only the humans in it, and a member with an empty-string puuid does
+    >    not take the rest of the roster down with it.
+    > 4. A `TerminatedInError` block is refused with a reason naming it, and no `games` row is written.
+    > 5. `puuidSchema` rejects the all-zero puuid.
+    > 6. A stored `games.raw` reads `"[redacted]"` at `mucJwtDto` and `multiUserChatPassword`, and the original
+    >    values appear nowhere in the row.
+    > 7. A rank payload built from the unranked fixture has `tier: null` and `division: null`.
+    > 8. `pnpm -r typecheck` and `pnpm -r test` pass, and the lobby, eog and ranked rows of
+    >    `03-lcu-reference.md` carry the corrected shapes.
+    >
+    > **Out of scope.** No migration — `summoner_id` is already `text` and `role` already nullable. No change
+    > to the M2.5 rating gate, the lobby state machine or the M2.9 freeze. No match-history or backfill shapes
+    > (M5). No champion-name or icon lookup. No packaging.
+
 - [ ] **M2.1** `apps/companion` CLI: config file, first-run token prompt, connection state machine with reconnect and backoff, structured logs with rotation.
-- [ ] **M2.2** Lobby watcher: on every lobby WS event, POST the member list with sides and spectator flags. Debouncing lives on the server, not here.
-- [ ] **M2.3** Game capture: on gameflow `InProgress` POST the game ID against the lobby; on `EndOfGame` fetch the eog block and POST it. Handle the case where the client reaches `EndOfGame` while the companion was reconnecting: on connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post.
+- [ ] **M2.2** Lobby watcher: on every lobby WS event, POST the member list with sides and spectator flags. Debouncing lives on the server, not here. Needs M2.10: sides come from `gameConfig.customTeam100`/`customTeam200`, never `members[].teamId`, and bots are filtered before posting.
+- [ ] **M2.3** Game capture: on gameflow `InProgress` POST the game ID against the lobby; on `EndOfGame` fetch the eog block and POST it. Needs M2.10 for the payload shape (derived `startedAt`, `detectedTeamPosition` roles, real stat keys, `TerminatedInError` dropped). Handle the case where the client reaches `EndOfGame` while the companion was reconnecting: on connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post.
 - [ ] **M2.4** Rank sync: own rank on start and every 6 hours; rank for every unknown PUUID seen in a lobby, once, then weekly.
 - [ ] **M2.5** Server: lobby state machine (open, balanced, in_game, finished, abandoned) with the 10-second stability rule; on eog, insert `games` and `game_players`, run `rateGame`, update `ratings`. Ignore eog blocks whose `gameType` is not `CUSTOM_GAME`.
 
