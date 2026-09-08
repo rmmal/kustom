@@ -39,6 +39,26 @@ export function withCompanionAuth<S extends z.ZodType>(
   handle: CompanionHandler<z.output<S>>,
   deps: CompanionRouteDeps = {},
 ): (request: Request) => Promise<NextResponse> {
+  return withCompanionIdentity(async (request, context) => {
+    const body = await parseJsonBody(request, schema);
+    if (!body.ok) {
+      return body.response;
+    }
+    return handle(body.data, context);
+  }, deps);
+}
+
+export type CompanionRequestHandler = (request: Request, context: CompanionContext) => Promise<NextResponse>;
+
+/**
+ * The same thing without a body: the client, the bootstrap admin and the bearer token check,
+ * then the handler. `GET /api/companion/me` is the only user today — a route that reads
+ * nothing but the token cannot have a request schema to parse.
+ */
+export function withCompanionIdentity(
+  handle: CompanionRequestHandler,
+  deps: CompanionRouteDeps = {},
+): (request: Request) => Promise<NextResponse> {
   return async (request) => {
     let client: ServiceClient;
     try {
@@ -63,12 +83,7 @@ export function withCompanionAuth<S extends z.ZodType>(
         return jsonError(auth.status, auth.error);
       }
 
-      const body = await parseJsonBody(request, schema);
-      if (!body.ok) {
-        return body.response;
-      }
-
-      return await handle(body.data, { client, identity: auth.identity });
+      return await handle(request, { client, identity: auth.identity });
     } catch (error) {
       // A thrown error here is our bug or the database being down. Never leak the message.
       console.error('companion route failed', error);

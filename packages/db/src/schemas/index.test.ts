@@ -8,6 +8,8 @@ import {
   puuidSchema,
   roleSchema,
   sideSchema,
+  summonerIdSchema,
+  ZERO_PUUID,
 } from './index';
 
 const PUUID_A = 'f1a2b3c4-d5e6-7890-abcd-ef1234567890';
@@ -20,6 +22,41 @@ describe('puuidSchema', () => {
 
   it('rejects an empty string', () => {
     expect(puuidSchema.safeParse('').success).toBe(false);
+    expect(puuidSchema.safeParse('   ').success).toBe(false);
+  });
+
+  it('rejects the all-zero puuid every bot shares (M2.10)', () => {
+    // PUUID is the identity. One `players` row keyed on this would be every bot that has ever
+    // played, in every game, forever.
+    expect(puuidSchema.safeParse(ZERO_PUUID).success).toBe(false);
+    expect(puuidSchema.safeParse('00000000-0000-0000-0000-000000000000').success).toBe(false);
+    expect(puuidSchema.safeParse('00000000-0000-0000-0000-000000000001').success).toBe(true);
+  });
+});
+
+describe('summonerIdSchema', () => {
+  it('takes the client number and stores digits', () => {
+    // `members[].summonerId` is a JSON number on 16.17; `players.summoner_id` is text.
+    expect(summonerIdSchema.parse(47890856)).toBe('47890856');
+    expect(summonerIdSchema.parse('47890856')).toBe('47890856');
+    // Not 32-bit: an invitee's id read 2686822975473024.
+    expect(summonerIdSchema.parse(2686822975473024)).toBe('2686822975473024');
+  });
+
+  it('treats absent, empty and zero as not known', () => {
+    expect(summonerIdSchema.parse(undefined)).toBeNull();
+    expect(summonerIdSchema.parse(null)).toBeNull();
+    expect(summonerIdSchema.parse('')).toBeNull();
+    // A bot slot reports 0; storing it would make every bot the same summoner.
+    expect(summonerIdSchema.parse(0)).toBeNull();
+    expect(summonerIdSchema.parse('0')).toBeNull();
+  });
+
+  it('rejects anything that is not a run of digits', () => {
+    expect(summonerIdSchema.safeParse('BR1_478').success).toBe(false);
+    expect(summonerIdSchema.safeParse(-1).success).toBe(false);
+    expect(summonerIdSchema.safeParse(1.5).success).toBe(false);
+    expect(summonerIdSchema.safeParse(2 ** 53).success).toBe(false);
   });
 });
 
@@ -57,7 +94,7 @@ describe('companionLobbyPayloadSchema', () => {
     members: [
       {
         puuid: PUUID_A,
-        summonerId: '12345',
+        summonerId: 12345,
         gameName: 'Hana',
         tagLine: 'EUW',
         side: 100,
@@ -73,6 +110,24 @@ describe('companionLobbyPayloadSchema', () => {
     expect(parsed.members[0]?.side).toBe(100);
     expect(parsed.members[1]?.side).toBeNull();
     expect(parsed.members[1]?.summonerId).toBeNull();
+    // The client's number, stored as text.
+    expect(parsed.members[0]?.summonerId).toBe('12345');
+    expect(parsed.droppedMembers).toBe(0);
+  });
+
+  it('drops a bot or placeholder member instead of refusing the whole roster (M2.10)', () => {
+    const parsed = companionLobbyPayloadSchema.parse({
+      ...valid,
+      members: [
+        ...valid.members,
+        { puuid: '', summonerId: 0, isSpectator: false },
+        { puuid: ZERO_PUUID, isSpectator: false },
+        { puuid: 'bot-1', isBot: true },
+      ],
+    });
+
+    expect(parsed.members).toHaveLength(2);
+    expect(parsed.droppedMembers).toBe(3);
   });
 
   it('defaults isSpectator and empty text to null', () => {
@@ -161,6 +216,28 @@ describe('companionGamePayloadSchema', () => {
     });
   });
 
+  it('accepts an explicit "nobody won" and fills win from the winning side', () => {
+    // A block with no winning team is a remake or a TerminatedInError. It parses — the key is
+    // a statement, not a forgotten field — and the route refuses it 422 (M2.10, point 6).
+    const parsed = companionGamePayloadSchema.parse({ ...eog, winningSide: null });
+    if (parsed.phase !== 'eog') throw new Error('unreachable');
+    expect(parsed.winningSide).toBeNull();
+    expect(parsed.participants[0]?.win).toBeNull();
+
+    const won = companionGamePayloadSchema.parse(eog);
+    if (won.phase !== 'eog') throw new Error('unreachable');
+    expect(won.participants[0]?.win).toBe(true);
+  });
+
+  it('rejects a bot participant, because a bot is not a player', () => {
+    expect(
+      companionGamePayloadSchema.safeParse({
+        ...eog,
+        participants: [{ puuid: ZERO_PUUID, side: 100 }],
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects an unknown phase, a missing winner and a non-object raw', () => {
     expect(companionGamePayloadSchema.safeParse({ ...eog, phase: 'lobby' }).success).toBe(false);
     expect(companionGamePayloadSchema.safeParse({ ...eog, winningSide: undefined }).success).toBe(false);
@@ -185,6 +262,25 @@ describe('companionRankPayloadSchema', () => {
   it('accepts an unranked reading and defaults the queue', () => {
     const parsed = companionRankPayloadSchema.parse({ puuid: PUUID_A, tier: null, division: null });
     expect(parsed).toMatchObject({ tier: null, division: null, lp: null, queue: 'RANKED_SOLO_5x5' });
+  });
+
+  it("normalises the client's unranked strings and never carries losses", () => {
+    // 16.17 unranked: tier "", division "NA". A null tier forces a null division and lp.
+    const parsed = companionRankPayloadSchema.parse({
+      puuid: PUUID_A,
+      tier: '',
+      division: 'NA',
+      lp: 0,
+      losses: 41,
+    });
+    expect(parsed).toEqual({
+      puuid: PUUID_A,
+      tier: null,
+      division: null,
+      lp: null,
+      queue: 'RANKED_SOLO_5x5',
+    });
+    expect('losses' in parsed).toBe(false);
   });
 
   it('rejects a missing puuid and a negative lp', () => {

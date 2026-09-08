@@ -1,4 +1,11 @@
-import type { CompanionGameEogPayload, GameInsert, GamePlayerInsert, Json } from '@customs/db';
+import {
+  type CompanionGameEogPayload,
+  type CompanionGameEogPayloadWithWinner,
+  type GameInsert,
+  type GamePlayerInsert,
+  type Json,
+  scrubRawEogBlock,
+} from '@customs/db';
 import type { ServiceClient } from '../supabase';
 import { ensurePlayers } from './players';
 
@@ -54,7 +61,7 @@ export interface GameIngestResult {
 
 export async function ingestEogGame(
   client: ServiceClient,
-  payload: CompanionGameEogPayload,
+  payload: CompanionGameEogPayloadWithWinner,
 ): Promise<GameIngestResult> {
   const lobbyId = await findLobbyId(client, payload.partyId ?? null);
 
@@ -65,7 +72,10 @@ export async function ingestEogGame(
     duration_s: payload.durationS,
     winning_side: payload.winningSide,
     source: payload.source,
-    raw: asJson(payload.raw),
+    // Scrubbed again here, not only in the route: this is the one place that writes
+    // `games.raw`, `games` is public-read, and `scrubRawEogBlock` is idempotent (M2.10,
+    // point 11). Backfill (M5.1) will write through this function too.
+    raw: asJson(scrubRawEogBlock(payload.raw)),
     // season_id is left out: the column defaults to public.active_season_id().
   };
 
@@ -122,11 +132,19 @@ async function findLobbyId(client: ServiceClient, partyId: string | null): Promi
 async function upsertGamePlayers(
   client: ServiceClient,
   gameId: string,
-  payload: CompanionGameEogPayload,
+  payload: CompanionGameEogPayloadWithWinner,
 ): Promise<void> {
+  // The end-of-game block is the only place the client gives us a Riot ID for someone we have
+  // only ever seen in a lobby (lobby members carry no `gameName`/`tagLine` at all, M2.10 point
+  // 2), so the names go in with the players.
   const playerIds = await ensurePlayers(
     client,
-    payload.participants.map((participant) => ({ puuid: participant.puuid })),
+    payload.participants.map((participant) => ({
+      puuid: participant.puuid,
+      summonerId: participant.summonerId,
+      gameName: participant.gameName,
+      tagLine: participant.tagLine,
+    })),
   );
 
   const rows: GamePlayerInsert[] = [];

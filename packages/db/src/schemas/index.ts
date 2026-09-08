@@ -5,3 +5,4 @@
 
 export * from './common';
 export * from './companion';
+export * from './companionResponses';

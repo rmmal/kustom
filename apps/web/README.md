@@ -21,6 +21,26 @@ pnpm --filter web mint-token <puuid> [label]   # /admin/tokens does this with a 
 Environment: copy the `apps/web` block of the repo's `.env.example` into `apps/web/.env.local`.
 `supabase status -o env` (from `packages/db`) prints the local URL and keys.
 
+## The companion API
+
+Four routes, all bearer-token gated by `withCompanionAuth` / `withCompanionIdentity`
+(`lib/companionRoute.ts`), which resolves the identity from the token **before** it parses the
+body. The token decides who the caller is; nothing in a payload does.
+
+```
+GET  /api/companion/me      who this token is: { ok, puuid, playerId, displayName }. Writes nothing.
+POST /api/companion/lobby   the whole member list, every time it changes. Idempotent on partyId.
+POST /api/companion/game    phase in_progress | eog. Idempotent on gameId.
+POST /api/companion/rank    one queue's rank reading for one puuid.
+```
+
+Request **and** response schemas live in `@customs/db/schemas` (`companion.ts`,
+`companionResponses.ts`), not beside the routes, because the companion imports the same
+definitions — see "The companion wire contract" in `packages/db/README.md` for the field-by-field
+rules and where each value comes from in the client. Refusals before any write: 403 for a lobby or
+game the caller was not in, 422 for a non-custom game, a block nobody won (a remake or
+`TerminatedInError`) or a duplicated participant, 400 for a body that does not parse.
+
 ## The admin area
 
 `/admin` is gated twice, both server-side:
