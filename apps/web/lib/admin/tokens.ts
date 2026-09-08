@@ -15,7 +15,10 @@ export interface AdminTokenRow {
   id: string;
   playerId: string;
   puuid: string;
+  /** The three fields `playerLabel` needs: the page must never print a bare PUUID (M1.7). */
   displayName: string | null;
+  gameName: string | null;
+  tagLine: string | null;
   label: string | null;
   createdAt: string;
   lastSeenAt: string | null;
@@ -26,7 +29,9 @@ export interface AdminTokenRow {
 export async function listAdminTokens(client: ServiceClient): Promise<AdminTokenRow[]> {
   const { data, error } = await client
     .from('companion_tokens')
-    .select('id, player_id, label, created_at, last_seen_at, revoked_at, players!inner(puuid, display_name)')
+    .select(
+      'id, player_id, label, created_at, last_seen_at, revoked_at, players!inner(puuid, display_name, game_name, tag_line)',
+    )
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(`listAdminTokens failed: ${error.message}`);
@@ -36,6 +41,8 @@ export async function listAdminTokens(client: ServiceClient): Promise<AdminToken
     playerId: row.player_id,
     puuid: row.players.puuid,
     displayName: row.players.display_name,
+    gameName: row.players.game_name,
+    tagLine: row.players.tag_line,
     label: row.label,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,

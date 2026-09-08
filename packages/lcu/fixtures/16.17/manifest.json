@@ -176,6 +176,50 @@
       "status": 200,
       "capturedAt": "2026-09-08T16:43:56.310Z",
       "note": "copied from a later smoke --out run against the same client and patch; supersedes the results row of the same id"
+    },
+    {
+      "file": "lobby--two-players.json",
+      "path": "/lol-lobby/v2/lobby",
+      "status": 200,
+      "capturedAt": "2026-09-08T17:32:14.020Z",
+      "smokeRunCapturedAt": "2026-09-08T17:32:14.037Z",
+      "note": "copied from a later smoke --out run against the same client and patch (the user, 2026-09-08 17:32 UTC, in the same custom lobby as lobby.json after a friend accepted an invite); passed through scrubValue again on ingest; does not supersede the results row, it is the same endpoint in another state"
+    },
+    {
+      "file": "gameflow-session--in-lobby.json",
+      "path": "/lol-gameflow/v1/session",
+      "status": 200,
+      "capturedAt": "2026-09-08T17:32:14.019Z",
+      "smokeRunCapturedAt": "2026-09-08T17:32:14.037Z",
+      "note": "copied from a later smoke --out run against the same client and patch (the user, 2026-09-08 17:32 UTC, in the same custom lobby as lobby.json after a friend accepted an invite); passed through scrubValue again on ingest; does not supersede the results row, it is the same endpoint in another state"
+    },
+    {
+      "file": "ws-events.ndjson",
+      "path": "OnJsonApiEvent (second recording window, appended)",
+      "capturedAt": "2026-09-08T17:31:58.533Z",
+      "capturedUntil": "2026-09-08T17:32:08.168Z",
+      "note": "42 of 340 lines from the user's second record-ws run appended after the first window (16:33-16:53 UTC), same URI trim rule plus /riot-messaging-service parties notifications (data-less); passed through scrubValue again on ingest"
+    },
+    {
+      "file": "lobby--spectator.json",
+      "path": "/lol-lobby/v2/lobby",
+      "status": 200,
+      "capturedAt": "2026-09-08T17:38:57.320Z",
+      "note": "derived from the WebSocket OnJsonApiEvent Update for this URI in the third recording window (the user, 2026-09-08 17:38-17:39 UTC, same custom lobby as lobby.json and lobby--two-players.json), not from a GET: the friend had just been moved to the spectator slot; this is the M2.13 fixture. method \"WS\" marks that. Passed through scrubValue again on ingest."
+    },
+    {
+      "file": "ranked-stats-by-puuid--ws-cached.json",
+      "path": "/lol-ranked/v1/cached-ranked-stats/c04e977c-133a-5d94-9fd3-6202f8beec4c",
+      "status": 200,
+      "capturedAt": "2026-09-08T17:39:27.171Z",
+      "note": "derived from the WebSocket OnJsonApiEvent Update for this URI in the third recording window (the user, 2026-09-08 17:38-17:39 UTC, same custom lobby as lobby.json and lobby--two-players.json), not from a GET: the client pushed the friend's ranked stats over the socket (/lol-ranked/v1/cached-ranked-stats/{puuid}) 0.2 s after they moved back to a team; same shape as GET /lol-ranked/v1/ranked-stats/{puuid}. method \"WS\" marks that. Passed through scrubValue again on ingest."
+    },
+    {
+      "file": "ws-events.ndjson (third window)",
+      "path": "OnJsonApiEvent (third recording window, appended)",
+      "capturedAt": "2026-09-08T17:38:51.714Z",
+      "capturedUntil": "2026-09-08T17:39:27.003Z",
+      "note": "24 of 47 lines from the user's third record-ws run (friend to the spectator slot and back) appended after the second window, same URI trim rule; passed through scrubValue again on ingest"
     }
   ],
   "note": "Base files from the run above (end-of-game screen). eog-stats-block.json and the other base envelopes were passed through scrubValue afterwards (that smoke build did not scrub bodies). ws-events.ndjson is trimmed to the URIs the companion reads."

@@ -57,22 +57,60 @@ export async function getActiveSeason(client: ServiceClient): Promise<AdminSeaso
   };
 }
 
+export interface StartSeasonInput {
+  /** The name of the season being started. */
+  name: string;
+  /** What the caller typed to confirm; must equal the active season's name (M3.9). */
+  confirmSeasonName: string | null;
+}
+
+export interface StartedSeason {
+  started: AdminSeasonRow;
+  /** The season that was closed, or null when there was none active to close. */
+  ended: AdminSeasonRow | null;
+}
+
+/**
+ * Starting a season is the only control in the app with no undo: `ratings` is keyed
+ * `(player_id, season_id)`, nothing carries over until M5.3, and every public page reads the
+ * active season — so from the group's side the leaderboard is simply emptied. It sits two form
+ * fields away from "set a role", on a page an admin opens on a phone.
+ *
+ * So the caller has to type the name of the season being ended (M3.9). The check is here rather
+ * than in the zod schema because it needs the database to know what the right answer is, and
+ * because it must read as one rule: no confirmation and a wrong confirmation are the same 400
+ * and nothing is written either way — `start_season` is not called at all.
+ *
+ * The comparison is exact after trimming: matching case-insensitively would let "season 1" end
+ * "Season 1", and the friction is the point.
+ */
 export async function startSeason(
   client: ServiceClient,
-  name: string,
-): Promise<AdminWriteResult<AdminSeasonRow>> {
-  const trimmed = name.trim();
+  input: StartSeasonInput,
+): Promise<AdminWriteResult<StartedSeason>> {
+  const trimmed = input.name.trim();
   if (trimmed.length === 0) return writeFailed(400, 'a season needs a name');
+
+  const active = await getActiveSeason(client);
+  if (active !== null && input.confirmSeasonName !== active.name) {
+    return writeFailed(
+      400,
+      `type the name of the season you are ending, exactly: ${active.name}. Nothing has changed.`,
+    );
+  }
 
   const { data, error } = await client.rpc('start_season', { p_name: trimmed });
   if (error) throw new Error(`startSeason failed: ${error.message}`);
   if (data === null) throw new Error('startSeason: no season returned');
 
   return writeOk({
-    id: data.id,
-    name: data.name,
-    startsAt: data.starts_at,
-    endsAt: data.ends_at,
-    isActive: data.is_active,
+    started: {
+      id: data.id,
+      name: data.name,
+      startsAt: data.starts_at,
+      endsAt: data.ends_at,
+      isActive: data.is_active,
+    },
+    ended: active,
   });
 }

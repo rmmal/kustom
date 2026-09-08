@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { type Database, SEASON_ONE_ID } from '@customs/db';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { playerLabel, shortPuuid } from '@/lib/admin/playerName';
 import { listAdminPlayers } from '@/lib/admin/players';
+import { listAdminTokens } from '@/lib/admin/tokens';
 import {
   type AdminAuthResult,
   authorizeAdmin,
@@ -10,8 +12,14 @@ import {
   supabaseAdminLookup,
 } from '@/lib/adminAuth';
 import { withAdminAuth } from '@/lib/adminRoute';
-import { authenticateCompanion, hashCompanionToken, supabaseTokenLookup } from '@/lib/companionAuth';
+import {
+  authenticateCompanion,
+  hashCompanionToken,
+  mintCompanionToken,
+  supabaseTokenLookup,
+} from '@/lib/companionAuth';
 import { ensurePlayers } from '@/lib/ingest/players';
+import { lobbyBody } from '@/lib/testing/fixtures';
 import { resolveLocalStack } from '@/lib/testing/localStack';
 
 /**
@@ -56,6 +64,10 @@ if (stack === null) {
   const { POST: postDiscordRoute } = await import('./discord-config/route');
   const { POST: postSeasonsRoute } = await import('./seasons/route');
 
+  // The real companion route: M1.7's rule lives in `ensurePlayers`, and the only honest proof
+  // that an admin's name survives a rename is a lobby post arriving the way one really does.
+  const { POST: postLobbyRoute } = await import('../companion/lobby/route');
+
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -63,6 +75,10 @@ if (stack === null) {
   const runId = randomUUID().slice(0, 8);
   const adminPuuid = `it-${runId}-admin`;
   const memberPuuid = `it-${runId}-member`;
+  // M1.7: a player who is named by the client, renamed by the client, and overridden by an
+  // admin. Kept out of `memberPuuid` so the role and Discord tests are not reading a moving name.
+  const namedPuuid = `it-${runId}-named`;
+  const namePartyId = `it-party-${runId}-names`;
   const adminDiscordId = `9${runId.replace(/\D/g, '') || '1'}00001`;
   const memberDiscordId = `9${runId.replace(/\D/g, '') || '1'}00002`;
   const guildId = `it-guild-${runId}`;
@@ -71,6 +87,8 @@ if (stack === null) {
 
   let adminPlayerId = '';
   let memberPlayerId = '';
+  let namedPlayerId = '';
+  let companionToken = '';
   const createdSeasonIds: string[] = [];
 
   /** A signed-in user carrying a Discord identity, the shape `auth.getUser()` returns. */
@@ -154,7 +172,48 @@ if (stack === null) {
       .update({ discord_id: memberDiscordId, is_admin: false })
       .eq('id', memberPlayerId);
     if (memberError) throw new Error(memberError.message);
+
+    // A companion token for the admin's own player. M1.8 means the caller has to appear in the
+    // `members` it posts, so the admin is in every lobby body below.
+    const { token, tokenHash } = mintCompanionToken();
+    const { error: tokenError } = await db
+      .from('companion_tokens')
+      .insert({ player_id: adminPlayerId, token_hash: tokenHash, label: `it-${runId} names` });
+    if (tokenError) throw new Error(tokenError.message);
+    companionToken = token;
   });
+
+  /** A lobby post exactly as the companion makes it: bearer token, JSON body. */
+  function postLobby(body: unknown): Promise<Response> {
+    return postLobbyRoute(
+      new Request('http://localhost/api/companion/lobby', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${companionToken}` },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  /** The lobby the display-name tests report, with the named player under the given Riot ID. */
+  function namesLobby(gameName: string): Record<string, unknown> {
+    return lobbyBody({
+      partyId: namePartyId,
+      members: [
+        { puuid: adminPuuid, gameName: 'TheAdmin', tagLine: 'EUW', side: 100 },
+        { puuid: namedPuuid, gameName, tagLine: 'EUW', side: 100 },
+      ],
+    });
+  }
+
+  async function nameColumns(puuid: string) {
+    const { data, error } = await db
+      .from('players')
+      .select('game_name, tag_line, display_name')
+      .eq('puuid', puuid)
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
 
   afterAll(async () => {
     // Season 1 goes back first, and in ONE transaction (`set_active_season`, 0002). Doing it as
@@ -164,12 +223,22 @@ if (stack === null) {
     const { error: restoreError } = await db.rpc('set_active_season', { p_id: SEASON_ONE_ID });
     if (restoreError) throw new Error(`cleanup: restoring Season 1 failed: ${restoreError.message}`);
 
-    if (createdSeasonIds.length > 0) {
-      const { error } = await db.from('seasons').delete().in('id', createdSeasonIds);
-      // Throwing here is the point: a swallowed error leaves "it-... season A" rows behind and
-      // the next run inherits them.
-      if (error) throw new Error(`cleanup: deleting test seasons failed: ${error.message}`);
-    }
+    // Deleted by name, not by the ids the tests collected: `start_season` is committed by the
+    // time the route builds its response, so a run that fails *after* the insert (a response
+    // schema that rejects the row, an assertion that throws) never records the id and used to
+    // leave the season behind for the next run to inherit. Every season this file creates is
+    // named `it-<runId> ...`, so the pattern catches those too.
+    const { error } = await db.from('seasons').delete().like('name', `it-${runId} %`);
+    // Throwing here is the point: a swallowed error leaves "it-... season A" rows behind.
+    if (error) throw new Error(`cleanup: deleting test seasons failed: ${error.message}`);
+
+    const { data: strays, error: strayError } = await db
+      .from('seasons')
+      .select('id')
+      .in('id', createdSeasonIds.length > 0 ? createdSeasonIds : [SEASON_ONE_ID])
+      .neq('id', SEASON_ONE_ID);
+    if (strayError) throw new Error(`cleanup: checking test seasons failed: ${strayError.message}`);
+    expect(strays ?? []).toEqual([]);
 
     const { error: configError } = await db
       .from('discord_config')
@@ -177,7 +246,15 @@ if (stack === null) {
       .in('guild_id', [guildId, otherGuildId]);
     if (configError) throw new Error(`cleanup: deleting discord_config failed: ${configError.message}`);
 
-    const { error: playerError } = await db.from('players').delete().in('puuid', [adminPuuid, memberPuuid]);
+    // The lobby goes first: `lobby_members` cascades from it, and deleting the players while a
+    // lobby still points at them would cascade rows out from under the next assertion.
+    const { error: lobbyError } = await db.from('lobbies').delete().eq('lcu_party_id', namePartyId);
+    if (lobbyError) throw new Error(`cleanup: deleting the test lobby failed: ${lobbyError.message}`);
+
+    const { error: playerError } = await db
+      .from('players')
+      .delete()
+      .in('puuid', [adminPuuid, memberPuuid, namedPuuid]);
     if (playerError) throw new Error(`cleanup: deleting players failed: ${playerError.message}`);
 
     // The database is shared with every other integration file, so leaving it as we found it is
@@ -253,6 +330,111 @@ if (stack === null) {
       );
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe('the display name (M1.7)', () => {
+    it('follows the Riot ID, holds an admin override through a rename, and follows it again once cleared', async () => {
+      const route = routes.players(sessionUser(adminDiscordId));
+
+      // 1. The client names them. The row does not exist yet: this creates it.
+      const created = await postLobby(namesLobby('Ahmed'));
+      expect(created.status).toBe(200);
+      expect(await nameColumns(namedPuuid)).toEqual({
+        game_name: 'Ahmed',
+        tag_line: 'EUW',
+        display_name: 'Ahmed',
+      });
+
+      const { data: player, error } = await db.from('players').select('id').eq('puuid', namedPuuid).single();
+      if (error) throw new Error(error.message);
+      namedPlayerId = player.id;
+
+      // 2. The admin sets the name the group actually uses.
+      const set = await route(
+        post({ action: 'set-name', playerId: namedPlayerId, displayName: '  Hamoodi  ' }),
+      );
+      expect(set.status).toBe(200);
+      await expect(set.json()).resolves.toEqual({
+        ok: true,
+        action: 'set-name',
+        playerId: namedPlayerId,
+      });
+      // Trimmed on the way in, so a stray space cannot silently break the "is it automatic" test.
+      expect(await nameColumns(namedPuuid)).toMatchObject({ display_name: 'Hamoodi' });
+
+      // 3. Riot ID changes. `game_name` moves; the admin's name does not.
+      expect((await postLobby(namesLobby('AhmedTheSecond'))).status).toBe(200);
+      expect(await nameColumns(namedPuuid)).toMatchObject({
+        game_name: 'AhmedTheSecond',
+        display_name: 'Hamoodi',
+      });
+
+      // 4. The admin clears the field. An empty form field posts "" and stores null.
+      const cleared = await route(post({ action: 'set-name', playerId: namedPlayerId, displayName: '' }));
+      expect(cleared.status).toBe(200);
+      expect(await nameColumns(namedPuuid)).toMatchObject({ display_name: null });
+
+      // 5. Back on automatic: the next report refills it, and a later rename follows again.
+      expect((await postLobby(namesLobby('AhmedTheSecond'))).status).toBe(200);
+      expect(await nameColumns(namedPuuid)).toMatchObject({ display_name: 'AhmedTheSecond' });
+
+      expect((await postLobby(namesLobby('AhmedTheThird'))).status).toBe(200);
+      expect(await nameColumns(namedPuuid)).toMatchObject({
+        game_name: 'AhmedTheThird',
+        display_name: 'AhmedTheThird',
+      });
+    });
+
+    it('refuses a name no team sheet could hold, and changes nothing', async () => {
+      const before = await nameColumns(namedPuuid);
+
+      const response = await routes.players(sessionUser(adminDiscordId))(
+        post({ action: 'set-name', playerId: namedPlayerId, displayName: 'x'.repeat(41) }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(await nameColumns(namedPuuid)).toEqual(before);
+    });
+
+    it('gives every row on both pages something readable, PUUID fragment included', async () => {
+      // The three rungs of the chain on rows that really exist: an admin's override, a Riot ID
+      // with no override, and a player first seen without a name at all — which is exactly how
+      // `memberPuuid` was created, and how a PUUID first seen in an eog block arrives.
+      await routes.players(sessionUser(adminDiscordId))(
+        post({ action: 'set-name', playerId: memberPlayerId, displayName: 'Omar' }),
+      );
+
+      const rows = await listAdminPlayers(db, null);
+      const named = rows.find((row) => row.id === namedPlayerId);
+      const member = rows.find((row) => row.id === memberPlayerId);
+      if (!named || !member) throw new Error('the players this test set up are missing');
+
+      expect(playerLabel(member)).toBe('Omar');
+      expect(playerLabel(named)).toBe('AhmedTheThird');
+      // No override and no Riot ID: the last resort, and it is an identifier, not a blank.
+      expect(playerLabel({ ...member, displayName: null })).toBe(shortPuuid(member.puuid));
+      expect(playerLabel({ ...named, displayName: null })).toBe('AhmedTheThird#EUW');
+
+      // Every row on the page renders as something.
+      for (const row of rows) {
+        expect(playerLabel(row).length).toBeGreaterThan(0);
+      }
+
+      // `/admin/tokens` reads the same chain off its own query, which had to learn `game_name`:
+      // it used to fall from `display_name` straight to a PUUID fragment.
+      const tokens = await listAdminTokens(db);
+      const ours = tokens.filter((token) => token.playerId === adminPlayerId);
+      expect(ours.length).toBeGreaterThan(0);
+      for (const token of ours) {
+        expect(token.gameName).toBe('TheAdmin');
+        expect(playerLabel(token)).toBe('TheAdmin');
+      }
+
+      // Put the member row back the way the other tests found it.
+      await routes.players(sessionUser(adminDiscordId))(
+        post({ action: 'set-name', playerId: memberPlayerId, displayName: '' }),
+      );
     });
   });
 
@@ -448,15 +630,103 @@ if (stack === null) {
   });
 
   describe('seasons', () => {
-    it('leaves exactly one active season', async () => {
+    /** The name an admin would have to type right now. */
+    async function activeSeason(): Promise<{ id: string; name: string }> {
+      const { data, error } = await db.from('seasons').select('id, name').eq('is_active', true).single();
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
+    async function seasonCount(): Promise<number> {
+      const { count, error } = await db.from('seasons').select('id', { count: 'exact', head: true });
+      if (error) throw new Error(error.message);
+      return count ?? 0;
+    }
+
+    /**
+     * M3.9. The one control in the app with no undo, so "nothing changed" is asserted on the
+     * rows — the active season and the number of seasons — not on the status code alone.
+     */
+    it('refuses to start a season without the confirmation, and changes nothing', async () => {
+      const before = await activeSeason();
+      const countBefore = await seasonCount();
+
+      const response = await routes.seasons(sessionUser(adminDiscordId))(
+        post({ name: `it-${runId} season never` }),
+      );
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { ok: false; error: string };
+      expect(body.ok).toBe(false);
+      // The refusal says what to type, because an admin who guesses twice will paste anything.
+      expect(body.error).toContain(before.name);
+
+      expect(await activeSeason()).toEqual(before);
+      expect(await seasonCount()).toBe(countBefore);
+    });
+
+    it('refuses the wrong confirmation, including the name of the season being started', async () => {
+      const before = await activeSeason();
+      const countBefore = await seasonCount();
       const route = routes.seasons(sessionUser(adminDiscordId));
 
-      const first = await route(post({ name: `it-${runId} season A` }));
-      expect(first.status).toBe(200);
-      const firstBody = (await first.json()) as { season: { id: string } };
-      createdSeasonIds.push(firstBody.season.id);
+      for (const confirmSeasonName of [
+        `it-${runId} season never`, // the new name, not the one being ended
+        before.name.toLowerCase(), // close, but the check is exact
+        `${before.name} `.repeat(2).trim(), // typed twice
+        '',
+        null,
+      ]) {
+        const response = await route(post({ name: `it-${runId} season never`, confirmSeasonName }));
+        expect([confirmSeasonName, response.status]).toEqual([confirmSeasonName, 400]);
+      }
 
-      const second = await route(post({ name: `it-${runId} season B` }));
+      expect(await activeSeason()).toEqual(before);
+      expect(await seasonCount()).toBe(countBefore);
+    });
+
+    it('redirects a form post back to the page with the error rather than starting anything', async () => {
+      const before = await activeSeason();
+      const countBefore = await seasonCount();
+
+      const form = new Request('http://localhost/api/admin/seasons', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ name: `it-${runId} season never`, confirmSeasonName: 'nope' }),
+      });
+      const response = await routes.seasons(sessionUser(adminDiscordId))(form);
+
+      expect(response.status).toBe(303);
+      const location = new URL(response.headers.get('location') ?? '');
+      expect(location.pathname).toBe('/admin/seasons');
+      expect(location.searchParams.get('error')).toContain(before.name);
+      expect(location.searchParams.get('notice')).toBeNull();
+
+      expect(await activeSeason()).toEqual(before);
+      expect(await seasonCount()).toBe(countBefore);
+    });
+
+    it('leaves exactly one active season when the confirmation is exact', async () => {
+      const route = routes.seasons(sessionUser(adminDiscordId));
+      const seasonOne = await activeSeason();
+
+      const first = await route(post({ name: `it-${runId} season A`, confirmSeasonName: seasonOne.name }));
+      expect(first.status).toBe(200);
+      const firstBody = (await first.json()) as {
+        season: { id: string; name: string };
+        endedSeason: { id: string; name: string } | null;
+      };
+      createdSeasonIds.push(firstBody.season.id);
+      // The response says what happened, not only what is new.
+      expect(firstBody.endedSeason).toEqual({ id: seasonOne.id, name: seasonOne.name });
+
+      // The confirmation moves with the active season: it is now season A that is being ended.
+      const stale = await route(post({ name: `it-${runId} season B`, confirmSeasonName: seasonOne.name }));
+      expect(stale.status).toBe(400);
+
+      const second = await route(
+        post({ name: `it-${runId} season B`, confirmSeasonName: `it-${runId} season A` }),
+      );
       expect(second.status).toBe(200);
       const secondBody = (await second.json()) as { season: { id: string } };
       createdSeasonIds.push(secondBody.season.id);

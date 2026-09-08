@@ -85,6 +85,19 @@ describe('adminPlayersRequestSchema', () => {
     ).toMatchObject({ isAdmin: true });
   });
 
+  it('takes a display name and reads an empty field as "back on automatic"', () => {
+    expect(
+      adminPlayersRequestSchema.parse({ action: 'set-name', playerId: PLAYER, displayName: '  Hamoodi ' }),
+    ).toEqual({ action: 'set-name', playerId: PLAYER, displayName: 'Hamoodi' });
+
+    // The form posts "" for a cleared field; a JSON caller sends null. Both mean the same thing.
+    for (const displayName of ['', '   ', null]) {
+      expect(
+        adminPlayersRequestSchema.parse({ action: 'set-name', playerId: PLAYER, displayName }),
+      ).toMatchObject({ displayName: null });
+    }
+  });
+
   it('rejects an unknown action', () => {
     expect(adminPlayersRequestSchema.safeParse({ action: 'delete', playerId: PLAYER }).success).toBe(false);
   });
@@ -155,11 +168,36 @@ describe('discordConfigRequestSchema', () => {
 
 describe('startSeasonRequestSchema', () => {
   it('trims the name', () => {
-    expect(startSeasonRequestSchema.parse({ name: '  Season 2 ' })).toEqual({ name: 'Season 2' });
+    expect(startSeasonRequestSchema.parse({ name: '  Season 2 ', confirmSeasonName: 'Season 1' })).toEqual({
+      name: 'Season 2',
+      confirmSeasonName: 'Season 1',
+    });
   });
 
   it('rejects an empty name', () => {
     expect(startSeasonRequestSchema.safeParse({ name: '   ' }).success).toBe(false);
+  });
+
+  /**
+   * M3.9. The confirmation parses to null when nothing was typed rather than failing here, so
+   * the refusal can be the sentence that names the season to type — see `startSeason`, which is
+   * the only thing that knows what the right answer is.
+   */
+  it('reads a missing, empty or whitespace confirmation as nothing typed', () => {
+    for (const body of [
+      { name: 'Season 2' },
+      { name: 'Season 2', confirmSeasonName: '' },
+      { name: 'Season 2', confirmSeasonName: '   ' },
+      { name: 'Season 2', confirmSeasonName: null },
+    ]) {
+      expect(startSeasonRequestSchema.parse(body)).toMatchObject({ confirmSeasonName: null });
+    }
+  });
+
+  it('trims the confirmation, so a trailing space from a phone keyboard still ends the season', () => {
+    expect(
+      startSeasonRequestSchema.parse({ name: 'Season 2', confirmSeasonName: ' Season 1 ' }),
+    ).toMatchObject({ confirmSeasonName: 'Season 1' });
   });
 });
 

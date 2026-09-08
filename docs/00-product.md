@@ -114,6 +114,12 @@ See `02-milestones.md` for the build order. In product terms:
 | Seasons that carry ratings over, awards, role and duo stats | M5 |
 | Tray app wrapper with auto-start | M6 |
 
+Backfill (M5) reads the client's own match history, and M0 confirmed it can: customs are in there
+(17 of 21 games in the first capture). Two details shape it. The history *list* names only the person whose
+client it is, so backfill fetches each game's detail page to learn the other nine. And nobody has yet checked
+how far back the window reaches (M5.6), so "every past custom" honestly means "every custom still in the
+history of someone who runs the companion".
+
 One admin-only piece landed earlier than that table suggests: `/admin` (M1) can already start a new
 season. It does not carry anyone's rating over — everyone starts the new season unrated and the board
 takes about a month of nightly games to mean anything again — so it is a thing the group decides
@@ -131,7 +137,10 @@ together, not a button someone presses to tidy up. Carrying `mu` over and resett
 
 - Zero team arguments in a week of nightly games.
 - Lobby open to game start under three minutes.
-- Every game played with a companion user present is in the database with no human action.
+- Every game played with a companion user present is in the database with no human action. The client
+  only keeps the end-of-game stats block while that screen is up, so "present" means running at the
+  final whistle. A companion that happens to be restarting right then loses the game to backfill —
+  still no human action, just a day later.
 - Ratings visibly converge: a player's predicted win chance across their last twenty games averages near 50%.
 - A new player rises in strength faster than they rise on the board. Their Rating settles in about ten
   nightly games, but the leaderboard sorts on Proven, the deliberately cautious number

@@ -87,6 +87,8 @@ export {
   type LcuError,
   LcuErrorSchema,
   type Lobby,
+  type LobbyInvitation,
+  LobbyInvitationSchema,
   type LobbyMember,
   LobbyMemberSchema,
   LobbyMembersSchema,
