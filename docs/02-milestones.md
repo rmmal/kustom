@@ -558,6 +558,23 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > lists it. Everything else in point 6 stands: the block is not posted, a block that reaches the API anyway is
     > refused by name, nothing is written, nothing is rated, and no status is invented for it.
 
+- [ ] **M2.14** A lobby row is one game cycle, not one party. `lobbies.lcu_party_id` is unique and M2.9 freezes the roster from `in_game` through `finished`, but the client keeps the same party all night: in `packages/lcu/fixtures/16.17/ws-events.ndjson`, party `e3c69392` was created at 16:36:41, its game ran 16:37:39 (`GameStart`) to 16:53:05 (`EndOfGame`), and the same party id was still emitting lobby `Update` events at 17:39:27 with no new `Create` and no new id. So without this, only the first game of the night is ever balanced. **Approach (lead, 2026-09-08):** migration `0003` drops the plain unique on `lobbies.lcu_party_id` and replaces it with a partial unique index `where status in ('open','balanced','in_game')` — at most one live lobby per party. A lobby post whose latest row for that party is `finished` or `abandoned` creates a **new** lobby row with the same party id; `selectLobby` (lobby ingest) and `findLobbyId` (game ingest) resolve a party to its live row, falling back to the newest row for a game post that arrives after the cycle closed. M2.7's `lastSplit` lookup is untouched (it reads `splits.roster_key`, not lobbies) and so is the M2.9 freeze: the old row keeps its ten frozen members and its `games` link. No data is lost and nothing is rewritten, so this is a migration, not a decision. **Sequenced immediately after M2.10** — same engineer, same package, same contract pass.
+
+    > **Why (product).** This is the whole scene failing at 21:30. Game one gets teams; game two, three and
+    > four get silence, and the group goes back to arguing while the bot watches. It is also the thing M2.7
+    > and the repeat-split penalty exist for — "not the same five again" only means something across the
+    > games of one night.
+    >
+    > **Acceptance check.** Drive a lobby to `finished`. Post the same party id again with the same ten:
+    > a second `lobbies` row exists, the first still has its ten frozen members and its `games` row, the new
+    > one balances after 10 s, and its `lastSplit` is the five puuids of the first game's chosen split, so the
+    > second game's teams are not a repeat of the first's. Post a late eog for the first game after the second
+    > row exists: it still lands on the first row, once. The tonight page shows one live lobby, not two. A
+    > third and fourth cycle on the same party behave the same.
+    >
+    > **Out of scope.** Any change to what a lobby row means once it is closed. Merging cycles for stats
+    > (M5). Deleting old rows.
+
 - [x] **M2.1** `apps/companion` CLI: config file, first-run token prompt, connection state machine with reconnect and backoff, structured logs with rotation.
 
     > **Note (product, 2026-09-08, after M0.3).** The companion subscribes to the firehose
@@ -893,9 +910,9 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > | From | To | Signal | What else happens |
     > |---|---|---|---|
     > | — | `open` | first lobby post for an unseen `lcu_party_id` | lobby row inserted (M1.5), members replaced |
-    > | `open` | `open` | lobby post whose non-spectator roster differs from what is stored | members replaced, the roster clock restarts |
-    > | `open` | `balanced` | lobby post whose non-spectator roster is byte-identical to what is stored **and** the clock says the last change was 10 s ago or more **and** there are ten or more of them | the ten are selected, `balance()` runs, three `splits` rows are inserted |
-    > | `balanced` | `open` | lobby post whose non-spectator roster differs | members replaced, clock restarts, the old splits stay (they are history, and `roster_key` keeps them findable) |
+    > | `open` | `open` | lobby post whose roster (everyone around, spectators included) differs from what is stored | members replaced, the roster clock restarts |
+    > | `open` | `balanced` | lobby post whose roster is byte-identical to what is stored **and** the clock says the last change was 10 s ago or more **and** ten or more people are around | the ten who play are selected, `balance()` runs, three `splits` rows are inserted |
+    > | `balanced` | `open` | lobby post whose roster differs | members replaced, clock restarts, the old splits stay (they are history, and `roster_key` keeps them findable) |
     > | `balanced` | `balanced` | lobby post with an identical roster | nothing at all — no second balance, no new splits |
     > | `open` or `balanced` | `in_game` | game post with `phase: 'in_progress'` whose `partyId` resolves to this lobby | the roster freezes (M2.9) from this moment |
     > | `in_game` | `finished` | `phase: 'eog'` post, `gameType === 'CUSTOM_GAME'`, whose `partyId` resolves to this lobby | `games` + `game_players` are written (M1.5 code), then the rating fold |
@@ -910,11 +927,12 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > Vercel gives us no timer, no queue and, on the free plan, no cron worth having. So the rule is measured on
     > the posts we already get, and the server tells the companion when to knock again.
     >
-    > 1. **The roster's identity** is `rosterKey()` from `@customs/db` over the puuids of the posted members with
-    >    `isSpectator: false`, bots already dropped (M2.10, point 4). Sorted, so member order and side churn never
-    >    look like a change. Sides, names, `role_override`, the lobby name and the password are **not** part of
-    >    the identity: a friend swapping from blue to red must not restart the clock, because the balancer assigns
-    >    sides itself.
+    > 1. **The roster's identity** is `rosterKey()` from `@customs/db` over the puuids of **everyone around** — every
+    >    posted member, spectators included, bots already dropped (M2.10, point 4). Sorted, so member order never
+    >    looks like a change. Sides, the `isSpectator` flag, names, `role_override`, the lobby name and the
+    >    password are **not** part of the identity: a friend swapping from blue to red, or into the spectator slot
+    >    and back, must not restart the clock, because the balancer assigns sides itself and the sit-out rotation
+    >    (below) treats a spectator as one of the people who are here.
     > 2. **The clock** is the lobby row's own `updated_at`. Ingest already reads the stored members before it
     >    writes; when the identity differs from what is stored, it replaces the members **and** writes the lobby
     >    row (`status = 'open'`), which fires `lobbies_set_updated_at` and restarts the clock. When the identity is
@@ -923,7 +941,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >    is acceptable and is not worth a column.
     > 3. **The knock.** The lobby response gains `recheckInMs: number | null`. The server returns the milliseconds
     >    left on the clock (minimum 1000, `ROSTER_STABLE_MS` when the roster just changed) whenever the roster has
-    >    ten or more non-spectators and the lobby is still `open`; `null` in every other case, including fewer than
+    >    ten or more people around and the lobby is still `open`; `null` in every other case, including fewer than
     >    ten and already `balanced`. The companion re-posts the identical payload after that delay unless a real
     >    lobby event supersedes it (M2.2). That keeps the ten seconds in one place — the server — and leaves the
     >    companion with no rule to get wrong, only a number to obey.
@@ -942,29 +960,41 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > ### Choosing the ten, and who sits
     >
-    > The candidate pool is the lobby's members with `is_spectator = false` (bots are already gone). Spectators are
-    > never balanced and are never in the sit-out list — they are already sitting.
+    > **Everyone around is a candidate, spectators included.** The pool is every non-bot member of the posted
+    > roster whatever their `isSpectator` flag says. This is what `01-architecture.md` already means by "around",
+    > and it is forced by the client: each side caps at five, so the eleventh friend has nowhere to stand except
+    > the spectator slot. Treating that slot as "volunteered to sit forever" would mean the same person watches
+    > every game and the referee never notices — the rotation in step 6 of the nightly loop exists to stop that.
     >
-    > - **Exactly ten:** those ten.
-    > - **More than ten:** order the pool by (a) games played tonight, most first; (b) least recent sit-out first
-    >   (a player who has never sat out sorts first); (c) `puuid` ascending. The first `n - 10` sit; the rest play.
-    >   In one sentence for a friend: *whoever has played the most sits, and between equals, whoever has gone
-    >   longest without sitting.*
-    > - **"Tonight"** is the calendar day, in the timezone named by `CUSTOMS_NIGHT_TZ` (an IANA name, default
-    >   `UTC`), containing the moment of the balance, counted over `games.started_at` joined through
-    >   `game_players`. Add the variable to `.env.example` and `readServerEnv`. Recorded in `04-decisions.md`.
+    > - **Exactly ten around:** those ten play, however they are currently seated. Nine on teams and one
+    >   spectating is a ten-player night, and the post tells the spectator to take the empty slot.
+    > - **More than ten around:** order the pool by (a) games played tonight, most first; (b) least recent
+    >   sit-out first (someone who has never sat out sorts first); (c) `puuid` ascending. The first `n - 10`
+    >   sit; the rest play. In one sentence for a friend: *whoever has played the most sits, and between equals,
+    >   whoever has gone longest without sitting.*
+    > - **Fewer than ten around:** nothing happens and the lobby stays `open`. "Around" counts the spectator slot,
+    >   so nine on teams and one watching is ten around and does balance; nine people in total is nine.
+    > - **The seating may not match the split, and that is expected.** If the chosen ten include `k` people who
+    >   are currently in the spectator slot, then exactly `k` of the people sitting out are currently on a team,
+    >   and the two lists pair off in the order above — first sitter with first spectator who is playing. When
+    >   ten are around and one of them is spectating, `k` is 1 and nobody sits: one person still has to move.
+    >   The API hands M3.1 both lists (who sits, and each pair or lone mover); the copy is fixed in **M2.15**
+    >   and the embed layout in `05-design.md`, and nothing here invents wording. The companion never moves
+    >   anyone: side switching is M4.3, a different task with a different Riot-policy line.
+    > - **"Tonight" runs 06:00 to 06:00**, in the timezone named by `CUSTOMS_NIGHT_TZ` (an IANA name, default
+    >   `Africa/Cairo`, overridable per deployment), not midnight to midnight — a session that runs to 01:30 is
+    >   one night, and the boundary falls at an hour when nobody is playing. Games are counted over
+    >   `games.started_at`, joined through `game_players`. The engineer adds the variable to `.env.example` and
+    >   to `readServerEnv`. Recorded in `04-decisions.md`.
     > - **"Sat out"** needs no table and gets no column. A sit-out is: the player was a `lobby_members` row of a
     >   lobby that reached `in_game` or `finished`, and has no `game_players` row for that lobby's game. The most
     >   recent such game's `started_at` is their last sit-out. One query per balance over a night's worth of
     >   lobbies; do not cache it.
-    > - **The sit-out list is derived, never stored:** it is the non-spectator members minus the ten in the chosen
-    >   split. M3.1 and M3.4 read it that way, so it can never disagree with the split beside it.
+    > - **The sit-out list is derived, never stored:** it is everyone around minus the ten in the chosen split.
+    >   M3.1 and M3.4 read it that way, so it can never disagree with the split beside it.
     >
-    > In practice a custom lobby caps each side at five, so the eleventh friend usually lands in the spectator slot
-    > rather than in this pool, and the rotation above never sees them. That is a real hole in the nightly loop's
-    > step 6 and it is **not** M2.5's to fix — it is written up as **M2.15**. The path above still
-    > earns its place: a member the client has not placed on either side arrives with `side: null` and
-    > `isSpectator: false`, and that is an eleventh candidate.
+    > A member the client has placed on neither side and did not mark as a spectator (`side: null`,
+    > `isSpectator: false`) is in the pool like anyone else. There is nothing special about them.
     >
     > ### The balance call
     >
@@ -1017,9 +1047,9 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > ### Edge cases
     >
-    > - **Fewer than ten.** Stays `open` forever, no splits, no post, `recheckInMs: null`. Nine people who sit
-    >   there for an hour cost the server nothing.
-    > - **Eleven to fourteen non-spectators.** Selection above picks ten; `balance()` still receives exactly ten.
+    > - **Fewer than ten around.** Stays `open` forever, no splits, no post, `recheckInMs: null`. Nine people who
+    >   sit there for an hour cost the server nothing. Nine on teams plus one spectator is ten around, not nine.
+    > - **Eleven to fourteen around.** Selection above picks ten; `balance()` still receives exactly ten.
     >   If selection cannot produce exactly ten (a tie the comparator cannot break is impossible once `puuid` is
     >   the last key, so this means a bug), log and leave the lobby `open`. A wrong ten is worse than no teams.
     > - **Someone leaves while `balanced`.** Back to `open`, clock restarts, the earlier three splits stay in the
@@ -1044,7 +1074,8 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > injected clock so the 10 s and 2 h waits are not real.
     >
     > 1. Post nine members, wait 30 s of injected time, post again: `status: 'open'`, zero `splits` rows,
-    >    `recheckInMs: null`, HTTP 200 both times.
+    >    `recheckInMs: null`, HTTP 200 both times. Post nine on teams plus one spectator instead and it balances
+    >    at +10 s with all ten in the split — a spectator is one of the people who are here.
     > 2. Post ten: `recheckInMs` is 10000 (or less on the repost), `status: 'open'`, zero splits. Repost the
     >    identical ten at +10 s: `status: 'balanced'`, exactly **3** `splits` rows, exactly one `is_chosen` with
     >    `rank = 1`, and all three carry the same `roster_key`, equal to `rosterKey()` of the ten puuids.
@@ -1052,8 +1083,13 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >    unchanged.
     > 4. Swap one member: `status: 'open'`, still 3 split rows. Post the new ten at +10 s: **6** split rows, still
     >    exactly one `is_chosen`, and it belongs to the newer set.
-    > 5. Post eleven non-spectators where one player already has 2 `game_players` rows tonight and the rest have 0:
-    >    the chosen split's ten exclude that player, and `lobby_members` still has eleven rows.
+    > 5. Post eleven around — ten on teams and one spectator — where one of the ten already has 2 `game_players`
+    >    rows tonight and everyone else has 0: the chosen split's ten exclude that player and **include the
+    >    spectator**, `lobby_members` still has eleven rows, and the derived sit-out list is exactly the one
+    >    excluded player, paired with the spectator who takes their slot.
+    > 5b. The night boundary: a game that started at 02:00 local counts as tonight for a balance at 03:00 local,
+    >    and does not count for a balance at 07:00 local. Pin both with an injected clock and
+    >    `CUSTOMS_NIGHT_TZ=Africa/Cairo`.
     > 6. `phase: 'in_progress'` for that party: `status: 'in_game'`. Repost the lobby with three members:
     >    `rosterFrozen: true` and `lobby_members` still has the full count (M2.9 regression check).
     > 7. Post an eog with ten participants, five a side, `durationS: 900`: `status: 'finished'`, one `games` row,
@@ -1083,7 +1119,9 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > rank 1 and must not add an endpoint that moves it. Duos and role overrides as an input surface (M3.6). Voice
     > (M4). The rating rebuild (M5.2) and season carryover (M5.3). Any new column or migration: if one turns out to
     > be unavoidable, stop and tell the lead rather than adding it here. Reusing a party id for a second game the
-    > same night is **M2.14** and needs the lead's decision; M2.5 ships with `finished` terminal.
+    > same night is **M2.14**, accepted and sequenced immediately after M2.10, so it will most likely be in place
+    > before this task starts. Either way M2.5 adds no reuse logic of its own: `finished` is terminal for a row,
+    > and resolving a party id to its live row is M2.14's change to `selectLobby` and `findLobbyId`.
 
 - [ ] **M2.6** Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
 
@@ -1174,28 +1212,52 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > **Out of scope.** The ten-human lobby fixture (see the note under this milestone's acceptance line).
     > M4's lobby creation. Any spectator-facing UI.
 
-- [ ] **M2.14** One `lcu_party_id` covers a whole night, so today only the first game of the night can ever be balanced. `lobbies.lcu_party_id` is unique and M2.9 freezes the roster from `in_game` through `finished`, so once the first game ends the party's lobby row is terminal — and the client keeps the same party. Evidence in `packages/lcu/fixtures/16.17/ws-events.ndjson`: party `e3c69392` was created at 16:36:41, its game ran 16:37:39 (`GameStart`) to 16:53:05 (`EndOfGame`), and the same party id was still emitting lobby `Update` events at 17:39:27 with no new `Create` and no new id. Needs a decision from the lead before it is built, because the smallest fix is a migration: drop the unique constraint on `lcu_party_id` and replace it with a partial unique index for the live row (`where status in ('open','balanced','in_game')`), so a post to a party whose newest lobby is `finished` starts a fresh lobby row while the old one keeps its frozen ten and its `games` link. `selectLobby` (lobby ingest) and `findLobbyId` (game ingest) then resolve a party to its newest live row.
+- [ ] **M2.15** The sit-out copy: who sits, and who swaps into their slot. M2.5 decides it (everyone around is a candidate, spectators included; most games tonight sits, then least recent sit-out) and the numbers are settled — this task is the wording and the embed field, and it ships with M3.1. The strings below are product copy and ship verbatim; `05-design.md` gains the field layout in the same session.
 
-    > **Why (product).** This is the whole scene failing at 21:30. Game one gets teams; game two, three and
-    > four get silence, and the group goes back to arguing while the bot watches. It is also the case that
-    > M2.7 and the repeat-split penalty exist for — "not the same five again" only means something across
-    > games of one night. Ship M2.5 without it if the lead prefers, but the first test night will find it.
+    > **The copy (product, 2026-09-08).** Two independent fields. Each appears only when it has something to
+    > say, and neither ever apologises for the other.
     >
-    > **Acceptance check.** Drive a lobby to `finished`. Post the same party id again with the same ten:
-    > a second `lobbies` row exists, the first still has its ten frozen members and its `games` row, the new
-    > one balances after 10 s, and `lastSplit` for it is the five puuids of the first game's chosen split, so
-    > the second game's teams are not a repeat. The tonight page shows one live lobby, not two.
-
-- [ ] **M2.15** The eleventh friend is a spectator, so the sit-out rotation never sees them. A custom lobby caps each side at five, so an eleventh person who joins lands in the spectator slot (`isSpectator: true`, in `customSpectators`) rather than in the pool M2.5 balances from. M2.5 excludes spectators from balancing by design, which means the rotation promised in step 6 of the nightly loop — "who sits next game based on who sat last" — only ever fires for an unplaced member, which may not happen at all. Decide whether a spectator with fewer games tonight than someone on a team is a candidate to play, and if so, what the group is told: the teams post would have to name someone in the spectator slot as playing and someone on a team as sitting, and they would have to swap seats in the client themselves. Copy goes through product.
-
-    > **Why (product).** Eleven around is an ordinary Tuesday, and the person in the spectator slot is
-    > frequently the one running the companion because they have nothing else to do. Today they sit every
-    > game until they think to move themselves, and the referee never says a word about it.
+    > **Field `Sitting out`** — present only when somebody sits.
     >
-    > **Acceptance check.** Eleven in the lobby, ten on the teams and one spectating, where the spectator has
-    > the fewest games tonight: the chosen split contains the spectator, the sit-out line names the player
-    > they replace, and both are told in one sentence what to click. Ten in the lobby with a spectator who
-    > has played every game: nothing changes and no sit-out line appears.
+    > 1. `Sitting out: {names} — most games tonight.` Names joined with `, ` and a final ` and `.
+    > 2. When everyone around has played the same number of games tonight, the reason clause is
+    >    `— longest since they last sat out.` instead. Always `they`: no surface in this product genders anyone.
+    > 3. Nobody sits, no field. Never `Sitting out: nobody`.
+    >
+    > **Field `Seats`** — present only when somebody has to move, which is not the same question.
+    >
+    > 4. One line per pair, in the order M2.5 pairs them: `Swap: {sitter} out, {mover} in.`
+    > 5. A mover with nobody to swap with — ten around, one of them watching, nobody sitting:
+    >    `{Name} is playing — take the open slot.`
+    > 6. Everyone already in the right seat, no field.
+    >
+    > Worked example, eleven around, Omar has played four tonight and Nadia has been watching:
+    >
+    > > **Sitting out**
+    > > Sitting out: Omar — most games tonight.
+    > >
+    > > **Seats**
+    > > Swap: Omar out, Nadia in.
+    >
+    > Worked example, ten around with Yuki in the spectator slot:
+    >
+    > > **Seats**
+    > > Yuki is playing — take the open slot.
+    >
+    > **Why it reads like that.** It says the rule in four words so nobody has to ask why, it names the move as
+    > one action rather than describing the client's UI, and it stops there — the referee is not embarrassed
+    > about the rotation and does not explain itself twice. Splitting sitting from seating keeps each line
+    > about one thing: on most nights only one of the two fields is there at all.
+    >
+    > **Acceptance check.** Eleven around, ten on teams and one spectating, the spectator having the fewest
+    > games tonight: the chosen split contains the spectator, both fields are present, each string verbatim,
+    > and the names in the `Swap:` line are the pair M2.5 paired. Ten around, all ten on teams: neither field
+    > appears. Ten around with one spectating: `Seats` only, with the `take the open slot` line, and no
+    > `Sitting out` field. Twelve around with two sitters and two movers: one `Sitting out:` line naming both
+    > and two `Swap:` lines. All games tied at zero: the `longest since they last sat out` variant.
+    >
+    > **Out of scope.** Moving anyone (M4.3 switches sides, and only for the local player). A reaction, button
+    > or command to volunteer to sit — that is a typed step, and this product does not have those.
 
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
 
@@ -1212,7 +1274,7 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 Goal: first real night. Ten join the lobby, teams appear in Discord with an explanation, results and leaderboard follow.
 
 - [x] **M3.0** Design system: `designer` produces `docs/05-design.md` (tokens, type, component notes, Discord embed text layouts). Lands before any M3 UI task.
-- [ ] **M3.1** On `balanced`: run the balancer, store the top three splits, post the teams embed to the Discord webhook: two columns with role and display rating, the explanation line, lobby name and password if known, and a sit-out line when more than ten are around. Sit-out copy goes through product before it ships.
+- [ ] **M3.1** On `balanced`: post the teams embed to the Discord webhook from the stored chosen split (M2.5 runs the balancer and stores the three splits): two columns with role and display rating, the explanation line, lobby name and password if known, and a sit-out line when more than ten are around. Sit-out copy goes through product before it ships (M2.15).
 
     > **Brief (product, 2026-09-08)**
     >
