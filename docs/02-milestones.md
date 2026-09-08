@@ -8,7 +8,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | not started | Blocks M2. Do first. |
-| M1 Foundation | in progress | M1.1, M1.3 done. Can run in parallel with M0. |
+| M1 Foundation | in progress | M1.1, M1.2, M1.3 done. Hosted Supabase project not yet linked. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -37,7 +37,7 @@ Acceptance: `pnpm --filter lcu test` passes against fixtures; the reference doc 
 Goal: the monorepo, the database, and the pure core with tests. No client needed.
 
 - [x] **M1.1** Monorepo: pnpm workspaces, TypeScript project references (dropped, see decisions 2026-09-08: source-shipping packages, `tsc --noEmit`), Biome, vitest, `apps/web` (Next.js App Router), `packages/core`, `packages/db`, `packages/lcu` (from M0 or a stub). Root scripts listed in `CLAUDE.md` all exist.
-- [ ] **M1.2** Supabase project, migration `0001_init.sql` with the schema in `01-architecture.md`, RLS policies, generated types, `pnpm db:migrate` and `pnpm db:types`.
+- [x] **M1.2** Supabase project, migration `0001_init.sql` with the schema in `01-architecture.md`, RLS policies, generated types, `pnpm db:migrate` and `pnpm db:types`.
 - [x] **M1.3** `packages/core/rating`: seed from tier, `rateGame`, `ordinal`, `displayRating`, `predictWin`. Tests: seeds match the table; a Bronze on the winning side gains more than a Master beside them; ten games converge a mis-seeded player.
 
     > **Brief (product, 2026-09-08)**
