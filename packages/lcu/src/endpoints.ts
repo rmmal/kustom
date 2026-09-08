@@ -157,6 +157,15 @@ export const WRITE_ENDPOINTS = {
   ],
 } as const;
 
+/** The catalogue row for an endpoint id. Throws for an id that is not in `READ_ENDPOINTS`: that is a typo, not a runtime condition. */
+export function readEndpoint(id: string): ReadEndpoint {
+  const endpoint = READ_ENDPOINTS.find((entry) => entry.id === id);
+  if (endpoint === undefined) {
+    throw new Error(`unknown read endpoint id: ${id}`);
+  }
+  return endpoint;
+}
+
 /** Substitutes `{param}` placeholders. Values are URL-encoded. Missing values are left as-is. */
 export function fillPath(template: string, values: Partial<Record<PathParam, string>>): string {
   return template.replace(/\{(puuid|gameName|tagLine|gameId)\}/g, (match, name: PathParam) => {

@@ -12,6 +12,7 @@ src/socket.ts       LcuSocket: [5, topic] subscribe, [8, topic, { data, eventTyp
 src/endpoints.ts    the endpoint catalogue (READ_ENDPOINTS, WRITE_ENDPOINTS, LIVE_CLIENT_DATA)
 src/schemas.ts      one zod schema per verified endpoint, written from fixtures/16.17 and tested against them (schemas.test.ts)
 src/fixtures.ts     fixture layout, patch naming, top-level shape diff
+src/mapper.ts       mapLobby / mapEog / mapRank: the one client-shape-to-companion-payload mapping (spec: packages/db/src/schemas/companion.contract.test.ts); depends on @customs/db/schemas
 src/cli/smoke.ts    pnpm --filter @customs/lcu smoke [--diff] [--insecure] [--lockfile p] [--puuid p] [--riot-id N#TAG] [--game-id id]
 src/cli/record-ws.ts  pnpm --filter @customs/lcu record-ws [--insecure] [--lockfile p] [--topic t]
 src/test-support/   in-process fake client (HTTPS + WS, self-signed test certs) used by tests

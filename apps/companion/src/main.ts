@@ -23,7 +23,8 @@ import {
   stdioPrompt,
 } from './config.js';
 import { ConnectionMachine } from './connection.js';
-import { loggingHooks } from './hooks.js';
+import { composeHooks, loggingHooks } from './hooks.js';
+import { LobbyWatcher } from './lobbyWatcher.js';
 import { type CompanionLogger, createFileLogger, errorFields, isLogLevel } from './log.js';
 import { COMPANION_VERSION } from './version.js';
 
@@ -82,9 +83,10 @@ async function main(): Promise<number> {
     logger.warn('api not reachable now; calls will retry', { apiBase: config.apiBase, reason: health });
   }
 
+  const lobbyWatcher = new LobbyWatcher({ api, logger });
   const machine = new ConnectionMachine({
     logger,
-    hooks: loggingHooks(logger),
+    hooks: composeHooks(logger, loggingHooks(logger), lobbyWatcher.hooks()),
     lockfile: config.lockfilePath ? { overridePath: config.lockfilePath } : {},
   });
 
@@ -108,6 +110,7 @@ async function main(): Promise<number> {
   });
 
   await machine.run();
+  lobbyWatcher.stop();
   logger.info('stopped');
   return 0;
 }
