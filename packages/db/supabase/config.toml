@@ -62,7 +62,9 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# Empty on purpose: the only row we need from day one (Season 1) is inserted by
+# 0001_init.sql, so a reset and a hosted `db push` produce the same database.
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -103,7 +105,9 @@ port = 54324
 # sender_name = "Admin"
 
 [storage]
-enabled = true
+# Customs Night stores no files: every payload is a database row. Disabling Storage keeps
+# the local stack small and stops `supabase db reset` from failing on a Storage restart.
+enabled = false
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
