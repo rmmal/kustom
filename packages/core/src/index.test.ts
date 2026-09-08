@@ -16,9 +16,13 @@ describe('core skeleton', () => {
   it('exports the rating API and config from the single entry point', () => {
     // `packages/db` and the balancer import these; a rename here is a breaking change.
     expect(Object.keys(core).sort()).toEqual([
+      'BalanceError',
       'ROLES',
+      'balance',
       'config',
       'displayRating',
+      'explain',
+      'nextSplit',
       'ordinal',
       'predictWin',
       'rateGame',

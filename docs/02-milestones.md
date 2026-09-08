@@ -7,8 +7,8 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 
 | Milestone | Status | Notes |
 |---|---|---|
-| M0 Spike: verify the client | not started | Blocks M2. Do first. |
-| M1 Foundation | in progress | M1.1, M1.2, M1.3 done. Hosted Supabase project not yet linked. Can run in parallel with M0. |
+| M0 Spike: verify the client | in progress | M0.1 done. M0.2 needs the user to run the client (see M0.1 OPEN steps in packages/lcu/README.md). Blocks M2. |
+| M1 Foundation | in progress | M1.1 to M1.4 done; M1.5 in flight. Hosted Supabase project not yet linked. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -25,7 +25,7 @@ Goal: turn every `unverified` row we need for M2 in `03-lcu-reference.md` into `
 
 Tasks:
 
-- [ ] **M0.1** `packages/lcu` skeleton: lockfile discovery, basic-auth HTTPS client, WebSocket subscriber, a `smoke` script that hits each endpoint in the reference and writes the raw JSON to `packages/lcu/fixtures/<patch>/<endpoint>.json`.
+- [x] **M0.1** `packages/lcu` skeleton: lockfile discovery, basic-auth HTTPS client, WebSocket subscriber, a `smoke` script that hits each endpoint in the reference and writes the raw JSON to `packages/lcu/fixtures/<patch>/<endpoint>.json`.
 - [ ] **M0.2** Run the smoke script through a full custom game: open lobby, fill it (even with two people and eight empty slots is enough for shapes), play or remake, reach end of game. Capture the WS event stream to a file.
 - [ ] **M0.3** Answer the eight questions in "Behaviors to confirm" in `03-lcu-reference.md`. Update every status column. Write zod schemas for the endpoints we keep, tested against the fixtures.
 - [ ] **M0.4** If custom games do not appear in match history, record it in `04-decisions.md` and remove backfill from M5; the end-of-game path is then the only source and the companion rule ("lobby owner runs it") becomes mandatory in the product doc.
@@ -103,7 +103,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > **Out of scope for M1.3.** Season resets (M5.3), the rating-rebuild fold (M5.2), any database or API call,
     > and anything that reads the clock. `rateGame` is a pure function of its arguments.
 
-- [ ] **M1.4** `packages/core/balance`: partition enumeration, role assignment, scoring, top three, explanation string, reroll. Tests: the worked example from the product vision (ten named players with ranks) yields a gap of 100 with everyone on a main role; duo lock is respected; repeat-split penalty changes the choice; nine or eleven players throws.
+- [x] **M1.4** `packages/core/balance`: partition enumeration, role assignment, scoring, top three, explanation string, reroll. Tests: the worked example from the product vision (ten named players with ranks) yields a gap of 100 with everyone on a main role; duo lock is respected; repeat-split penalty changes the choice; nine or eleven players throws.
 
     > **Brief (product, 2026-09-08)**
     >
