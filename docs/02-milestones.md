@@ -7,7 +7,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 
 | Milestone | Status | Notes |
 |---|---|---|
-| M0 Spike: verify the client | in progress | M0.1 done. M0.2 needs the user to run the client (see M0.1 OPEN steps in packages/lcu/README.md). Blocks M2. |
+| M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Open for M4 only: switch-side path, invite body, spectator shape (see docs/03-lcu-reference.md). |
 | M1 Foundation | in progress | M1.1 to M1.6 and M1.8 done; product acceptance met; M1.7 ingest half done (admin field open), M1.9 and M1.10 open. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | M2.9 done early (roster freeze). Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
@@ -26,9 +26,9 @@ Goal: turn every `unverified` row we need for M2 in `03-lcu-reference.md` into `
 Tasks:
 
 - [x] **M0.1** `packages/lcu` skeleton: lockfile discovery, basic-auth HTTPS client, WebSocket subscriber, a `smoke` script that hits each endpoint in the reference and writes the raw JSON to `packages/lcu/fixtures/<patch>/<endpoint>.json`.
-- [ ] **M0.2** Run the smoke script through a full custom game: open lobby, fill it (even with two people and eight empty slots is enough for shapes), play or remake, reach end of game. Capture the WS event stream to a file.
-- [ ] **M0.3** Answer the eight questions in "Behaviors to confirm" in `03-lcu-reference.md`. Update every status column. Write zod schemas for the endpoints we keep, tested against the fixtures.
-- [ ] **M0.4** If custom games do not appear in match history, record it in `04-decisions.md` and remove backfill from M5; the end-of-game path is then the only source and the companion rule ("lobby owner runs it") becomes mandatory in the product doc.
+- [x] **M0.2** Run the smoke script through a full custom game: open lobby, fill it (even with two people and eight empty slots is enough for shapes), play or remake, reach end of game. Capture the WS event stream to a file.
+- [x] **M0.3** Answer the eight questions in "Behaviors to confirm" in `03-lcu-reference.md`. Update every status column. Write zod schemas for the endpoints we keep, tested against the fixtures.
+- [x] **M0.4** (resolved: custom games do appear in match history, 17 of 21 in the 16.17 capture; backfill stays in M5) If custom games do not appear in match history, record it in `04-decisions.md` and remove backfill from M5; the end-of-game path is then the only source and the companion rule ("lobby owner runs it") becomes mandatory in the product doc.
 
 Acceptance: `pnpm --filter lcu test` passes against fixtures; the reference doc has no `unverified` rows for lobby, gameflow, eog, current-summoner, ranked-stats.
 
