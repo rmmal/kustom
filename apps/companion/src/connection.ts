@@ -142,6 +142,18 @@ export const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
 type WatchOutcome = 'socket_closed' | 'client_lost' | 'stop';
 
+/** The same logger with `info` written at `debug`: file yes, console no. */
+function quietInfo(logger: CompanionLogger): CompanionLogger {
+  return {
+    ...logger,
+    info: (message, fields) => logger.debug(message, fields),
+    child: (fields) => quietInfo(logger.child(fields)),
+    get currentFile() {
+      return logger.currentFile;
+    },
+  };
+}
+
 export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
   private readonly logger: CompanionLogger;
   private readonly lcuLogger: CompanionLogger;
@@ -162,7 +174,9 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
   constructor(options: ConnectionMachineOptions = {}) {
     super();
     this.logger = options.logger ?? createMemoryLogger();
-    this.lcuLogger = this.logger.child({ component: 'lcu' });
+    // The client library reports its own open/close at info; the machine says the same in its own words
+    // (`watching`, `socket closed`), so the library's lines go to the file only.
+    this.lcuLogger = quietInfo(this.logger.child({ component: 'lcu' }));
     this.hooks = options.hooks ?? {};
     this.lockfileOptions = options.lockfile ?? {};
     this.tls = options.tls;
@@ -250,7 +264,7 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
       return false;
     }
     this.currentState = to;
-    this.logger.info(`connection ${from} -> ${to}`, { from, to, event });
+    this.logger.debug(`connection ${from} -> ${to}`, { from, to, event });
     this.emit('transition', { from, to, event });
     return true;
   }

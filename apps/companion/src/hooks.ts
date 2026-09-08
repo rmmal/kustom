@@ -42,7 +42,8 @@ export function loggingHooks(logger: CompanionLogger): CompanionHooks {
   const log = logger.child({ component: 'hooks' });
   return {
     onConnected(context) {
-      log.info('local player', {
+      // Debug: the connection line already names the player; one line per connect is the console budget.
+      log.debug('local player', {
         puuid: context.summoner?.puuid ?? null,
         summonerId: context.summoner?.summonerId ?? null,
         phase: context.phase,

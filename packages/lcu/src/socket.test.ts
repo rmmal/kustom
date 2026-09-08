@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LogFields, Logger } from './log.js';
 import {
   ALL_EVENTS_TOPIC,
+  HEARTBEAT_CLOSE_REASON,
   type LcuEvent,
   LcuSocket,
   type LcuSocketCloseInfo,
@@ -256,5 +257,65 @@ describe('LcuSocket', () => {
       tls: { mode: 'pinned', ca: fake.ca },
     });
     await expect(socket.connect()).rejects.toThrow();
+  });
+});
+
+describe('LcuSocket heartbeat', () => {
+  function quietLogger(warnings: string[]): Logger {
+    return { debug: () => {}, info: () => {}, warn: (message) => warnings.push(message), error: () => {} };
+  }
+
+  it('stays open across several intervals while the peer answers pings', async () => {
+    const fake = await startFakeLcu({ autoPong: true });
+    try {
+      const warnings: string[] = [];
+      const socket = new LcuSocket({
+        port: fake.port,
+        password: fake.password,
+        tls: { mode: 'pinned', ca: fake.ca },
+        logger: quietLogger(warnings),
+        heartbeatMs: 20,
+        heartbeatTimeoutMs: 40,
+      });
+      let closed = false;
+      socket.on('close', () => {
+        closed = true;
+      });
+      await socket.connect();
+      // Ten intervals, each with a pong deadline shorter than the next ping.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(socket.isOpen).toBe(true);
+      expect(closed).toBe(false);
+      expect(warnings).toEqual([]);
+      socket.close();
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('terminates a socket that is open but silent, says why once, and reports the heartbeat as the reason', async () => {
+    const fake = await startFakeLcu({ autoPong: false });
+    try {
+      const warnings: string[] = [];
+      const socket = new LcuSocket({
+        port: fake.port,
+        password: fake.password,
+        tls: { mode: 'pinned', ca: fake.ca },
+        logger: quietLogger(warnings),
+        heartbeatMs: 20,
+        heartbeatTimeoutMs: 40,
+      });
+      const closed = once<LcuSocketCloseInfo>((handler) => socket.once('close', handler), 500);
+      const started = Date.now();
+      await socket.connect();
+      const info = await closed;
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(info).toEqual({ code: 1006, reason: HEARTBEAT_CLOSE_REASON });
+      expect(socket.isOpen).toBe(false);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('no pong');
+    } finally {
+      await fake.close();
+    }
   });
 });

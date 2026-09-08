@@ -1,0 +1,53 @@
+/**
+ * The publish plan is pure, so it is pinned here: the tag, the title, the three assets, the stable link, and
+ * the friend README extracted from above the rule in README.md. No `gh`, no network.
+ */
+
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { friendReadme, README_FILE, RELEASE_LATEST_URL } from './config.js';
+import { commandLine, publishPlan } from './publish.js';
+
+describe('publishPlan', () => {
+  it('names the tag, the title and the three assets the brief lists', () => {
+    const plan = publishPlan('1.2.3');
+    expect(plan.tag).toBe('v1.2.3');
+    expect(plan.title).toBe('Customs Night companion 1.2.3');
+    expect(plan.assets.map((asset) => asset.split('/').pop())).toEqual([
+      'CustomsNight.exe',
+      'CustomsNight.exe.sha256',
+      'README.txt',
+    ]);
+    expect(plan.command.slice(0, 7)).toEqual([
+      'gh',
+      'release',
+      'create',
+      'v1.2.3',
+      '--repo',
+      'suyaser/kustom-releases',
+      '--title',
+    ]);
+    expect(plan.latestUrl).toBe(
+      'https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe',
+    );
+    expect(plan.latestUrl).toBe(RELEASE_LATEST_URL);
+    expect(plan.assetUrls[0]).toBe(
+      'https://github.com/suyaser/kustom-releases/releases/download/v1.2.3/CustomsNight.exe',
+    );
+    expect(commandLine(plan)).toContain(`--title 'Customs Night companion 1.2.3'`);
+  });
+});
+
+describe('friendReadme', () => {
+  it('is the top of README.md, ends at the rule, and reads like the brief', () => {
+    const text = friendReadme();
+    const whole = readFileSync(README_FILE, 'utf8');
+    expect(whole.startsWith(text.trimEnd())).toBe(true);
+    expect(text).toContain('# Customs Night companion');
+    expect(text).toContain('## 3. Leave it running');
+    expect(text).toContain('join one of our custom');
+    expect(text).not.toContain('---');
+    expect(text).not.toContain('Building it');
+    expect(text.endsWith('\n')).toBe(true);
+  });
+});

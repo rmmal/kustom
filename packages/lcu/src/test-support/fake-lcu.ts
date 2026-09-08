@@ -48,6 +48,8 @@ export interface FakeLcuOptions {
   readonly cert?: TestCertName;
   /** When true, requests with a wrong Authorization header get a 401. Default true. */
   readonly enforceAuth?: boolean;
+  /** Answer WebSocket pings with pongs, as the real client does. Default true; false plays a dead socket. */
+  readonly autoPong?: boolean;
 }
 
 export interface FakeLcu {
@@ -140,6 +142,7 @@ export async function startFakeLcu(options: FakeLcuOptions = {}): Promise<FakeLc
 
   const wss = new WebSocketServer({
     server,
+    autoPong: options.autoPong ?? true,
     // Reject bad auth at the upgrade (HTTP 401), the way an HTTP server would, so the client's
     // `connect()` fails instead of opening and then closing.
     verifyClient: ({ req }: { req: IncomingMessage }) => {

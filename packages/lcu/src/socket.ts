@@ -10,6 +10,11 @@
  * loop with backoff lives in the companion (M2.1); this class only makes it possible: subscriptions are
  * remembered and re-sent on the next successful `connect()`.
  *
+ * Liveness (M2.6): a WebSocket ping every `heartbeatMs` (30 s); the client answers with a pong (verified on
+ * 16.17, 7 ms round trip, payload echoed). A pong that does not arrive within `heartbeatTimeoutMs` (10 s)
+ * means the connection is open but dead — the PC slept, the client was killed without a close frame — and
+ * the socket is terminated so `close` fires (code 1006, reason `heartbeat`) and the companion reconnects.
+ *
  * Malformed frames are logged and emitted as `dropped`; they never throw.
  */
 
@@ -119,7 +124,16 @@ export interface LcuSocketOptions {
    * work. Default: none (a server cannot reject an absent offer). Confirm on a live client in M0.2.
    */
   readonly protocols?: readonly string[];
+  /** Ping interval. Default 30 s. `0` disables the heartbeat (tests of the plain protocol). */
+  readonly heartbeatMs?: number;
+  /** How long a pong may take before the socket is declared dead. Default 10 s. */
+  readonly heartbeatTimeoutMs?: number;
 }
+
+export const DEFAULT_HEARTBEAT_MS = 30_000;
+export const DEFAULT_HEARTBEAT_TIMEOUT_MS = 10_000;
+/** The close reason reported when the heartbeat, not the peer, ended the connection. */
+export const HEARTBEAT_CLOSE_REASON = 'heartbeat';
 
 export interface LcuSocketCloseInfo {
   readonly code: number;
@@ -145,8 +159,14 @@ export class LcuSocket extends EventEmitter<LcuSocketEvents> {
   private readonly tls: TlsMode;
   private readonly logger: Logger;
   private readonly protocols: readonly string[];
+  private readonly heartbeatMs: number;
+  private readonly heartbeatTimeoutMs: number;
   private readonly topics = new Set<string>();
   private ws: WebSocket | undefined;
+  private heartbeatTimer: NodeJS.Timeout | undefined;
+  private pongTimer: NodeJS.Timeout | undefined;
+  /** Set when the heartbeat terminated the socket, so the `close` event can say so. */
+  private heartbeatFailed = false;
 
   constructor(options: LcuSocketOptions) {
     super();
@@ -155,6 +175,8 @@ export class LcuSocket extends EventEmitter<LcuSocketEvents> {
     this.tls = options.tls ?? DEFAULT_TLS_MODE;
     this.logger = options.logger ?? silentLogger;
     this.protocols = options.protocols ?? [];
+    this.heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+    this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? DEFAULT_HEARTBEAT_TIMEOUT_MS;
   }
 
   static fromCredentials(
@@ -220,8 +242,13 @@ export class LcuSocket extends EventEmitter<LcuSocketEvents> {
         for (const topic of this.topics) {
           this.send(subscribeMessage(topic));
         }
+        this.startHeartbeat(ws);
         this.emit('open');
         resolve();
+      });
+
+      ws.on('pong', () => {
+        this.clearPongTimer();
       });
 
       ws.on('message', (raw) => {
@@ -261,10 +288,12 @@ export class LcuSocket extends EventEmitter<LcuSocketEvents> {
       });
 
       ws.on('close', (code, reasonBuffer) => {
-        const reason = reasonBuffer.toString('utf8');
+        const fromPeer = reasonBuffer.toString('utf8');
+        const reason = fromPeer.length === 0 && this.heartbeatFailed ? HEARTBEAT_CLOSE_REASON : fromPeer;
         this.logger.info('lcu socket closed', { code, reason });
         if (this.ws === ws) {
           this.ws = undefined;
+          this.stopHeartbeat();
         }
         this.emit('close', { code, reason });
         if (!opened) {
@@ -277,6 +306,7 @@ export class LcuSocket extends EventEmitter<LcuSocketEvents> {
   /** Closes the socket. Subscriptions are kept for the next `connect()`. */
   close(code = 1000, reason = 'client closing'): void {
     const ws = this.ws;
+    this.stopHeartbeat();
     if (!ws) {
       return;
     }
@@ -285,6 +315,52 @@ export class LcuSocket extends EventEmitter<LcuSocketEvents> {
       return;
     }
     ws.close(code, reason);
+  }
+
+  /**
+   * Pings on a fixed interval while the socket is the active one. A ping only arms the pong deadline when
+   * none is pending, so a slow peer is given one full timeout, not a shrinking one.
+   */
+  private startHeartbeat(ws: WebSocket): void {
+    this.stopHeartbeat();
+    this.heartbeatFailed = false;
+    if (this.heartbeatMs <= 0) {
+      return;
+    }
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws !== ws || ws.readyState !== WebSocket.OPEN) {
+        this.stopHeartbeat();
+        return;
+      }
+      if (this.pongTimer === undefined) {
+        this.pongTimer = setTimeout(() => {
+          this.pongTimer = undefined;
+          this.heartbeatFailed = true;
+          this.logger.warn('lcu socket silent: no pong within the timeout; terminating it', {
+            timeoutMs: this.heartbeatTimeoutMs,
+          });
+          ws.terminate();
+        }, this.heartbeatTimeoutMs);
+        this.pongTimer.unref?.();
+      }
+      ws.ping();
+    }, this.heartbeatMs);
+    this.heartbeatTimer.unref?.();
+  }
+
+  private clearPongTimer(): void {
+    if (this.pongTimer !== undefined) {
+      clearTimeout(this.pongTimer);
+      this.pongTimer = undefined;
+    }
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== undefined) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = undefined;
+    }
+    this.clearPongTimer();
   }
 
   private send(frame: string): void {

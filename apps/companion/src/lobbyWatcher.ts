@@ -190,7 +190,7 @@ export class LobbyWatcher {
         return;
       }
       if (result.reason === 'http' && result.status === 404) {
-        this.logger.info('no lobby open at connect');
+        this.logger.debug('no lobby open at connect');
         return;
       }
       this.logger.warn('could not read the lobby at connect; waiting for events', {
