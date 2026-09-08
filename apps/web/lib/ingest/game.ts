@@ -13,9 +13,10 @@ import { ensurePlayers } from './players';
 /**
  * Game ingest from an end-of-game block.
  *
- * Deliberately not here (M2.5): `rateGame`, the `ratings` update, and moving the lobby to
- * `finished`. This writes `games` and `game_players` and keeps the whole block in `games.raw`,
- * which is what every later column can be recomputed from.
+ * Deliberately not here: `rateGame` and the `ratings` update (`rating.ts`) and moving the lobby
+ * to `finished` (`lobbyState.ts`, from the game route). This writes `games` and `game_players`
+ * and keeps the whole block in `games.raw`, which is what every later column can be recomputed
+ * from — including a rebuild (M5.2) that replays the fold from scratch.
  *
  * Idempotency is on `lcu_game_id`: two companions in the same game both post, and the second
  * post changes no rows.

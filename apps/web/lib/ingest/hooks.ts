@@ -1,0 +1,93 @@
+import type { Split } from '@customs/core';
+import type { PoolMember, SeatMove } from './selection';
+
+/**
+ * The seam M3.1 fills (Discord), and nothing else.
+ *
+ * Ingest decides what happened; something else decides who is told. The state machine must
+ * pass every acceptance check with the webhook switched off, so posting is not allowed to be
+ * inline: a hook that throws, or a webhook that is down, must not cost the group its teams.
+ *
+ * **M3.1**: call `registerLobbyHook({ onBalanced })` once at module load with the teams-embed
+ * poster, and `onFinished` with the result embed (M3.3). Everything the embeds need is on the
+ * events below — the chosen split, the explanation verbatim from core, who sits and who has
+ * to change seats — so neither hook re-derives anything ingest already worked out. The
+ * copy for the sit-out and seat lines is M2.15's, and `05-design.md` owns the layout.
+ */
+
+/** A lobby just reached `balanced` and its three splits are stored. */
+export interface LobbyBalancedEvent {
+  lobbyId: string;
+  /** `splits.id` of the chosen split (rank 1). */
+  splitId: string;
+  /** The ten puuids, sorted and joined with ',': `splits.roster_key`. */
+  rosterKey: string;
+  /** The chosen split, exactly as core returned it. */
+  split: Split;
+  /** Core's sentence for that split. Rendered verbatim, never recomposed. */
+  explanation: string;
+  /** The lobby's name, when the client reported one. */
+  lobbyName: string | null;
+  /** Null until M4.1 creates lobbies itself (`04-decisions.md`). */
+  lobbyPassword: string | null;
+  /** Everyone around minus the ten, first to sit first. Empty on a ten-player night. */
+  sitters: PoolMember[];
+  /** Who has to change seats, paired (M2.15's `Swap:` lines). */
+  seatMoves: SeatMove[];
+  /** True when everyone around has the same number of games tonight (M2.15's reason clause). */
+  tiedOnGames: boolean;
+  /** The ten who play, in the order the rotation put them. */
+  playing: PoolMember[];
+}
+
+/** An end-of-game block was stored, and the fold either rated it or said why not. */
+export interface GameFinishedEvent {
+  /** `games.id`, not the client's `lcu_game_id`. */
+  gameId: string;
+  lobbyId: string | null;
+  /** False for a remake, a short surrender, or a game that was already rated (M2.5's gate). */
+  rated: boolean;
+}
+
+export interface LobbyHook {
+  onBalanced?: (event: LobbyBalancedEvent) => void | Promise<void>;
+  onFinished?: (event: GameFinishedEvent) => void | Promise<void>;
+}
+
+const hooks: LobbyHook[] = [];
+
+/** Register a listener. Idempotent per object; M3.1 calls this once at module load. */
+export function registerLobbyHook(hook: LobbyHook): void {
+  if (!hooks.includes(hook)) hooks.push(hook);
+}
+
+/** Tests only: forget every listener. */
+export function clearLobbyHooks(): void {
+  hooks.length = 0;
+}
+
+async function emit<E>(
+  event: E,
+  pick: (hook: LobbyHook) => ((event: E) => void | Promise<void>) | undefined,
+  label: string,
+): Promise<void> {
+  for (const hook of hooks) {
+    const handler = pick(hook);
+    if (!handler) continue;
+    try {
+      await handler(event);
+    } catch (error) {
+      // One line and on with the night: the tonight page is the other surface and it must not
+      // depend on Discord having accepted anything (M3.1, "Webhook missing").
+      console.error(`lobby hook ${label} failed`, error);
+    }
+  }
+}
+
+export function emitLobbyBalanced(event: LobbyBalancedEvent): Promise<void> {
+  return emit(event, (hook) => hook.onBalanced, 'onBalanced');
+}
+
+export function emitGameFinished(event: GameFinishedEvent): Promise<void> {
+  return emit(event, (hook) => hook.onFinished, 'onFinished');
+}

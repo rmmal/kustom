@@ -14,6 +14,10 @@ import {
   isCustomGame,
   isParticipant,
 } from '@/lib/ingest/game';
+import { emitGameFinished } from '@/lib/ingest/hooks';
+import { isLobbyMemberOfGame, selectActiveLobby } from '@/lib/ingest/lobby';
+import { rateStoredGame } from '@/lib/ingest/rating';
+import { moveLobby, sweepIdleLobbies } from '@/lib/lobbyState';
 
 // node:crypto hashes the bearer token, so this route is not edge-compatible.
 export const runtime = 'nodejs';
@@ -23,8 +27,11 @@ export const dynamic = 'force-dynamic';
  * Two posts per game from the companion: `in_progress` when the client enters the game, and
  * `eog` with the end-of-game block.
  *
- * `eog` is idempotent on `lcu_game_id`: everyone in the lobby who runs a companion posts the
- * same block, and only the first post writes anything.
+ * `in_progress` moves the party's live lobby to `in_game`, which freezes its roster (M2.9).
+ * `eog` writes the game, runs the rating fold and moves the lobby to `finished` (M2.5). Both
+ * are idempotent: `eog` dedupes on `lcu_game_id` and the fold claims the game with the null
+ * `mu_after` columns, so everyone in the lobby who runs a companion posts the same block and
+ * only the first post changes anything.
  *
  * Refused here, before anything is written:
  * - 422 when `gameType` is not `CUSTOM_GAME` — we only track our own customs;
@@ -33,21 +40,29 @@ export const dynamic = 'force-dynamic';
  *   and no lobby moves. A lobby already at `in_game` stays there permanently — the 2-hour
  *   sweep covers `open` and `balanced` only (M2.5) — and M5.5 lists it;
  * - 422 when the same PUUID appears twice on the scoreboard;
- * - 403 when the token's player is not on the scoreboard (architecture "Security": a
- *   companion may only report a game it was in).
+ * - 403 when the token's player is neither on the scoreboard nor a member of the lobby this
+ *   game was played from, spectators included (M2.8).
  *
  * The raw block is scrubbed of its chat credentials before it goes anywhere near the database:
  * `games.raw` is public-read under RLS (M2.10, point 11).
  */
 export const POST = withCompanionAuth(companionGamePayloadSchema, async (payload, { client, identity }) => {
+  // The same one statement the lobby route runs: two hours idle and a lobby is given up on.
+  await sweepIdleLobbies(client, new Date());
+
   if (payload.phase === 'in_progress') {
-    // Accepted and acknowledged; the lobby transition to `in_game` lands with M2.5.
+    const lobby = payload.partyId ? await selectActiveLobby(client, payload.partyId) : null;
+    if (lobby !== null) {
+      // From here the roster is history (M2.9). `in_game` never ages out.
+      await moveLobby(client, { lobbyId: lobby.id, from: ['open', 'balanced'], to: 'in_game' });
+    }
+
     return jsonOk(companionGameResponseSchema, {
       ok: true,
       phase: 'in_progress',
       created: false,
       gameId: null,
-      lobbyId: null,
+      lobbyId: lobby?.id ?? null,
       participants: 0,
     });
   }
@@ -65,11 +80,34 @@ export const POST = withCompanionAuth(companionGamePayloadSchema, async (payload
     return jsonError(422, 'the same puuid appears twice in participants');
   }
 
-  if (!isParticipant(payload, identity.puuid)) {
+  // M2.8: a friend who sits out a round and watches is a real reporter. Their PUUID is not on
+  // the scoreboard, but it is in `lobby_members` for the lobby this game was played from
+  // (spectators are in the client's `members[]`, confirmed on 16.17 by M2.13).
+  if (
+    !isParticipant(payload, identity.puuid) &&
+    !(await isLobbyMemberOfGame(client, payload.partyId ?? null, identity.playerId, payload.startedAt))
+  ) {
     return jsonError(403, 'a companion may only report a game its own player was in');
   }
 
   const result = await ingestEogGame(client, { ...payload, raw: scrubRawEogBlock(payload.raw) });
+
+  // The fold: ten rows, five a side, over five minutes, and exactly once per game (M2.5).
+  const fold = await rateStoredGame(client, result.gameId);
+
+  if (result.lobbyId !== null) {
+    await moveLobby(client, {
+      lobbyId: result.lobbyId,
+      from: ['open', 'balanced', 'in_game'],
+      to: 'finished',
+    });
+  }
+
+  // M3.3's seam. Only the post that actually did something announces it, so two companions in
+  // one game produce one result.
+  if (result.created || fold.rated) {
+    await emitGameFinished({ gameId: result.gameId, lobbyId: result.lobbyId, rated: fold.rated });
+  }
 
   return jsonOk(companionGameResponseSchema, {
     ok: true,

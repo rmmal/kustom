@@ -58,6 +58,8 @@ if (stack === null) {
   const botPartyId = `it-party-${runId}-bots`;
   const ranksPartyId = `it-party-${runId}-ranks`;
   const cyclePartyId = `it-party-${runId}-cycle`;
+  const oldCyclePartyId = `it-party-${runId}-old-cycle`;
+  const watchedPartyId = `it-party-${runId}-watched`;
   const allPartyIds = [
     partyId,
     otherPartyId,
@@ -68,13 +70,25 @@ if (stack === null) {
     botPartyId,
     ranksPartyId,
     cyclePartyId,
+    oldCyclePartyId,
+    watchedPartyId,
   ];
   const gameId = testGameId();
   const rejectedGameId = gameId + 1;
   const scrubGameId = gameId + 2;
   const namedGameId = gameId + 3;
   const cycleGameId = gameId + 4;
-  const gameIds = [gameId, rejectedGameId, scrubGameId, namedGameId, cycleGameId];
+  const oldCycleGameId = gameId + 5;
+  const watchedGameId = gameId + 6;
+  const gameIds = [
+    gameId,
+    rejectedGameId,
+    scrubGameId,
+    namedGameId,
+    cycleGameId,
+    oldCycleGameId,
+    watchedGameId,
+  ];
 
   let ownerToken = '';
   let outsiderToken = '';
@@ -537,6 +551,48 @@ if (stack === null) {
       expect(await lobbyRowsForParty(cyclePartyId)).toHaveLength(3);
     });
 
+    it('lands a late game on the cycle that was live when it started, not the one after it', async () => {
+      // Two closed-then-reopened cycles for one party, an hour apart, built by hand so the
+      // timestamps are not a matter of milliseconds.
+      const hour = 60 * 60 * 1000;
+      const now = Date.now();
+      const { data, error } = await db
+        .from('lobbies')
+        .insert([
+          {
+            lcu_party_id: oldCyclePartyId,
+            status: 'finished',
+            created_at: new Date(now - 2 * hour).toISOString(),
+          },
+          {
+            lcu_party_id: oldCyclePartyId,
+            status: 'open',
+            created_at: new Date(now - hour).toISOString(),
+          },
+        ])
+        .select('id, status');
+      if (error) throw new Error(error.message);
+      const first = data?.find((row) => row.status === 'finished')?.id ?? '';
+      const second = data?.find((row) => row.status === 'open')?.id ?? '';
+
+      const response = await postGame(
+        post(
+          eogBody({
+            gameId: oldCycleGameId,
+            puuids,
+            partyId: oldCyclePartyId,
+            startedAt: new Date(now - 90 * 60 * 1000).toISOString(),
+          }),
+          ownerToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.lobbyId).toBe(first);
+      expect(json.lobbyId).not.toBe(second);
+    });
+
     it('keeps posting to the live row while the cycle is open', async () => {
       // Idempotency is unchanged: only a closed cycle starts a row, never a repeat post.
       const before = await lobbyRowsForParty(cyclePartyId);
@@ -683,7 +739,7 @@ if (stack === null) {
       expect(await gamePlayerRows(gameRowId)).toEqual(playersBefore);
     });
 
-    it('keeps the raw block and leaves the rating columns for M2.5', async () => {
+    it('keeps the raw block and fills the rating columns in (M2.5)', async () => {
       const { data: game } = await db
         .from('games')
         .select('id, raw, source, season_id')
@@ -693,11 +749,31 @@ if (stack === null) {
       expect(game?.season_id).toBe(SEASON_ONE_ID);
       expect(game?.raw).toMatchObject({ gameType: 'CUSTOM_GAME' });
 
+      // Ten players, five a side, over five minutes: the fold ran on the way through.
       const { data: rows } = await db
         .from('game_players')
-        .select('mu_before, mu_after')
+        .select('player_id, mu_before, sigma_before, mu_after, sigma_after')
         .eq('game_id', game?.id ?? '');
-      expect(rows?.every((row) => row.mu_before === null && row.mu_after === null)).toBe(true);
+      expect(rows).toHaveLength(10);
+      expect(
+        rows?.every(
+          (row) =>
+            row.mu_before !== null &&
+            row.sigma_before !== null &&
+            row.mu_after !== null &&
+            row.sigma_after !== null,
+        ),
+      ).toBe(true);
+
+      const { count } = await db
+        .from('ratings')
+        .select('player_id', { count: 'exact', head: true })
+        .eq('season_id', SEASON_ONE_ID)
+        .in(
+          'player_id',
+          (rows ?? []).map((row) => row.player_id),
+        );
+      expect(count).toBe(10);
     });
 
     it('scrubs the chat credentials out of games.raw, which is public-read', async () => {
@@ -765,6 +841,30 @@ if (stack === null) {
         .eq('puuid', puuid)
         .single();
       expect(data).toMatchObject({ game_name: 'Nameless', tag_line: 'EUW', display_name: 'Nameless' });
+    });
+
+    it("accepts a spectator's post for a game they watched from the lobby (M2.8)", async () => {
+      // The friend who sits out a round and runs the companion while watching. Their PUUID is
+      // not on the scoreboard; it is in `lobby_members` with `is_spectator` true.
+      const created = await postLobby(post(lobbyBody(puuids, [spectatorPuuid], watchedPartyId), ownerToken));
+      expect(created.status).toBe(200);
+
+      const response = await postGame(
+        post(eogBody({ gameId: watchedGameId, puuids, partyId: watchedPartyId }), spectatorToken),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, created: true, participants: 10 });
+      expect(await countGames(watchedGameId)).toBe(1);
+    });
+
+    it('still refuses a token whose player is in neither the game nor its lobby (M2.8)', async () => {
+      const response = await postGame(
+        post(eogBody({ gameId: rejectedGameId, puuids, partyId: watchedPartyId }), outsiderToken),
+      );
+
+      expect(response.status).toBe(403);
+      expect(await countGames(rejectedGameId)).toBe(0);
     });
 
     it('answers 403 when the token belongs to someone who was not in the game', async () => {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_NIGHT_TIME_ZONE, isValidTimeZone } from './night';
 
 /**
  * Server-side environment, read once per process and validated with zod like every other
@@ -32,6 +33,27 @@ const serverEnvSchema = z.object({
     .trim()
     .optional()
     .transform((value) => (value ? value : undefined)),
+  /**
+   * The timezone a night is measured in (M2.5). An IANA name; a night runs 06:00 to 06:00
+   * there, which is what "games tonight" counts over for the sit-out rotation. Defaults to
+   * where the group is; a deployment somewhere else sets its own.
+   */
+  CUSTOMS_NIGHT_TZ: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? value : DEFAULT_NIGHT_TIME_ZONE))
+    .refine(isValidTimeZone, { message: 'must be an IANA timezone name' }),
+  /**
+   * Optional. Bearer token for `GET /api/cron/sweep`, the scheduled half of the two-hour idle
+   * sweep. Unset, that route answers 503 and nothing else changes: the sweep also runs at the
+   * start of every companion post, which is what covers a group that is playing (M2.5).
+   */
+  CRON_SECRET: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? value : undefined)),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -48,6 +70,8 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     SUPABASE_SERVICE_ROLE_KEY: source.SUPABASE_SERVICE_ROLE_KEY,
     BOOTSTRAP_ADMIN_PUUID: source.BOOTSTRAP_ADMIN_PUUID,
     BOOTSTRAP_ADMIN_DISCORD_ID: source.BOOTSTRAP_ADMIN_DISCORD_ID,
+    CUSTOMS_NIGHT_TZ: source.CUSTOMS_NIGHT_TZ,
+    CRON_SECRET: source.CRON_SECRET,
   });
 
   if (!parsed.success) {
