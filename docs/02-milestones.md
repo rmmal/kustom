@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | M1.1 to M1.10 done; M1.11 (auth callback query string) queued after M2.5 leaves apps/web; hosted login verified 2026-09-08 with a wildcard allow-list entry as the interim. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13, M2.14 done; M2.6 in flight; test night needs M2.11 (Windows) and the M2 acceptance walk. |
+| M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15 done; M2.6 built, publish and Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0, M3.1, M3.3 done (webhook posts on balanced and finished). M3.2, M3.4 to M3.10 open. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -1318,7 +1318,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > posted again. It writes nothing else and answers `{ ok: true, abandoned: <n> }`. A missing or wrong
     > secret is a 401. Recorded in `04-decisions.md`.
 
-- [ ] **M2.6** Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
+- [~] **M2.6** (built and reviewed; publish and Windows verification pending on the user, see docs/06-test-night.md) Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
 
     > **Brief (product, 2026-09-08)**
     >
