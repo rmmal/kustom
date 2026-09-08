@@ -15,6 +15,7 @@ export {
   balance,
   type Duo,
   explain,
+  isOffRole,
   nextSplit,
   type Split,
 } from './balance/index';

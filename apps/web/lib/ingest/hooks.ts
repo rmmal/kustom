@@ -38,6 +38,12 @@ export interface LobbyBalancedEvent {
   tiedOnGames: boolean;
   /** The ten who play, in the order the rotation put them. */
   playing: PoolMember[];
+  /**
+   * The origin of the request that triggered the transition, for the embed's `url` when
+   * `NEXT_PUBLIC_SITE_URL` is unset (M3.1). Set by the route, not by ingest; `siteUrl.ts`
+   * decides whether it is a link worth posting.
+   */
+  requestOrigin?: string | null;
 }
 
 /** An end-of-game block was stored, and the fold either rated it or said why not. */
@@ -47,6 +53,8 @@ export interface GameFinishedEvent {
   lobbyId: string | null;
   /** False for a remake, a short surrender, or a game that was already rated (M2.5's gate). */
   rated: boolean;
+  /** As on {@link LobbyBalancedEvent}: the triggering request's origin, for the embed `url`. */
+  requestOrigin?: string | null;
 }
 
 export interface LobbyHook {

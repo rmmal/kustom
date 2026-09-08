@@ -1,0 +1,308 @@
+import { type Assignment, displayRating, isOffRole, type Role } from '@customs/core';
+import type { SideValue } from '@customs/db';
+import type { PoolMember, SeatMove } from '../ingest/selection';
+import { displayDelta } from '../ratingDisplay';
+import type { ServiceClient } from '../supabase';
+import type {
+  PlayerName,
+  ResultEmbedInput,
+  ResultPlayer,
+  SeatLine,
+  TeamsEmbedInput,
+  TeamsPlayer,
+} from './embeds';
+
+/**
+ * Rows and events in, embed inputs out (M3.1, M3.3).
+ *
+ * The two `build*` functions are pure and are where every rule about what the embeds show
+ * lives; the `load*` functions are the queries that feed them. Names are read here rather
+ * than taken from the event, because a name can arrive between the balance and the post
+ * (M2.4's rank sweep, or the first end-of-game block) and the embed should print the newest
+ * one we have. Nothing is written back: `Someone` is a rendering fallback (M3.10), not a row.
+ */
+
+/** Everything the teams embed needs that is not a name. `LobbyBalancedEvent` satisfies it. */
+export interface TeamsSource {
+  /** The chosen split's two sides. A `Split` from core satisfies it, and so does a stored row. */
+  split: { blue: readonly Assignment[]; red: readonly Assignment[] };
+  explanation: string;
+  lobbyName: string | null;
+  lobbyPassword: string | null;
+  playing: readonly PoolMember[];
+  sitters: readonly PoolMember[];
+  seatMoves: readonly SeatMove[];
+  tiedOnGames: boolean;
+}
+
+export interface EmbedContext {
+  /** The tonight page, or `undefined` when there is no honest URL to post (M3.1). */
+  url?: string | undefined;
+  timestamp: string;
+}
+
+export type NameLookup = ReadonlyMap<string, PlayerName>;
+
+/**
+ * The teams embed input. Pure: the same source and the same names give the same object.
+ *
+ * Throws when the chosen split names a player who is not in `playing` — that cannot happen
+ * (both come out of one balance) and a lobby hook that throws is one log line, which is a
+ * better answer than an embed with a made-up rating in it.
+ */
+export function buildTeamsInput(
+  source: TeamsSource,
+  names: NameLookup,
+  context: EmbedContext,
+): TeamsEmbedInput {
+  const byPuuid = new Map(source.playing.map((member) => [member.puuid, member]));
+
+  const side = (assignments: readonly { puuid: string; role: Role }[]): TeamsPlayer[] =>
+    assignments.map(({ puuid, role }) => {
+      const member = byPuuid.get(puuid);
+      if (member === undefined) {
+        throw new Error(`teams embed: the chosen split names ${puuid}, who is not among the ten`);
+      }
+      return {
+        puuid,
+        name: names.get(puuid) ?? null,
+        role,
+        rating: displayRating(member.mu),
+        // Core's rule, not a copy of it: the scorer, the explanation and this line agree
+        // about who is off-role because all three ask the same function.
+        offRole: isOffRole(member, role),
+      };
+    });
+
+  return {
+    blue: side(source.split.blue),
+    red: side(source.split.red),
+    explanation: source.explanation,
+    sitOut:
+      source.sitters.length === 0
+        ? null
+        : {
+            names: source.sitters.map((member) => names.get(member.puuid) ?? null),
+            reason: source.tiedOnGames ? 'longest-since' : 'most-games',
+          },
+    seats: source.seatMoves.map((move) => toSeatLine(move, names)),
+    lobby: { name: source.lobbyName, password: source.lobbyPassword },
+    url: context.url,
+    timestamp: context.timestamp,
+  };
+}
+
+function toSeatLine(move: SeatMove, names: NameLookup): SeatLine {
+  const mover = names.get(move.mover.puuid) ?? null;
+  if (move.sitter === null) return { kind: 'open-slot', mover };
+  return { kind: 'swap', sitter: names.get(move.sitter.puuid) ?? null, mover };
+}
+
+/** Everything the result embed needs. One row per participant, both sides together. */
+export interface ResultSource {
+  winningSide: SideValue;
+  durationS: number;
+  seasonName: string;
+  gameNumber: number | null;
+  blueWinProb: number | null;
+  /** ISO 8601: when the game ended (`started_at + duration_s`). */
+  endedAt: string;
+  players: readonly ResultSourcePlayer[];
+}
+
+export interface ResultSourcePlayer {
+  puuid: string;
+  name: PlayerName;
+  side: SideValue;
+  role: Role | null;
+  damage: number;
+  muBefore: number | null;
+  muAfter: number | null;
+}
+
+/**
+ * The result embed input, or `null` when this game has no ratings to show.
+ *
+ * `null` is the honest answer for a block the fold refused — a remake, a four-minute
+ * surrender, a scoreboard that is not five a side — and for a re-post of a game somebody else
+ * already rated. The route only announces a game it changed something for, so the second
+ * companion in the same game produces no second message.
+ */
+export function buildResultInput(source: ResultSource, context: EmbedContext): ResultEmbedInput | null {
+  const rated = source.players.filter(
+    (player): player is ResultSourcePlayer & { muBefore: number; muAfter: number } =>
+      player.muBefore !== null && player.muAfter !== null,
+  );
+  if (rated.length !== source.players.length || rated.length === 0) return null;
+
+  const toPlayer = (player: (typeof rated)[number]): ResultPlayer => ({
+    puuid: player.puuid,
+    name: player.name,
+    role: player.role,
+    rating: displayRating(player.muAfter),
+    // The one delta rule, from the one shared helper (M3.3).
+    delta: displayDelta(player.muBefore, player.muAfter),
+  });
+
+  const top = [...source.players].sort(
+    (a, b) => b.damage - a.damage || (a.puuid < b.puuid ? -1 : a.puuid > b.puuid ? 1 : 0),
+  )[0];
+
+  return {
+    winningSide: source.winningSide === 100 ? 100 : 200,
+    durationS: source.durationS,
+    blue: rated.filter((player) => player.side === 100).map(toPlayer),
+    red: rated.filter((player) => player.side === 200).map(toPlayer),
+    blueWinProb: source.blueWinProb,
+    topDamage: top === undefined || top.damage <= 0 ? null : { name: top.name, damage: top.damage },
+    seasonName: source.seasonName,
+    gameNumber: source.gameNumber,
+    url: context.url,
+    timestamp: context.timestamp,
+  };
+}
+
+/**
+ * The newest display name we have for each puuid, `null` for the ones we have none for.
+ *
+ * Reads `players` with the service client. `players_public` is the same rows minus
+ * `discord_id` and exists for the anon key; from inside the API the base table is the
+ * shorter path and neither name column is a secret.
+ */
+export async function loadNames(client: ServiceClient, puuids: readonly string[]): Promise<NameLookup> {
+  const unique = [...new Set(puuids)];
+  const names = new Map<string, PlayerName>();
+  if (unique.length === 0) return names;
+
+  const { data, error } = await client
+    .from('players')
+    .select('puuid, display_name, game_name')
+    .in('puuid', unique);
+  if (error) throw new Error(`discord: name lookup failed: ${error.message}`);
+
+  for (const row of data ?? []) {
+    names.set(row.puuid, row.display_name ?? row.game_name ?? null);
+  }
+  return names;
+}
+
+/** Everyone the teams embed prints: the ten, plus the sitters and the movers. */
+export function teamsPuuids(source: TeamsSource): string[] {
+  return [
+    ...source.playing.map((member) => member.puuid),
+    ...source.sitters.map((member) => member.puuid),
+    ...source.seatMoves.flatMap((move) => (move.sitter === null ? [] : [move.sitter.puuid])),
+    ...source.seatMoves.map((move) => move.mover.puuid),
+  ];
+}
+
+/**
+ * One finished game, as the result embed needs it: the scoreboard with its rating columns,
+ * the season and this game's place in it, the roles, and the chosen split's win probability.
+ *
+ * `null` when the game is gone or has no winning side — neither is a post.
+ */
+export async function loadResultSource(client: ServiceClient, gameId: string): Promise<ResultSource | null> {
+  const { data: game, error } = await client
+    .from('games')
+    .select('id, lobby_id, season_id, started_at, duration_s, winning_side, seasons!inner(name)')
+    .eq('id', gameId)
+    .maybeSingle();
+  if (error) throw new Error(`discord: game lookup failed: ${error.message}`);
+  if (!game || (game.winning_side !== 100 && game.winning_side !== 200)) return null;
+
+  const { data: rows, error: playerError } = await client
+    .from('game_players')
+    .select(
+      'side, role, damage_to_champs, mu_before, mu_after, players!inner(puuid, display_name, game_name)',
+    )
+    .eq('game_id', gameId);
+  if (playerError) throw new Error(`discord: game_players lookup failed: ${playerError.message}`);
+
+  const splitRoles = await loadSplitRoles(client, game.lobby_id);
+
+  const players: ResultSourcePlayer[] = (rows ?? [])
+    .filter((row) => row.side === 100 || row.side === 200)
+    .map((row) => ({
+      puuid: row.players.puuid,
+      name: row.players.display_name ?? row.players.game_name ?? null,
+      side: (row.side === 100 ? 100 : 200) as SideValue,
+      // What the scoreboard says first; the split's role is the fallback, so the two embeds
+      // line up even when the client reported no position.
+      role: row.role ?? splitRoles.roles.get(row.players.puuid) ?? null,
+      damage: row.damage_to_champs,
+      muBefore: row.mu_before,
+      muAfter: row.mu_after,
+    }));
+
+  return {
+    winningSide: game.winning_side,
+    durationS: game.duration_s,
+    seasonName: game.seasons.name,
+    gameNumber: await countGamesInSeason(client, game.season_id, game.started_at),
+    blueWinProb: splitRoles.blueWinProb,
+    endedAt: new Date(Date.parse(game.started_at) + game.duration_s * 1_000).toISOString(),
+    players,
+  };
+}
+
+/** The chosen split of the lobby this game was played from: who played where, and the odds. */
+async function loadSplitRoles(
+  client: ServiceClient,
+  lobbyId: string | null,
+): Promise<{ roles: Map<string, Role>; blueWinProb: number | null }> {
+  const empty = { roles: new Map<string, Role>(), blueWinProb: null };
+  if (lobbyId === null) return empty;
+
+  const { data, error } = await client
+    .from('splits')
+    .select('blue, red, blue_win_prob')
+    .eq('lobby_id', lobbyId)
+    .eq('is_chosen', true)
+    .maybeSingle();
+  if (error) throw new Error(`discord: split lookup failed: ${error.message}`);
+  if (!data) return empty;
+
+  const roles = new Map<string, Role>();
+  for (const side of [data.blue, data.red]) {
+    for (const assignment of readAssignments(side)) roles.set(assignment.puuid, assignment.role);
+  }
+  return { roles, blueWinProb: data.blue_win_prob };
+}
+
+/**
+ * Which game of the season this is: `Season 1 · game 47`. Counted rather than stored, so it
+ * stays right after a backfill inserts an older game (M5.1).
+ */
+async function countGamesInSeason(
+  client: ServiceClient,
+  seasonId: string,
+  startedAt: string,
+): Promise<number | null> {
+  const { count, error } = await client
+    .from('games')
+    .select('id', { count: 'exact', head: true })
+    .eq('season_id', seasonId)
+    .lte('started_at', startedAt);
+  if (error) {
+    console.error(`discord: counting the season's games failed: ${error.message}`);
+    return null;
+  }
+  return count ?? null;
+}
+
+const ROLE_VALUES: readonly string[] = ['top', 'jungle', 'mid', 'adc', 'support'];
+
+/** `splits.blue` is jsonb. Read what we recognise and drop the rest; never throw on a row. */
+export function readAssignments(value: unknown): { puuid: string; role: Role }[] {
+  if (!Array.isArray(value)) return [];
+  const assignments: { puuid: string; role: Role }[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { puuid, role } = entry as { puuid?: unknown; role?: unknown };
+    if (typeof puuid !== 'string' || puuid.length === 0) continue;
+    if (typeof role !== 'string' || !ROLE_VALUES.includes(role)) continue;
+    assignments.push({ puuid, role: role as Role });
+  }
+  return assignments;
+}

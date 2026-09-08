@@ -22,6 +22,8 @@ describe('core skeleton', () => {
       'config',
       'displayRating',
       'explain',
+      // The role model's one predicate, for the surfaces that mark an off-role line (M3.1).
+      'isOffRole',
       'nextSplit',
       'ordinal',
       'predictWin',
