@@ -2059,6 +2059,21 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > lobby and the role (`null` clears), and a `puuid` naming somebody else is honoured **only** for an
     > admin. A non-admin body that names another player is a 403, never a silent write to their own row.
     >
+    > **Picking yourself, once (lead, 2026-09-09).** `players.discord_id` is set nowhere but `/admin/players`
+    > today, so without this every friend's first tap is blocked on somebody else doing a chore. Instead: a
+    > visitor who is signed in with Discord and matches no player row is shown tonight's lobby members —
+    > the same rows the page is already rendering — each with a `That's me` control, and picks themselves
+    > once. That writes their Discord id onto that player's row and nothing else; from then on they are a
+    > linked player everywhere in the product. Rules: only rows of tonight's lobby are offered (a friend
+    > cannot claim somebody who is not in the room with them), a player row that already carries a
+    > `discord_id` is not offered and a post naming one is refused (409, `Someone is already linked to that
+    > player.`), and an admin can undo any link on `/admin/players`, which is the existing repair path. Copy
+    > above the list: `Which one of these is you? Pick yourself once and the page knows you from now on.`
+    > **Acceptance:** a signed-in visitor with no link sees the list, taps their name, and their next role tap
+    > lands on their own `lobby_members` row with no admin involved; the same visitor signing in again is
+    > never asked twice; tapping a name that is already linked to someone else changes nothing and answers
+    > 409; an admin clearing the link on `/admin/players` puts the visitor back to being asked once.
+    >
     > **When it counts.** At the next balance of that lobby, and never retroactively.
     >
     > - Lobby `open`: nothing to say. The tap is stored and the balance that fires when ten are stable uses
@@ -2090,8 +2105,10 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > - After teams are posted: `Saved for the next game. Teams are already set.`
     > - Signed out: `Sign in with Discord to pick your role.` on the control that starts the OAuth flow back
     >   to `/`.
-    > - Signed in, Discord not linked to a player: `Signed in. This Discord account is not linked to a player
-    >   yet — ask whoever runs the bot to link it.`
+    > - Signed in, Discord not linked to a player: `Which one of these is you? Pick yourself once and the page
+    >   knows you from now on.` above the list of tonight's members, each with `That's me`. Only when no
+    >   lobby is open tonight, and so nobody can be picked: `Signed in. Open the page while the lobby is up
+    >   and you can pick yourself out of it.`
     >
     > No toast, no confirmation dialog, no "saved!" flash. The role word turning `accent` is the receipt
     > (`05-design.md`: realtime already changes the thing you are looking at).
@@ -2106,8 +2123,9 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >
     > - **Not signed in.** The page reads exactly as it does today; only the control changes. Reading is never
     >   gated.
-    > - **Signed in, no linked player.** One sentence, above. This is common on day one: `players.discord_id`
-    >   is only set from `/admin/players`, so somebody has to link each friend once.
+    > - **Signed in, no linked player.** The `That's me` list, above — this is the day-one case for everybody,
+    >   and it resolves itself in one tap without an admin. With no lobby open there is nothing to pick from,
+    >   so the page says so and asks nothing.
     > - **Signed in, linked, not in tonight's lobby.** No control. There is no row to write.
     > - **A sitter taps.** Allowed. They are in `lobby_members`, they may well be in the next game, and their
     >   choice counts at that balance.
@@ -2214,10 +2232,10 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >
     > **Out of scope.** Fetching the name (M2.4). Discord display names (M4). Any change to `players`.
 
-- [ ] **M3.11** Result embed: the coin-flip clause becomes `Neither side was favored.` Product copy, 2026-09-09 (`05-design.md`, "The four number formats"): `Even 50%.` is core's present-tense fragment and under the headline `Red wins · 34:12` it reads as a claim about the game rather than the prediction — and on a first night, where every split is gap 0, it is the first result sentence the group ever sees. `favoredClause` in `apps/web/lib/discord/embeds.ts` is the only place it is composed. **Acceptance:** a rated game whose chosen split had `blue_win_prob` 0.5 posts the description `Neither side was favored. Top damage: …`; 54% and 58% cases are unchanged; the snapshot is updated in the same commit; core's explanation string is untouched.
+- [ ] **M3.11** Result embed: the coin-flip clause becomes `Neither side was favored.` (Label note: commit `afa22e1` on the review branch is titled "M3.11, designer review" and means M3.13 plus M3.14; M3.11 in this doc is only this copy fix.) Product copy, 2026-09-09 (`05-design.md`, "The four number formats"): `Even 50%.` is core's present-tense fragment and under the headline `Red wins · 34:12` it reads as a claim about the game rather than the prediction — and on a first night, where every split is gap 0, it is the first result sentence the group ever sees. `favoredClause` in `apps/web/lib/discord/embeds.ts` is the only place it is composed. **Acceptance:** a rated game whose chosen split had `blue_win_prob` 0.5 posts the description `Neither side was favored. Top damage: …`; 54% and 58% cases are unchanged; the snapshot is updated in the same commit; core's explanation string is untouched.
 - [ ] **M3.12** Sit-out reason: a third clause for the first balance of a night. When everyone around is tied on games tonight **and** nobody around has a recorded sit-out, the comparator falls through to PUUID order — arbitrary — and today's clause, `— longest since they last sat out.`, states a fact about a history that does not exist. Copy (product, 2026-09-09, in `05-design.md`): `Sitting out: Player0 — nobody has sat out before, so somebody had to be first.` `SitOutReason` gains a third value; `assemble.ts` picks it when `tiedOnGames` and every pool member's `lastSitOutAt` is `null`. **Acceptance:** eleven around on a fresh database posts the new clause; run one game and balance again with eleven around and the clause is `— most games tonight.`; a pool tied on games where somebody has sat out before still reads `— longest since they last sat out.`; `discord.integration.test.ts`'s eleven-tied case is updated to the new string.
-- [ ] **M3.13** Teams embed field order: `Sitting out` and `Seats` go **before** `Blue` and `Red`. Decided 2026-09-09 (designer, M3.1 review; row in `04-decisions.md`) and written into `05-design.md`, but `embeds.ts` still pushes them after. **Acceptance:** with eleven around, the posted embed's fields are in the order `Sitting out`, `Seats`, `Blue`, `Red`, `Lobby`, and the two side fields still pair as inline neighbours; with ten around the JSON is byte-identical to what ships today.
-- [ ] **M3.14** `renderName` escapes Discord markdown. Decided 2026-09-09 (designer, M3.1 review) and in `05-design.md`; the shipped function truncates but does not escape, so a Riot ID with a backtick closes the role's code span and swallows the rest of the field. **Acceptance:** a display name containing `` ` ``, `*`, `_`, `~` and `|` renders as those characters in Discord, the other four lines of the field are intact, escaping happens after the 32-character cut, and a backslash is never left without the character it escapes.
+- [ ] **M3.13** *(landed with the designer-review fixes on the branch in review, commit `afa22e1`; lead ticks at merge.)* Teams embed field order: `Sitting out` and `Seats` go **before** `Blue` and `Red`. Decided 2026-09-09 (designer, M3.1 review; row in `04-decisions.md`) and written into `05-design.md`, but `embeds.ts` still pushes them after. **Acceptance:** with eleven around, the posted embed's fields are in the order `Sitting out`, `Seats`, `Blue`, `Red`, `Lobby`, and the two side fields still pair as inline neighbours; with ten around the JSON is byte-identical to what ships today.
+- [ ] **M3.14** *(landed with the designer-review fixes on the branch in review, commit `afa22e1`; lead ticks at merge.)* `renderName` escapes Discord markdown. Decided 2026-09-09 (designer, M3.1 review) and in `05-design.md`; the shipped function truncates but does not escape, so a Riot ID with a backtick closes the role's code span and swallows the rest of the field. **Acceptance:** a display name containing `` ` ``, `*`, `_`, `~` and `|` renders as those characters in Discord, the other four lines of the field are intact, escaping happens after the 32-character cut, and a backslash is never left without the character it escapes.
 - [ ] **M3.15** `Someone` inside the stored explanation. `apps/web/lib/ingest/balance.ts` still names a nameless player `Unknown` (`UNKNOWN_PLAYER_NAME`) when it builds the balancer input, and core writes that string into `splits.explanation` — which both the embed and the tonight page print verbatim. So one message can read `Someone` on the line and `Next best: swap Unknown and Hana` in the sentence above it, and M3.10's "one agreed fallback on every surface" is broken in the one string nothing may recompose. **Acceptance:** balance a lobby containing a player with null `display_name` and null `game_name`; the stored explanation says `Someone` wherever it names them, the embed and the tonight page agree, and nothing is written to `players`.
 - [ ] **M3.16** Designer: reconcile the `finished` row of the tonight-page state table with the "Result card" component in `05-design.md`. The table lists team cards and the explanation line as a secondary block *under* the result card, and the result card already contains both team cards with after-ratings and deltas — read together they put two different ratings for the same player on one screen. Product's rule for M3.4 is one rating per player per screen (the result card's). **Acceptance:** `05-design.md` says once, in one place, what the finished state renders, and M3.4's brief and the built page agree with it.
 
