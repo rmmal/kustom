@@ -1,16 +1,21 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   defaultLockfileCandidates,
   discoverLockfile,
+  LOCKFILE_CANDIDATES_ENV,
+  lockfileCandidatesFromEnv,
   MACOS_LOCKFILE_PATH,
   parseLockfile,
   WINDOWS_LOCKFILE_PATH,
 } from './lockfile.js';
 
 const VALID = 'LeagueClient:12345:54321:sEcReT-pass_word:https';
+
+/** A filesystem with nothing in it. Tests must never read the real default path: League may be running. */
+const enoent = (): Promise<string> => Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' }));
 
 describe('parseLockfile', () => {
   it('parses the documented format', () => {
@@ -92,6 +97,24 @@ describe('defaultLockfileCandidates', () => {
   });
 });
 
+describe('lockfileCandidatesFromEnv', () => {
+  it('is null when the variable is unset, so the platform defaults apply', () => {
+    expect(lockfileCandidatesFromEnv({})).toBeNull();
+  });
+
+  it('splits on the path delimiter and drops blanks', () => {
+    expect(lockfileCandidatesFromEnv({ [LOCKFILE_CANDIDATES_ENV]: ' /a : :/b ' }, ':')).toEqual(['/a', '/b']);
+    expect(lockfileCandidatesFromEnv({ [LOCKFILE_CANDIDATES_ENV]: 'C:\\x\\lockfile;D:\\y' }, ';')).toEqual([
+      'C:\\x\\lockfile',
+      'D:\\y',
+    ]);
+  });
+
+  it('treats an empty value as "no defaults"', () => {
+    expect(lockfileCandidatesFromEnv({ [LOCKFILE_CANDIDATES_ENV]: '' })).toEqual([]);
+  });
+});
+
 describe('discoverLockfile', () => {
   let dir: string;
 
@@ -105,11 +128,62 @@ describe('discoverLockfile', () => {
 
   it('returns not_found with every path tried when nothing exists', async () => {
     const missing = join(dir, 'nope');
-    const result = await discoverLockfile({ overridePath: missing, platform: 'darwin' });
+    const result = await discoverLockfile({
+      overridePath: missing,
+      platform: 'darwin',
+      env: {},
+      readFile: enoent,
+    });
     expect(result.status).toBe('not_found');
     if (result.status === 'not_found') {
       expect(result.tried.map((attempt) => attempt.path)).toEqual([missing, MACOS_LOCKFILE_PATH]);
       expect(result.tried[0]?.reason).toBe('missing');
+    }
+  });
+
+  it('tries the Windows default after the override on win32', async () => {
+    const result = await discoverLockfile({
+      overridePath: '/override',
+      platform: 'win32',
+      env: {},
+      readFile: enoent,
+    });
+    expect(result.status).toBe('not_found');
+    if (result.status === 'not_found') {
+      expect(result.tried.map((attempt) => attempt.path)).toEqual(['/override', WINDOWS_LOCKFILE_PATH]);
+    }
+  });
+
+  it('replaces the platform defaults with LCU_LOCKFILE_CANDIDATES when set', async () => {
+    const a = join(dir, 'a');
+    const b = join(dir, 'b');
+    await writeFile(b, VALID);
+    const env = { [LOCKFILE_CANDIDATES_ENV]: [a, b].join(delimiter) };
+    const result = await discoverLockfile({ platform: 'darwin', env });
+    expect(result.status).toBe('found');
+    if (result.status === 'found') {
+      expect(result.path).toBe(b);
+    }
+
+    const none = await discoverLockfile({ platform: 'darwin', env, readFile: enoent });
+    expect(none.status).toBe('not_found');
+    if (none.status === 'not_found') {
+      expect(none.tried.map((attempt) => attempt.path)).toEqual([a, b]);
+    }
+  });
+
+  it('lets an explicit candidates list win over the environment', async () => {
+    const env = { [LOCKFILE_CANDIDATES_ENV]: '/from-env' };
+    const result = await discoverLockfile({ candidates: ['/explicit'], env, readFile: enoent });
+    expect(result).toEqual({ status: 'not_found', tried: [{ path: '/explicit', reason: 'missing' }] });
+  });
+
+  it('still tries the override before the environment candidates', async () => {
+    const env = { [LOCKFILE_CANDIDATES_ENV]: '/from-env' };
+    const result = await discoverLockfile({ overridePath: '/override', env, readFile: enoent });
+    expect(result.status).toBe('not_found');
+    if (result.status === 'not_found') {
+      expect(result.tried.map((attempt) => attempt.path)).toEqual(['/override', '/from-env']);
     }
   });
 

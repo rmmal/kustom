@@ -3,7 +3,8 @@
  * Lockfile discovery, the basic-auth HTTPS client, the WebSocket subscriber and the endpoint catalogue
  * live here. Nothing else may import `https`/`ws` or reach 127.0.0.1 (CLAUDE.md "Hard rules").
  *
- * Typed per-endpoint schemas arrive in M0.3 once fixtures exist; see `schemas.ts`.
+ * Per-endpoint response schemas live in `schemas.ts`; each one marked verified is tested against the fixture
+ * it was written from (`fixtures/<patch>/`). Rows still unverified in docs/03-lcu-reference.md have no schema.
  */
 
 export { basicAuthHeader, buildUrl, httpBaseUrl, LCU_HOST, LCU_USER, wsBaseUrl } from './auth.js';
@@ -44,9 +45,11 @@ export {
   type DiscoverLockfileResult,
   defaultLockfileCandidates,
   discoverLockfile,
+  LOCKFILE_CANDIDATES_ENV,
   type LockfileAttempt,
   type LockfileCredentials,
   LockfileCredentialsSchema,
+  lockfileCandidatesFromEnv,
   MACOS_LOCKFILE_PATH,
   type ParseLockfileResult,
   parseLockfile,
@@ -54,15 +57,66 @@ export {
 } from './lockfile.js';
 export { consoleLogger, type LogFields, type Logger, silentLogger, verboseConsoleLogger } from './log.js';
 export {
+  type AliasLookup,
+  AliasLookupSchema,
+  BOT_PUUID,
+  type CurrentSummonerMinimal,
   CurrentSummonerMinimalSchema,
+  CurrentSummonerSchema,
+  type EogPlayer,
+  EogPlayerSchema,
+  type EogPlayerStats,
+  EogPlayerStatsSchema,
+  type EogStatsBlock,
+  EogStatsBlockSchema,
+  type EogTeam,
+  EogTeamSchema,
   GameflowPhaseSchema,
+  type GameflowSession,
+  GameflowSessionSchema,
+  type GameflowTeamMember,
+  GameflowTeamMemberSchema,
   GameVersionSchema,
   JsonArraySchema,
+  type JsonObject,
   JsonObjectSchema,
   JsonValueSchema,
   KNOWN_GAMEFLOW_PHASES,
+  KNOWN_TIERS,
+  type KnownGameflowPhase,
+  type LcuError,
+  LcuErrorSchema,
+  type Lobby,
+  type LobbyMember,
+  LobbyMemberSchema,
+  LobbyMembersSchema,
+  LobbySchema,
+  type MatchDetail,
+  MatchDetailSchema,
+  type MatchGame,
+  MatchGameSchema,
+  type MatchHistoryList,
+  MatchHistoryListSchema,
+  type MatchHistoryMinimal,
   MatchHistoryMinimalSchema,
+  type MatchParticipant,
+  type MatchParticipantIdentity,
+  MatchParticipantIdentitySchema,
+  MatchParticipantSchema,
+  type MatchParticipantStats,
+  MatchParticipantStatsSchema,
+  type MatchTeam,
+  MatchTeamSchema,
+  type RankedQueueEntry,
+  RankedQueueEntrySchema,
+  type RankedStats,
+  RankedStatsSchema,
+  type Summoner,
+  SummonerSchema,
+  type SystemBuilds,
   SystemBuildsSchema,
+  type TeamId,
+  TeamIdSchema,
 } from './schemas.js';
 export {
   ALL_EVENTS_TOPIC,

@@ -1,0 +1,17 @@
+{
+  "id": "alias-lookup",
+  "method": "GET",
+  "path": "/lol-summoner/v1/alias/lookup?gameName=PRT%20Empty&tagLine=EUNE",
+  "status": 200,
+  "capturedAt": "2026-09-08T16:53:37.100Z",
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "contentType": "application/json",
+  "body": {
+    "alias": {
+      "gameName": "PRT Empty",
+      "tagLine": "EUNE"
+    },
+    "puuid": "34151cbd-d9f8-5dad-9dc8-c6a8e253c0de"
+  }
+}

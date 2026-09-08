@@ -8,7 +8,16 @@
  */
 
 import { readFile as fsReadFile } from 'node:fs/promises';
+import { delimiter } from 'node:path';
 import { z } from 'zod';
+
+/**
+ * Environment override for the platform default candidates: a `path.delimiter`-separated list of lockfile
+ * paths that replaces the defaults (not the `--lockfile` override, which is still tried first). Exists so
+ * unit tests and CI can point discovery away from a real install; set it to a path that does not exist and
+ * a running client on the same machine is invisible. Unset for users.
+ */
+export const LOCKFILE_CANDIDATES_ENV = 'LCU_LOCKFILE_CANDIDATES';
 
 /** Default install location on Windows. The packaged companion targets this. */
 export const WINDOWS_LOCKFILE_PATH = 'C:\\Riot Games\\League of Legends\\lockfile';
@@ -74,13 +83,35 @@ export function defaultLockfileCandidates(platform: NodeJS.Platform = process.pl
   }
 }
 
+/**
+ * Candidates from `LCU_LOCKFILE_CANDIDATES` when set (split on the platform path delimiter, blanks dropped),
+ * else null. An empty value (`LCU_LOCKFILE_CANDIDATES=`) counts as set and means "no defaults".
+ */
+export function lockfileCandidatesFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  platformDelimiter: string = delimiter,
+): string[] | null {
+  const raw = env[LOCKFILE_CANDIDATES_ENV];
+  if (raw === undefined) {
+    return null;
+  }
+  return raw
+    .split(platformDelimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 export interface DiscoverLockfileOptions {
   /** A configured path (companion config or `--lockfile`). Tried first when set. */
   readonly overridePath?: string | undefined;
   /** Defaults to `process.platform`. Injected in tests. */
   readonly platform?: NodeJS.Platform;
-  /** Replaces the platform defaults entirely. Injected in tests. */
+  /** Replaces the platform defaults entirely. Injected in tests. Wins over the environment override. */
   readonly candidates?: readonly string[];
+  /**
+   * Where `LCU_LOCKFILE_CANDIDATES` is read from. Defaults to `process.env`; tests pass `{}` to ignore it.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
   /** Injected in tests. */
   readonly readFile?: (path: string) => Promise<string>;
 }
@@ -103,7 +134,8 @@ function errorCode(error: unknown): string {
 }
 
 /**
- * Finds and parses the first readable, well-formed lockfile among the override and the platform defaults.
+ * Finds and parses the first readable, well-formed lockfile among the override and the platform defaults
+ * (or `candidates`, or `LCU_LOCKFILE_CANDIDATES`, in that order of precedence).
  * A present-but-malformed file is reported and skipped, so a stale or partially written lockfile does not
  * stop discovery. Never throws.
  *
@@ -115,7 +147,10 @@ export async function discoverLockfile(
   options: DiscoverLockfileOptions = {},
 ): Promise<DiscoverLockfileResult> {
   const readFile = options.readFile ?? ((path: string) => fsReadFile(path, 'utf8'));
-  const defaults = options.candidates ?? defaultLockfileCandidates(options.platform);
+  const defaults =
+    options.candidates ??
+    lockfileCandidatesFromEnv(options.env ?? process.env) ??
+    defaultLockfileCandidates(options.platform);
   const paths = options.overridePath ? [options.overridePath, ...defaults] : [...defaults];
   const tried: LockfileAttempt[] = [];
 

@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FixtureEnvelopeSchema } from '../fixtures.js';
+import { LOCKFILE_CANDIDATES_ENV } from '../lockfile.js';
 import { type CannedRoute, type FakeLcu, startFakeLcu } from '../test-support/fake-lcu.js';
 
 const execFileAsync = promisify(execFile);
@@ -30,6 +31,15 @@ const PUUID = '11111111-2222-3333-4444-555555555555';
 
 /** A PC with a game in progress has a live data server on 2999; tests always point at a dead port. */
 const LIVE_PORT_ARGS = ['--live-port', '1'];
+
+/**
+ * A machine with League running has a real lockfile at the platform default; the script must never see it
+ * from a test, so the default candidates are redirected to a path that does not exist.
+ */
+const NO_DEFAULT_LOCKFILE_ENV = {
+  ...process.env,
+  [LOCKFILE_CANDIDATES_ENV]: join(tmpdir(), 'lcu-smoke-no-default-install', 'lockfile'),
+};
 
 const routes: Record<string, CannedRoute> = {
   'GET /lol-patch/v1/game-version': {
@@ -47,7 +57,11 @@ const routes: Record<string, CannedRoute> = {
     body: { puuid: PUUID },
   },
   [`GET /lol-summoner/v2/summoners/puuid/${PUUID}`]: { status: 200, body: { summonerId: 7, puuid: PUUID } },
-  'GET /lol-ranked/v1/current-ranked-stats': { status: 200, body: { queueMap: {} } },
+  // A credential-looking key next to real data: the fixture must carry `[redacted]`, never the value.
+  'GET /lol-ranked/v1/current-ranked-stats': {
+    status: 200,
+    body: { queueMap: {}, sessionToken: 'do-not-write-me' },
+  },
   [`GET /lol-ranked/v1/ranked-stats/${PUUID}`]: { status: 200, body: { queueMap: {} } },
   'GET /lol-gameflow/v1/gameflow-phase': { status: 200, body: '"None"', contentType: 'application/json' },
   'GET /lol-gameflow/v1/session': { status: 404, body: { errorCode: 'RPC_ERROR', httpStatus: 404 } },
@@ -68,6 +82,7 @@ const routes: Record<string, CannedRoute> = {
     },
   },
   'GET /lol-match-history/v1/games/200': { status: 200, body: { gameId: 200, participants: [] } },
+  'GET /lol-match-history/v1/games/100': { status: 200, body: { gameId: 100, participants: [] } },
   'GET /swagger/v2/swagger.json': { status: 404, body: 'Not Found', contentType: 'text/plain' },
 };
 
@@ -76,6 +91,7 @@ async function runSmoke(args: readonly string[]): Promise<{ code: number; stdout
     const { stdout, stderr } = await execFileAsync(tsx, [smoke, ...args, ...LIVE_PORT_ARGS], {
       cwd: packageDir,
       timeout: 30_000,
+      env: NO_DEFAULT_LOCKFILE_ENV,
     });
     return { code: 0, stdout, stderr };
   } catch (error) {
@@ -112,6 +128,7 @@ describe('smoke script', () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('League client not running: lockfile not found.');
     expect(result.stderr).toContain(join(dir, 'nope'));
+    expect(result.stderr).toContain('lcu-smoke-no-default-install');
   });
 
   it('exits 3 on a dead port after a single pinned attempt, never stepping down to insecure', async () => {
@@ -131,7 +148,7 @@ describe('smoke script', () => {
     // Pinned to Riot's root fails against the fake with a certificate error; the probe lands on insecure.
     expect(result.stdout).toContain('using: insecure');
     expect(result.stdout).toContain('client version: 16.17.812.4632 (from /lol-patch/v1/game-version)');
-    expect(result.stdout).toContain('match-detail will use 200 (custom)');
+    expect(result.stdout).toContain('match-detail will use 200 (custom, result unknown)');
 
     const patchDir = join(out, '16.17');
     expect(existsSync(patchDir)).toBe(true);
@@ -171,6 +188,12 @@ describe('smoke script', () => {
     );
     expect(detail.path).toBe('/lol-match-history/v1/games/200');
 
+    const rankedText = readFileSync(join(patchDir, 'current-ranked-stats.json'), 'utf8');
+    expect(rankedText).not.toContain('do-not-write-me');
+    const ranked = FixtureEnvelopeSchema.parse(JSON.parse(rankedText));
+    expect(ranked.body).toEqual({ queueMap: {}, sessionToken: '[redacted]' });
+    expect(result.stdout).toMatch(/current-ranked-stats .*credential-looking keys redacted/);
+
     const manifest = JSON.parse(readFileSync(join(patchDir, 'manifest.json'), 'utf8')) as {
       patch: string;
       results: { id: string; status: string; note: string }[];
@@ -182,6 +205,12 @@ describe('smoke script', () => {
 
     // GET only: the fake saw nothing but GETs and no WS upgrade.
     expect(new Set(fake.requests.map((request) => request.method))).toEqual(new Set(['GET']));
+  });
+
+  it('--game-id pins the match-detail probe', async () => {
+    const result = await runSmoke(['--lockfile', lockfile, '--out', out, '--game-id', '100', '--diff']);
+    expect(result.stdout).not.toContain('match-detail will use');
+    expect(result.stdout).toMatch(/match-detail +\/lol-match-history\/v1\/games\/100 /);
   });
 
   it('--diff reports no changes right after a capture, and a change when the shape moves', async () => {

@@ -1,0 +1,17 @@
+{
+  "id": "system-builds",
+  "method": "GET",
+  "path": "/system/v1/builds",
+  "status": 200,
+  "capturedAt": "2026-09-08T16:53:36.519Z",
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "contentType": "application/json",
+  "body": {
+    "branch": "Releases/16.17",
+    "buildType": "Public",
+    "patchline": "Maclive",
+    "patchlineVisibleName": "",
+    "version": "16.17.812.4632"
+  }
+}
