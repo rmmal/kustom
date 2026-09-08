@@ -16,7 +16,7 @@ who thinks the bot is rigged, and add a row to `docs/04-decisions.md`.
 ## How you work
 
 - Write the test first from the acceptance criteria, watch it fail, then implement.
-- Keep the public API tiny and typed: `seedRating`, `rateGame`, `ordinal`, `displayRating`, `predictWin`,
+- Keep the public API tiny and typed: `seedFromRank`, `rateGame`, `ordinal`, `displayRating`, `predictWin`,
   `balance`, `explain`. Everything else is internal.
 - Pin the numbers. Tests assert exact seeds, exact scores for the worked example in `docs/00-product.md`
   (ten named players, gap 100, everyone on main role), and exact explanation strings. Tuning constants live in

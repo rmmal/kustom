@@ -8,7 +8,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | not started | Blocks M2. Do first. |
-| M1 Foundation | in progress | M1.1 done. Can run in parallel with M0. |
+| M1 Foundation | in progress | M1.1, M1.3 done. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -38,7 +38,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
 
 - [x] **M1.1** Monorepo: pnpm workspaces, TypeScript project references (dropped, see decisions 2026-09-08: source-shipping packages, `tsc --noEmit`), Biome, vitest, `apps/web` (Next.js App Router), `packages/core`, `packages/db`, `packages/lcu` (from M0 or a stub). Root scripts listed in `CLAUDE.md` all exist.
 - [ ] **M1.2** Supabase project, migration `0001_init.sql` with the schema in `01-architecture.md`, RLS policies, generated types, `pnpm db:migrate` and `pnpm db:types`.
-- [ ] **M1.3** `packages/core/rating`: seed from tier, `rateGame`, `ordinal`, `displayRating`, `predictWin`. Tests: seeds match the table; a Bronze on the winning side gains more than a Master beside them; ten games converge a mis-seeded player.
+- [x] **M1.3** `packages/core/rating`: seed from tier, `rateGame`, `ordinal`, `displayRating`, `predictWin`. Tests: seeds match the table; a Bronze on the winning side gains more than a Master beside them; ten games converge a mis-seeded player.
 
     > **Brief (product, 2026-09-08)**
     >
@@ -81,18 +81,24 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     >    they are on the same team with three `mu 25.00, sigma 5.00` teammates, the other five are all
     >    `mu 25.00, sigma 5.00`, and their side wins. Assert `muAfter - muBefore` is strictly larger for the
     >    Bronze. Do not "fix" this by giving them equal sigmas and asserting something weaker.
-    > 3. *Ten games converge a mis-seeded player.* Setup: `P0` seeded Iron IV (`mu 14.00, sigma 8.33`). Ten other
-    >    players, all settled Gold IV (`mu 23.00, sigma 3.50`). Ten games; in game `k` (0-indexed), `P0`'s team is
-    >    `P0` plus players `1 + (k % 10)`, `1 + ((k+1) % 10)`, `1 + ((k+2) % 10)`, `1 + ((k+3) % 10)` (wrapping,
-    >    skipping `P0`), the remaining five are the opponents, and `P0`'s side wins every time. Assert all three:
+    > 3. *Ten games converge a mis-seeded player.* Setup: `P0` seeded Iron IV (`mu 14.00, sigma 8.33`), plus ten
+    >    other players, all settled Gold IV (`mu 23.00, sigma 3.50`). That is eleven people in the room, so
+    >    exactly one of the ten others sits out each game — same as a real night with eleven around. Ten games;
+    >    in game `k` (0-indexed), `P0`'s team is `P0` plus players `1 + (k % 10)`, `1 + ((k+1) % 10)`,
+    >    `1 + ((k+2) % 10)`, `1 + ((k+3) % 10)` (wrapping, skipping `P0`), the next five in the same wrap
+    >    (`1 + ((k+4) % 10)` through `1 + ((k+8) % 10)`) are the opponents, the one left over sits, and `P0`'s
+    >    side wins every time. Assert all three, with the numbers below pinned exactly (measured against
+    >    `openskill` 5.0.1, M1.3):
     >    - `mu(P0)` strictly increases after every game;
-    >    - `sigma(P0)` strictly decreases after every game and ends below 5.00;
-    >    - after the tenth game `mu(P0) > 23.00`, i.e. above the Gold IV seed.
+    >    - `sigma(P0)` strictly decreases after every game. It is `6.4704` after game 10 and **first drops below
+    >      5.00 in game 36 of this setup** (26 games if the wins alternate between the sides instead of `P0`'s
+    >      side winning every one). Ten games settle a mis-seeded player's `mu`, not their `sigma`.
+    >    - `mu(P0)` crosses 23.00 — the Gold IV seed — in game 4, and is `34.09` after game 10.
     >
-    >    If the third assertion fails against the real `openskill` package, **do not lower the number.** Record
-    >    the game count it actually takes, report it to the lead as a finding, and leave the test failing or
-    >    skipped with the real number in a comment — "how many games a smurf distorts teams for" is a product
-    >    fact we want to know, not a test to tune.
+    >    These are the model's real behaviour, not targets. If one of them fails against the `openskill`
+    >    package, **do not lower the number.** Record the game count it actually takes, report it to the lead as
+    >    a finding, and leave the test failing or skipped with the real number in a comment — "how many games a
+    >    smurf distorts teams for" is a product fact we want to know, not a test to tune.
     >
     > **Out of scope for M1.3.** Season resets (M5.3), the rating-rebuild fold (M5.2), any database or API call,
     > and anything that reads the clock. `rateGame` is a pure function of its arguments.
@@ -371,6 +377,25 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > (`{Name} off-role at {role}.`, or `{n} off-role: ...` for two or more), and the roles rendered beside the
     > names match that split's assignment. Nothing recomputes the explanation — both surfaces render the stored
     > string for the promoted split from the `splits` table.
+
+- [ ] **M3.8** Leaderboard says why a new player is low: a "still settling" marker and one plain sentence on `/leaderboard` and `/p/[puuid]` for players with fewer than 30 recorded games.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **Why.** The leaderboard sorts on `ordinal = mu - 2 * sigma`. A newly seeded player's `mu` settles in
+    > about ten nightly games, but their `sigma` does not fall below 5.00 until roughly game 36 (M1.3 brief,
+    > test 3). So a friend who joins tonight sits near the bottom of the board for about a month after they
+    > have stopped being mis-rated, and the first person it happens to will call the board broken in voice.
+    > This is the model working as intended; the board just has to say so.
+    >
+    > **Acceptance check (product).** On `/leaderboard` and `/p/[puuid]`, a player with fewer than 30 recorded
+    > games shows a "still settling" marker next to their row and one plain sentence explaining the board is
+    > cautious until it has seen you play; the marker disappears at 30 games; the number in the sentence
+    > matches the game count in the M1.3 brief. Copy goes through product before it ships.
+    >
+    > **Out of scope.** Changing the sort, the rating model, or `ordinal`. No separate "new players" board, no
+    > provisional/placement badge that hides a rating, no change to how teams are balanced — balancing is on
+    > `mu` and is unaffected.
 
 Acceptance: a full night with real players, teams posted within 15 seconds of the tenth join, results within 60 seconds of end of game, no human action beyond joining the lobby.
 

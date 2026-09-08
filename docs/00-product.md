@@ -106,3 +106,6 @@ See `02-milestones.md` for the build order. In product terms:
 - Lobby open to game start under three minutes.
 - Every game played with a companion user present is in the database with no human action.
 - Ratings visibly converge: a player's predicted win chance across their last twenty games averages near 50%.
+- A new player rises in strength faster than they rise on the board. Their rating settles in about ten
+  nightly games, but the leaderboard sorts on a deliberately cautious number (`ordinal = mu - 2 * sigma`)
+  that takes roughly a month of nightly games to catch up. That is on purpose: the board makes you prove it.
