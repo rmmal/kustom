@@ -6,6 +6,10 @@
  * machine, which runs until SIGINT/SIGTERM. Nothing after startup exits the process on an error: uncaught
  * exceptions and unhandled rejections are logged and the loop goes on.
  *
+ * Flags: `--version` / `-v` prints the version and exits 0; `--help` / `-h` prints the usage and exits 0.
+ * Both are answered before anything is read or written, so the build's smoke test can run the bundle on any
+ * machine.
+ *
  * Environment:
  *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json, logs/ and queue/).
  *  - `CUSTOMS_NIGHT_LOG_LEVEL` sets the console level (`debug`, `info`, `warn`, `error`; default `info`).
@@ -32,6 +36,39 @@ import { type CompanionLogger, createFileLogger, errorFields, isLogLevel } from 
 import { RankSync } from './rankSync.js';
 import { COMPANION_VERSION } from './version.js';
 
+export const APP_NAME = 'Customs Night companion';
+
+export function usage(): string {
+  return [
+    `${APP_NAME} ${COMPANION_VERSION}`,
+    '',
+    'Watches the League client and reports lobbies and results to the Customs Night API.',
+    'Double-click it (or run it with no arguments) and leave it running.',
+    '',
+    'Flags:',
+    '  --version, -v   print the version and exit',
+    '  --help, -h      print this text and exit',
+    '',
+    'Environment:',
+    '  CUSTOMS_NIGHT_CONFIG_DIR   config directory (config.json, logs/, queue/)',
+    '  CUSTOMS_NIGHT_LOG_LEVEL    console level: debug | info | warn | error (default info)',
+    '',
+    `Config: ${configDir()}`,
+  ].join('\n');
+}
+
+/**
+ * A double-clicked exe whose process exits closes its console window with it, so the one sentence that
+ * says why is gone before anyone reads it. On a TTY, wait for Enter first. Never on a pipe (tests, CI).
+ */
+async function holdWindowOpen(): Promise<void> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return;
+  }
+  const io = stdioPrompt();
+  await io.ask('Press Enter to close this window. ');
+}
+
 async function resolveConfig(dir: string, logger: CompanionLogger): Promise<CompanionConfig | null> {
   const loaded = loadConfig(dir);
   switch (loaded.status) {
@@ -57,12 +94,20 @@ async function resolveConfig(dir: string, logger: CompanionLogger): Promise<Comp
 }
 
 async function main(): Promise<number> {
+  const args = process.argv.slice(2);
+  if (args.includes('--version') || args.includes('-v')) {
+    console.log(COMPANION_VERSION);
+    return 0;
+  }
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(usage());
+    return 0;
+  }
   const dir = configDir();
   const consoleLevelRaw = process.env.CUSTOMS_NIGHT_LOG_LEVEL ?? 'info';
   const consoleLevel = isLogLevel(consoleLevelRaw) ? consoleLevelRaw : 'info';
   const logger = createFileLogger({ dir: logsDir(dir), consoleLevel, fileLevel: 'debug' });
-  logger.info('customs night companion starting', {
-    version: COMPANION_VERSION,
+  logger.info(`${APP_NAME} ${COMPANION_VERSION} starting`, {
     node: process.version,
     platform: process.platform,
     configDir: dir,
@@ -71,6 +116,7 @@ async function main(): Promise<number> {
 
   const config = await resolveConfig(dir, logger);
   if (config === null) {
+    await holdWindowOpen();
     return 1;
   }
   logger.addSecret(config.companionToken);
@@ -144,9 +190,10 @@ main().then(
   (code) => {
     process.exit(code);
   },
-  (error) => {
+  async (error) => {
     // Only startup can get here (the loop never rejects). Say why, then exit non-zero.
     console.error('companion failed to start:', error instanceof Error ? error.message : String(error));
+    await holdWindowOpen();
     process.exit(1);
   },
 );

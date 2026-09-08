@@ -26,10 +26,18 @@ export const CONFIG_FILE_NAME = 'config.json';
 export const LOGS_DIR_NAME = 'logs';
 
 /**
- * The API origin offered on first run. There is no deployed origin yet (M1.10 is open), so this is the
- * local dev server; M2.6 (packaging) replaces it with the production URL before a friend sees the prompt.
+ * The API origin used when the config file names none. The packaged exe (M2.6) bakes the deployed origin in
+ * through an esbuild `define` (`__CUSTOMS_NIGHT_API_BASE__`); under `pnpm --filter companion dev` the define
+ * is absent and this is the local dev server. A `config.json` with its own `apiBase` always wins over it.
  */
-export const DEFAULT_API_BASE = 'http://localhost:3000';
+declare const __CUSTOMS_NIGHT_API_BASE__: string | undefined;
+
+export const LOCAL_API_BASE = 'http://localhost:3000';
+
+export const DEFAULT_API_BASE: string =
+  typeof __CUSTOMS_NIGHT_API_BASE__ === 'string' && __CUSTOMS_NIGHT_API_BASE__.length > 0
+    ? __CUSTOMS_NIGHT_API_BASE__
+    : LOCAL_API_BASE;
 
 export const apiBaseSchema = z
   .string()
@@ -172,9 +180,10 @@ export interface FirstRunOptions {
 }
 
 /**
- * The first-run conversation. Asks for the API origin (default offered) and the token (hidden), checks the
- * origin answers `GET /api/health`, and returns the config to save. If the check fails the person can fix
- * the origin or keep it anyway (the API may simply be down right now; the client retries forever).
+ * The first-run conversation. When the built-in origin answers `GET /api/health`, the only question is the
+ * token (hidden): one paste, not two answers (M2.6). Otherwise it asks for the API origin (default offered),
+ * checks it, and lets the person keep an unreachable one (the API may simply be down right now; the client
+ * retries forever). A partial config that already names an `apiBase` is offered as the default and confirmed.
  */
 export async function promptFirstRun(options: FirstRunOptions): Promise<CompanionConfig> {
   const { io } = options;
@@ -184,7 +193,17 @@ export async function promptFirstRun(options: FirstRunOptions): Promise<Companio
   );
 
   let apiBase = partial.apiBase ?? DEFAULT_API_BASE;
-  for (;;) {
+  let settled = false;
+  if (partial.apiBase === undefined && options.checkApiBase) {
+    const problem = await options.checkApiBase(apiBase);
+    if (problem === null) {
+      io.say(`  Using ${apiBase}.`);
+      settled = true;
+    } else {
+      io.say(`  ${apiBase} did not answer: ${problem}`);
+    }
+  }
+  while (!settled) {
     const answer = await io.ask(`API address [${apiBase}]: `);
     const parsed = apiBaseSchema.safeParse(answer.trim().length > 0 ? answer : apiBase);
     if (!parsed.success) {

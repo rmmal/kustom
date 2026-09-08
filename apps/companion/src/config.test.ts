@@ -163,10 +163,10 @@ describe('loadConfig / saveConfig', () => {
 });
 
 describe('promptFirstRun', () => {
-  it('offers the default apiBase, takes the token hidden, checks reachability and writes the file', async () => {
+  it('asks only for the token when the built-in apiBase answers, takes it hidden and writes the file', async () => {
     const dir = tempDir();
     const checked: string[] = [];
-    const { io, said, asked } = scriptedIo([''], ['  tok_secret_value  ']);
+    const { io, said, asked } = scriptedIo([], ['  tok_secret_value  ']);
     const config = await promptFirstRun({
       io,
       checkApiBase: async (apiBase) => {
@@ -176,14 +176,43 @@ describe('promptFirstRun', () => {
     });
     expect(config).toEqual({ apiBase: DEFAULT_API_BASE, companionToken: 'tok_secret_value' });
     expect(checked).toEqual([DEFAULT_API_BASE]);
-    expect(asked[0]).toContain(`[${DEFAULT_API_BASE}]`);
-    expect(asked[1]).toContain('hidden');
+    // One question, and it is the hidden one.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('hidden');
+    expect(said.some((line) => line.includes(`Using ${DEFAULT_API_BASE}`))).toBe(true);
     // The token is never printed back.
     expect(said.join('\n')).not.toContain('tok_secret_value');
     expect(asked.join('\n')).not.toContain('tok_secret_value');
 
     const path = saveConfig(dir, config);
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(config);
+  });
+
+  it('falls back to the address question when the built-in apiBase does not answer', async () => {
+    const { io, said, asked } = scriptedIo(['https://other.example'], ['tok']);
+    const config = await promptFirstRun({
+      io,
+      checkApiBase: async (apiBase) => (apiBase === DEFAULT_API_BASE ? 'ECONNREFUSED' : null),
+    });
+    expect(config).toEqual({ apiBase: 'https://other.example', companionToken: 'tok' });
+    expect(asked[0]).toContain(`[${DEFAULT_API_BASE}]`);
+    expect(said.some((line) => line.includes('ECONNREFUSED'))).toBe(true);
+  });
+
+  it('offers a partial apiBase as the default and confirms it rather than skipping the question', async () => {
+    const checked: string[] = [];
+    const { io, asked } = scriptedIo([''], ['tok']);
+    const config = await promptFirstRun({
+      io,
+      partial: { apiBase: 'https://kept.example' },
+      checkApiBase: async (apiBase) => {
+        checked.push(apiBase);
+        return null;
+      },
+    });
+    expect(config.apiBase).toBe('https://kept.example');
+    expect(asked[0]).toContain('[https://kept.example]');
+    expect(checked).toEqual(['https://kept.example']);
   });
 
   it('re-asks on an unreachable apiBase unless the person keeps it', async () => {

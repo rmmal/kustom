@@ -147,7 +147,10 @@ export {
 } from './scrub.js';
 export {
   ALL_EVENTS_TOPIC,
+  DEFAULT_HEARTBEAT_MS,
+  DEFAULT_HEARTBEAT_TIMEOUT_MS,
   type FrameParseResult,
+  HEARTBEAT_CLOSE_REASON,
   type LcuEvent,
   LcuEventFrameSchema,
   type LcuEventType,

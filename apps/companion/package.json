@@ -1,13 +1,19 @@
 {
   "name": "companion",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bundle": "tsx build/bundle.ts",
+    "build:win": "tsx build/sea.ts --target win-x64",
+    "build:exe": "tsx build/sea.ts --target win-x64",
+    "build:host": "tsx build/sea.ts --target host",
+    "upload": "tsx build/upload.ts",
+    "release": "tsx build/release.ts"
   },
   "dependencies": {
     "@customs/db": "workspace:*",
@@ -16,8 +22,11 @@
   },
   "devDependencies": {
     "@types/node": "26.5.0",
+    "esbuild": "0.28.2",
+    "postject": "1.0.0-alpha.6",
     "tsx": "4.23.13",
     "typescript": "5.9.3",
+    "undici": "8.10.2",
     "vitest": "5.0.0"
   }
 }

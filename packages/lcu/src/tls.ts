@@ -37,10 +37,20 @@ export const RIOT_ROOT_CA_PATH = fileURLToPath(new URL('../certs/riotgames.pem',
 /** The default policy: pin Riot's root, default OpenSSL security level. */
 export const DEFAULT_TLS_MODE: TlsMode = { mode: 'pinned' };
 
+/**
+ * The packaged companion (M2.6) has no `certs/` directory beside it: its build embeds the PEM text as this
+ * compile-time constant (esbuild `define`). Absent everywhere else, so source runs read the vendored file.
+ */
+declare const __CUSTOMS_NIGHT_RIOT_ROOT_CA__: string | undefined;
+
+function embeddedRiotRootCa(): string | undefined {
+  return typeof __CUSTOMS_NIGHT_RIOT_ROOT_CA__ === 'string' ? __CUSTOMS_NIGHT_RIOT_ROOT_CA__ : undefined;
+}
+
 let cachedRiotRoot: string | undefined;
 
 export function loadRiotRootCa(): string {
-  cachedRiotRoot ??= readFileSync(RIOT_ROOT_CA_PATH, 'utf8');
+  cachedRiotRoot ??= embeddedRiotRootCa() ?? readFileSync(RIOT_ROOT_CA_PATH, 'utf8');
   return cachedRiotRoot;
 }
 
