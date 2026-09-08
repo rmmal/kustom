@@ -760,6 +760,156 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > **Out of scope.** Backfill (M5.1). Any change to the ingest contract. A UI for the queue; a log line
     > is enough until M6.1.
+    > **Brief (product, 2026-09-08)**
+    >
+    > **The scene.** The nexus falls. Ten friends are still on the score screen arguing about who fed, and the
+    > game is already in the database with the ratings moved. Nobody typed anything. On a bad night — the API is
+    > down, a laptop lid closes, Windows decides to restart — the game lands the next time the companion starts
+    > instead of never, and nobody has to remember which one the bot missed. That is this task: notice the game
+    > started, notice how it ended, and never lose it.
+    >
+    > **Where it lives.** `apps/companion`: a game watcher plus a small on-disk queue, wired into the hooks the
+    > connection machine already exposes (`onConnected`, `onGameflowPhase`, `onEogBlock` — `hooks.ts` only logs
+    > today and is replaced hook by hook). Payloads come from the one shared mapper M2.10 put in place; no copy
+    > of the mapping lives here. No new LCU endpoint: `/lol-gameflow/v1/gameflow-phase`,
+    > `/lol-gameflow/v1/session` and `/lol-end-of-game/v1/eog-stats-block` are all `verified` rows in
+    > `03-lcu-reference.md`.
+    >
+    > **Reads only, from `GameStart` onward.** Between `GameStart` and `EndOfGame` the companion makes exactly
+    > two client requests: one `GET /lol-gameflow/v1/session` at `GameStart`, and the single connect-time
+    > `GET /lol-end-of-game/v1/eog-stats-block` described below. No POST to the client, ever, and nothing on a
+    > champion-select, matchmaking or live-game URI; `127.0.0.1:2999` is not read. That is the Riot line in
+    > `03-lcu-reference.md`, and this task sits directly on top of it.
+    >
+    > ### Post 1 — `phase: 'in_progress'`
+    >
+    > On the phase event `GameStart` (and on `InProgress` if the process missed `GameStart`), once per `gameId`:
+    >
+    > - `GET /lol-gameflow/v1/session` and take `gameData.gameId`. **Never read the id in any other phase.** In
+    >   `Lobby` the session still holds the previous game's id for the rest of the night (16.17, verified: the
+    >   session still said `4000969091` 46 minutes after that game ended). A `0`, a missing id or a failed GET
+    >   means no post at all — one log line and carry on; the end-of-game block carries its own `gameId` and the
+    >   `startedAt` fallback covers the rest.
+    > - POST `{ phase: 'in_progress', gameId, partyId, startedAt }`. `startedAt` is the moment the phase event
+    >   was observed, ISO 8601 with an offset. `partyId` is the last lobby id this process saw (M2.2 holds it;
+    >   the lobby `Delete` arrives 30-100 ms after `GameStart`, so capture the id **at** `GameStart` and keep it
+    >   for the whole game); `null` when the companion started mid-game.
+    > - Keep `{ gameId, startedAt, partyId }` in memory until the end-of-game post for that id is settled.
+    > - **This post is not queued to disk.** It is a hint that lets M2.5 freeze the roster; the eog post carries
+    >   the same `gameId`, `partyId` and `startedAt` and can move a lobby `open`/`balanced` -> `finished` on its
+    >   own (M2.5's transition table). Use the API client's own retries and give up with one log line.
+    >
+    > ### Post 2 — `phase: 'eog'`
+    >
+    > **The block comes from the WebSocket event, held in memory. The GET is never the main road** — the
+    > `Create` lands about a second before the phase reaches `EndOfGame`, and the GET is a 404 once anyone
+    > clicks past the score screen. On `Create` or `Update` for `/lol-end-of-game/v1/eog-stats-block`, in this
+    > order:
+    >
+    > 1. **Ignore `Delete`** (data null). A block being withdrawn is not news.
+    > 2. **Dedupe on `gameId`** before anything else: a `gameId` already posted in this process, or already
+    >    holding a queue file, is dropped silently. `Update` follows `Create` by 75 ms with the same block.
+    > 3. **Drop what the server would refuse, before it costs a file.** `gameType !== 'CUSTOM_GAME'` (a friend's
+    >    ranked game is not ours to store): one log line with `gameId` and `gameType`, no file, no POST. **No
+    >    winning team** (a remake, or `TerminatedInError`): one log line naming the `gameId` and the reason, no
+    >    file, no POST. The 16.17 capture has exactly this case — game `4000965483` emitted a complete
+    >    `CUSTOM_GAME` block whose only team had `isWinningTeam: false`. Recorded in `04-decisions.md`.
+    > 4. **Map and scrub.** The shared mapper, then `mucJwtDto` and `multiUserChatPassword` replaced at any
+    >    depth (the block carries live chat credentials and `games.raw` is public-read). `startedAt` is the
+    >    observed `InProgress` moment for this `gameId` when the process has one, otherwise
+    >    `endOfGameTimestamp - gameLength * 1000`. The fallback is not optional.
+    > 5. **Write the file, then post.** `<configDir>/queue/<gameId>.json`, written as `<gameId>.json.tmp` and
+    >    renamed, owner-only, holding `{ version: 1, queuedAt, payload }` where `payload` is the exact request
+    >    body. Only digits are allowed in the name; anything else is dropped with a log line rather than
+    >    written. The POST happens after the rename, never before it.
+    > 6. **Delete the file on any 2xx** — `created: true` and `created: false` both mean the server has the game
+    >    — and on a 4xx that names a permanent reason: 422 (`no winning team`, `gameType must be CUSTOM_GAME`,
+    >    a duplicate puuid), 403 (not a participant), 400, 404. Log the reason in one line and say the game is
+    >    left to backfill. **Keep** the file on a network error, a 5xx, a 408 or a 429 and retry: the API
+    >    client's own attempts first, then the whole file again on an outer backoff (30 s to 15 min, jittered),
+    >    for as long as the process runs.
+    >
+    > ### The queue on start
+    >
+    > The queue needs the API, not League, so it replays at startup without waiting for the client: list
+    > `<configDir>/queue/`, oldest `queuedAt` first, and post each file under the same rules, one at a time. A
+    > file that no longer parses as `companionGamePayloadSchema` is logged once and deleted. The directory is
+    > capped at 50 files; over that the oldest is deleted with a log line rather than filling a friend's disk. A
+    > file days old is still posted: `lcu_game_id` dedupe and the M5.2 rating rebuild make late arrival safe.
+    >
+    > ### The one time the GET is used
+    >
+    > `onConnected` carries the phase read at connect. If it is `EndOfGame` or `WaitingForStats` and the process
+    > holds no block for that game, `GET /lol-end-of-game/v1/eog-stats-block` **once** and run the same pipeline
+    > from step 2. A 404 means somebody already clicked through and the block is gone from the client for good:
+    > one log line naming the phase and saying it is backfill's problem (M5.1), and **never a second attempt,
+    > never a poll**. This is the "the companion was restarting at the final whistle" case that
+    > `00-product.md` already accepts under Success.
+    >
+    > ### Edge cases
+    >
+    > - **Fewer than ten, more than ten.** The companion posts what the block says. Ten participants, five a
+    >   side and the 300-second floor are M2.5's gate, not a reason to hold anything back here.
+    > - **Someone leaves mid-lobby, or mid-game.** Nothing here reads `leaver` or `wasAfk`. A leaver is in the
+    >   block like anyone else, and the lobby side of leaving is M2.2 and M2.9.
+    > - **Companion disconnects mid-game.** No `InProgress` moment is held, so `startedAt` falls back to the
+    >   arithmetic — 8.8 s later than the observed moment on the fixture game, which is load time, not an
+    >   error. If it reconnects while the score screen is still up, the connect-time GET catches the block; if
+    >   it reconnects after, nothing is posted and one line says why.
+    > - **Companion killed between the file write and the POST.** The file is on disk and the next start posts
+    >   it. That ordering is the whole point of the queue.
+    > - **An unknown player.** Nothing special: the block is where someone first seen in a lobby finally gets a
+    >   name (`riotIdGameName`/`riotIdTagLine`), and the API stores it.
+    > - **Two companions in one game.** Each holds its own copy, both post, both get 200, exactly one sees
+    >   `created: true`, and both delete their file. No coordination between companions, ever.
+    > - **A block for a game with no lobby.** Posted with `partyId: null`; `games.lobby_id` is null and M2.5
+    >   still rates it.
+    > - **A second game on the same party the same night.** New `gameId`, new file, new pair of posts. Nothing
+    >   here caches per party (M2.14 is the server's side of that).
+    > - **The API is down all evening.** Files accumulate, capped at 50, and land the next morning.
+    >
+    > ### Acceptance check
+    >
+    > Fixture-driven against `packages/lcu/fixtures/16.17/` with a stubbed API and a stubbed client, except 5,
+    > 8 and 9, which belong to the test night.
+    >
+    > 1. Replaying the phase events of `ws-events.ndjson` with the session GET stubbed from the recording
+    >    produces exactly **two** `in_progress` POSTs — `gameId` `4000965483` and `4000969091` — each with a
+    >    `startedAt` within 100 ms of that game's `GameStart` frame (`16:34:20.911Z`, `16:37:38.903Z`).
+    > 2. Replaying the five eog frames produces exactly **one** eog POST, for `4000969091`, `winningSide: 200`.
+    >    Game `4000965483` produces zero POSTs, zero files and one log line naming it and "no winning team".
+    >    The `Delete` frame produces nothing.
+    > 3. With the session GET stubbed to `gameflow-session--in-lobby.json` (phase `Lobby`, `gameId 4000969091`)
+    >    and no `GameStart` frame: zero POSTs. A stale id is never posted.
+    > 4. `startedAt`: with the `InProgress` moment held, the eog payload carries it; feeding only the eog frame,
+    >    it is `2026-09-08T16:37:47.672Z` (`endOfGameTimestamp - gameLength * 1000` from `eog-stats-block.json`).
+    > 5. **The crash sequence, on the test night.** With the API answering 500: play a custom, confirm
+    >    `queue/<gameId>.json` exists and parses, click past the end-of-game screen so the client's GET 404s,
+    >    kill the companion (`taskkill /f`), bring the API back, start the companion — the game lands **exactly
+    >    once**, with ten `game_players` rows. Repeat with the kill placed before the first POST attempt: same
+    >    result. Run the recovery twice: still one `games` row, and `queue/` ends empty both times.
+    > 6. Permanent refusals: a stubbed 422 deletes the file and logs the reason; so does a stubbed 403. Five
+    >    consecutive 500s leave the file in place, and the fifth log line still names it.
+    > 7. The queued file reads `"[redacted]"` at `mucJwtDto` and `multiUserChatPassword`, neither original value
+    >    appears anywhere in it, and no log line carries a raw block, a lockfile password or the companion token.
+    > 8. **Kill one companion mid-game; the game still lands** (the M2 acceptance line): two companions in one
+    >    real custom, one killed at minute five — one `games` row, ten `game_players` rows.
+    > 9. **Two companions, one end of game:** both post the same block, both get 200, exactly one has
+    >    `created: true`, and the database holds one `games` row and ten `game_players` rows.
+    > 10. Connect-time fallback: with the connect phase stubbed `EndOfGame` and the GET stubbed to
+    >     `eog-stats-block.json`, exactly one POST and exactly one GET; with the GET stubbed to 404, zero POSTs,
+    >     one log line, and no second GET across 60 s of injected time.
+    > 11. A block with `gameType: "MATCHED_GAME"` produces no file and no POST.
+    > 12. 51 queued files: the oldest is deleted with a log line and the remaining 50 are posted.
+    > 13. `pnpm -r typecheck` and `pnpm -r test` pass.
+    >
+    > ### Out of scope
+    >
+    > Backfill (M5.1) and any match-history read. Any change to the ingest contract or the payload schemas —
+    > M2.10 is the contract, and if it is wrong here, stop and say so rather than widening it. The lobby post
+    > (M2.2), rank and names (M2.4), the server's state machine and rating fold (M2.5). A UI or tray indicator
+    > for the queue (M6.1). Anything that writes to the League client.
+
 - [ ] **M2.4** Rank sync: own rank on start and every 6 hours; rank for every unknown PUUID seen in a lobby, once, then weekly.
 
     > **Note (product, 2026-09-08, after M0.3).** This sweep also fetches **names**, not just ranks. Lobby
@@ -1125,6 +1275,124 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
 
 - [ ] **M2.6** Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
 
+    > **Brief (product, 2026-09-08)**
+    >
+    > **The scene.** A friend gets one link in the group chat. They download one file, double-click it, paste
+    > the token once, and never think about it again — every night after that it is already running. If setup
+    > costs them a second evening they will not run it, and a night with nobody running it is a night the bot
+    > does not exist.
+    >
+    > **What ships.** One file, `CustomsNight.exe`, and the README below. Where the file is hosted is the
+    > engineer's call (a release asset on the repo is the obvious one); record it in `04-decisions.md` and put
+    > that link into step 1 of the README as the group chat will see it. No installer, no sidecar DLLs, and no
+    > `.zip` a friend has to unpack — an unpack step is a step.
+    >
+    > **How it is built.** The companion runs on `tsx` today, with `.js` relative imports and two workspace
+    > dependencies, so a bundle comes first: one esbuild pass (`--bundle --platform=node --target=node22`) over
+    > `src/main.ts` that pulls in `@customs/lcu`, `@customs/db` and `zod`, and then Node's single-executable
+    > application or `pkg` over that bundle. **The engineer picks SEA or `pkg`, and records the choice and the
+    > reason** in `04-decisions.md`; both are acceptable and the one that produces a working exe with the least
+    > machinery wins. Add the command as `pnpm --filter companion build:exe` and list it in the commands block
+    > of `CLAUDE.md`.
+    >
+    > **Building on a Mac for Windows.** Builds happen on this Mac; the target is Windows x64. SEA injects into
+    > a `node.exe` of the same major version (>= 22, matching the repo's `engines`), which can in principle be
+    > downloaded and injected from macOS — but nothing about that is verified here. **If cross-building has not
+    > produced a working exe within an hour, build on the Windows PC instead.** It already has the repo checked
+    > out for M2.11, and which path was used goes in the README's build section. Do not spend a day on the Mac.
+    >
+    > **The API origin is baked in.** `DEFAULT_API_BASE` in `config.ts` is `http://localhost:3000`, which is the
+    > wrong answer on a friend's PC. It becomes a build-time constant: an esbuild `--define` (or an equivalent
+    > generated module) carries the deployed Vercel origin, falling back to `http://localhost:3000` when the
+    > define is absent so `pnpm --filter companion dev` is unchanged. A `config.json` with its own `apiBase`
+    > still wins over it, always. **And when the baked origin answers `GET /api/health`, the first run does not
+    > ask for an address at all** — it goes straight to the token prompt, and only falls back to today's
+    > `API address [...]` question when that check fails. One paste, not two answers. Recorded in
+    > `04-decisions.md`.
+    >
+    > **The console is the product here.** Console level stays `info` (the file keeps `debug`), and a friend's
+    > entire experience is: a starting line, the token prompt on first run only, `api reachable`, `waiting for
+    > the League client` or `connected to the League client`, then `watching`. No progress bars, no repeating
+    > poll lines, no stack traces. The first line names the app, because an unlabelled console window is the
+    > one that gets closed.
+    >
+    > ### The README, verbatim
+    >
+    > Ships as `apps/companion/README.md` and beside the download. This is friend-facing copy: an engineer who
+    > needs different wording asks product for it rather than rewriting it. A short build section for us may
+    > follow the three steps, below a horizontal rule.
+    >
+    > ```markdown
+    > # Customs Night companion
+    >
+    > This little app watches your League client and tells the bot who is in the lobby and who won, so nobody
+    > has to pick teams or report scores. It only reads the client — it never plays for you and never clicks
+    > anything in a game.
+    >
+    > ## 1. Download it
+    >
+    > Get `CustomsNight.exe` from the link in the group chat and put it somewhere you will find it again. Your
+    > desktop is fine.
+    >
+    > Windows may say it does not recognise the app. Click **More info**, then **Run anyway**. It says that
+    > about anything that is not from a big company.
+    >
+    > ## 2. Paste your token
+    >
+    > Double-click it. The first time, it asks for a token. Whoever runs the admin page makes one for you and
+    > sends it over — ask them for it. Paste it in and press Enter. You will not see it as you type; that is on
+    > purpose.
+    >
+    > It remembers the token, so this is the only time you do this.
+    >
+    > ## 3. Leave it running
+    >
+    > That is the whole job. Play League as usual. When you are in a custom lobby with the others, the teams
+    > show up in Discord on their own, and the result lands on the site when the game ends.
+    >
+    > Keep the window open while you play. Closing it breaks nothing — you just stop being the one reporting —
+    > but if nobody has it open when a game ends, that game is not counted.
+    >
+    > ## If something looks wrong
+    >
+    > The app writes down everything it did. Press Windows+R, paste `%APPDATA%\customs-night\logs`, press
+    > Enter, and send the newest file to whoever set this up. There are no passwords in it.
+    >
+    > Your token is in `%APPDATA%\customs-night\config.json`. Do not paste that file anywhere; it is yours.
+    > ```
+    >
+    > ### Acceptance check
+    >
+    > On the Windows PC (the same machine as M2.11), against the deployed API, with the League client installed:
+    >
+    > 1. **Cold install.** Download the exe, double-click it, paste the token: the console reaches `watching`
+    >    within 30 s of the League client being up. Download to `watching` in under 2 minutes, on a PC with no
+    >    Node and no pnpm, with no address typed.
+    > 2. **Second run.** Close it and run it again: no prompt, and `watching` again.
+    >    `%APPDATA%\customs-night\config.json` holds the token and the baked origin.
+    > 3. **Bad token.** A mistyped token produces one plain sentence naming the problem and pointing at the
+    >    admin page — not a stack trace, and not silence.
+    > 4. **Client restart.** With the exe running, quit and relaunch the League client: within 30 s the console
+    >    logs `lockfile changed; the client restarted` (or `lockfile gone`) and comes back to `watching`, with
+    >    no human action and no process exit.
+    > 5. **Sleep.** Sleep the PC for 2 minutes and wake it: within 60 s the console is back at `watching`, and a
+    >    lobby opened after the wake still produces a lobby POST. If the socket instead comes back silent — open
+    >    but delivering no events — fixing that (a liveness ping, or closing on a missed heartbeat) is part of
+    >    this task, and the finding goes into `03-lcu-reference.md`.
+    > 6. **Size.** One file, under **120 MB** (it carries Node; the README says so if anyone is surprised).
+    > 7. **No spam.** An hour with the client open and no lobby produces at most 20 console lines, and no line
+    >    contains the token, a lockfile password or a raw event body. The log file has the rest.
+    > 8. `pnpm -r typecheck` and `pnpm -r test` still pass, and `pnpm --filter companion dev` still starts
+    >    against `http://localhost:3000` with no config file present.
+    >
+    > ### Out of scope
+    >
+    > Code signing and anything else that removes the SmartScreen prompt — it costs money and a certificate, and
+    > the README handles it in one sentence. Auto-start with Windows, a tray icon and a status indicator (M6.1).
+    > An auto-updater: a new exe is a new link in the group chat. macOS and Linux builds — `pnpm --filter
+    > companion dev` stays the path for the two of us who develop it. Any change to what the companion does:
+    > this task changes only how it is delivered and what a friend reads.
+
 - [ ] **M2.7** `lastSplit` for the balancer: when a lobby reaches `balanced`, the API looks up the most recent chosen split (any night) whose lobby had exactly the same ten puuids as this lobby, and passes the five puuids of one of its sides as `lastSplit`. If no such split exists, it passes null. Never pass a split from a lobby with a different roster.
 
     > **Acceptance check (product).** With a stored chosen split for the same ten players, a new lobby with those
@@ -1188,6 +1456,46 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > carry a dated Windows line. `pnpm --filter lcu test` still passes.
     >
     > **Out of scope.** Packaging (M2.6). Any new endpoint. Re-verifying the M4 rows.
+
+    > **Note (product, 2026-09-08): the PC exists, and this is the run sheet.** A Windows PC with League
+    > installed is available to the user. The fallback sentence in the task line — ship macOS-verified and
+    > correct it on the first Windows install — stays on the record as plan B and is not the path. This is an
+    > afternoon on one machine.
+    >
+    > **On that PC, in order.** Node >= 22 and pnpm first (`corepack enable`):
+    >
+    > ```
+    > git clone https://github.com/suyaser/kustom.git
+    > pnpm install
+    > pnpm --filter @customs/lcu smoke --diff
+    > pnpm --filter companion dev
+    > ```
+    >
+    > The first three are the reference pass. The fourth is the **M2.1 open item**: the companion's config
+    > directory (`%APPDATA%\customs-night`), its hidden token prompt and its daily log file were written from
+    > the docs and have never executed on Windows. Run it with the client up, let it reach `watching`, then
+    > quit and relaunch the League client and watch it reconnect; Ctrl-C ends it. Its first run asks for an API
+    > address and a token: press Enter at the address, answer `y` to "Keep it anyway?" if nothing answers, and
+    > paste a real token if one has been minted or any non-empty string if not — today's hooks only log, and
+    > M2.2 and M2.3 post nothing yet.
+    >
+    > **What to paste back**, in the lead's thread:
+    >
+    > 1. The client version and the last 20 lines of `smoke --diff`, including its exit code (`echo
+    >    %ERRORLEVEL%`) and every difference it reported.
+    > 2. The lockfile line from that output: the path found and the port parsed. **Never the password, and
+    >    never the raw lockfile.**
+    > 3. Whether the process-args fallback found the same port with the lockfile hidden (point
+    >    `LCU_LOCKFILE_CANDIDATES` at a path that does not exist).
+    > 4. The two probe results from the task's edge cases: the exit code with the client closed (expect 2), and
+    >    the exit code with the client still starting up (expect 3, never a silent fall back to `insecure`).
+    > 5. The companion's first 15 console lines, through `watching` — they carry `configDir` and `logDir` — plus
+    >    what it printed when the client restarted, and a directory listing of `%APPDATA%\customs-night` and
+    >    `%APPDATA%\customs-night\logs`.
+    > 6. **Never** the companion token, the lockfile password, or a log file nobody has read first.
+    >
+    > Anything that differs from macOS goes into `03-lcu-reference.md` as a dated Windows line, not into a
+    > message: a difference nobody wrote down is a difference we find again on the first real night.
 
 - [x] **M2.13** Find out where a spectator appears in the lobby payload. Two people and ten minutes: one runs `pnpm --filter @customs/lcu record-ws` in a custom lobby, the other clicks the spectator slot and back out. The whole question is whether that person shows up in `members[]` with `isSpectator: true`, or only in `gameConfig.customSpectators[]`, or in both. Nothing in the 16.17 capture answers it — `customSpectators` was `[]` in all 30 lobby events and no member ever carried `isSpectator: true`, because it was a solo lobby with bots. Deliverable: `packages/lcu/fixtures/16.17/lobby-spectator.json`, parsed in `schemas.test.ts`, and the answer written into the lobby row and into question 3 of "Behaviors to confirm" with a date and patch.
 
@@ -1260,6 +1568,14 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > or command to volunteer to sit — that is a typed step, and this product does not have those.
 
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
+
+> **Precondition (product, 2026-09-08).** The API has to be deployed on Vercel before the test night: ten
+> friends' companions cannot reach a laptop on someone's desk, so the deployment is not an M3 nicety but the
+> thing that makes this acceptance runnable at all, and it is the origin M2.6 bakes into the exe. The Vercel
+> project needs every variable in `.env.example` plus the two M2.5 introduces — `CUSTOMS_NIGHT_TZ` (an IANA
+> name, `Africa/Cairo`) and `CRON_SECRET`, which as the M2.5 brief stands has no reader in the repo (the
+> 2-hour sweep runs on companion posts, and there is no cron route); settle that with M2.5 rather than
+> setting a secret nothing reads.
 
 > **Note (product, 2026-09-08).** Capture `lobby-10.json` on the first M2 test night. Every lobby fact in
 > `03-lcu-reference.md` comes from a one-human lobby with bots, so nothing has confirmed that a full lobby
