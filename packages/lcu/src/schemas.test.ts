@@ -3,8 +3,10 @@
  * See fixtures/README.md "Captures" for which client state each file was taken in: the smoke fixtures are
  * from the end-of-game screen of a solo custom vs bots, `lobby.json` from the custom lobby afterwards,
  * `match-detail.json` pinned to a completed 5v5 custom, `--other` files for a non-friend puuid, and
- * `ws-events.ndjson` covers two custom games from lobby to end of game. Pinned to that directory on purpose:
- * a later capture is taken in whatever state the client is in and gets its own tests when re-verified.
+ * `ws-events.ndjson` covers two custom games from lobby to end of game (first window, 16:33-16:53 UTC) and,
+ * appended, a friend accepting an invite into the post-game lobby (second window, 17:31-17:32 UTC) that
+ * `lobby--two-players.json` and `gameflow-session--in-lobby.json` were taken in. Pinned to that directory on
+ * purpose: a later capture is taken in whatever state the client is in and gets its own tests when re-verified.
  *
  * Fixtures only; nothing here reaches a live client.
  */
@@ -23,6 +25,7 @@ import {
   KNOWN_GAMEFLOW_PHASES,
   KNOWN_TIERS,
   LcuErrorSchema,
+  LobbyInvitationSchema,
   LobbyMembersSchema,
   LobbySchema,
   MatchDetailSchema,
@@ -52,17 +55,42 @@ interface RecordedLine {
   dropped?: boolean;
 }
 
-function recordedEvents(): RecordedLine[] {
+/**
+ * `ws-events.ndjson` holds three recording windows (fixtures/README.md "Captures"): the first covers two
+ * custom games solo vs bots, the second a friend joining the post-game lobby, the third that friend moved to
+ * the spectator slot and back. Tests that count lobbies or games are pinned to one window; shape tests run
+ * over all of them.
+ */
+type Window = 'first' | 'second' | 'third' | 'all';
+const WINDOWS: Record<Exclude<Window, 'all'>, { from: string; to: string }> = {
+  first: { from: '2026-09-08T16:00:00.000Z', to: '2026-09-08T17:00:00.000Z' },
+  second: { from: '2026-09-08T17:30:00.000Z', to: '2026-09-08T17:35:00.000Z' },
+  third: { from: '2026-09-08T17:38:00.000Z', to: '2026-09-08T17:40:00.000Z' },
+};
+
+function recordedEvents(window: Window = 'all'): RecordedLine[] {
   const text = readFileSync(join(FIXTURES_DIR, PATCH, 'ws-events.ndjson'), 'utf8');
   return text
     .split('\n')
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line) as RecordedLine)
-    .filter((line) => line.dropped !== true);
+    .filter((line) => line.dropped !== true)
+    .filter((line) => {
+      if (window === 'all') {
+        return true;
+      }
+      const { from, to } = WINDOWS[window];
+      return line.ts.localeCompare(from) >= 0 && line.ts.localeCompare(to) < 0;
+    });
 }
 
-function eventsFor(uri: string): RecordedLine[] {
-  return recordedEvents().filter((line) => line.uri === uri);
+function eventsFor(uri: string, window: Window = 'all'): RecordedLine[] {
+  return recordedEvents(window).filter((line) => line.uri === uri);
+}
+
+/** Non-bot puuids of a lobby member list. */
+function humanPuuids(members: readonly { puuid: string; isBot: boolean }[]): string[] {
+  return members.filter((member) => !member.isBot).map((member) => member.puuid);
 }
 
 describe(`schemas against fixtures/${PATCH}`, () => {
@@ -372,7 +400,7 @@ describe(`gameflow phases from fixtures/${PATCH}/ws-events.ndjson`, () => {
   });
 
   it('session events carry the game id from the end of champion select onward', () => {
-    const sessions = eventsFor('/lol-gameflow/v1/session').map((entry) =>
+    const sessions = eventsFor('/lol-gameflow/v1/session', 'first').map((entry) =>
       GameflowSessionSchema.parse(entry.data),
     );
     expect(sessions.length).toBeGreaterThan(20);
@@ -384,6 +412,7 @@ describe(`gameflow phases from fixtures/${PATCH}/ws-events.ndjson`, () => {
         expect(session.gameData.gameId).toBeGreaterThan(0);
         ids.add(session.gameData.gameId);
       }
+      // A lobby created from idle: no game yet.
       if (session.phase === 'Lobby') {
         expect(session.gameData.gameId).toBe(0);
       }
@@ -394,11 +423,41 @@ describe(`gameflow phases from fixtures/${PATCH}/ws-events.ndjson`, () => {
     expect(ids).toContain(lastGame);
     expect(ids).not.toContain(detailGame.gameId);
   });
+
+  it('in the lobby after a game, Lobby-phase sessions still carry the previous game id and roster', () => {
+    const previousGame = GameflowSessionSchema.parse(fixture('gameflow-session').body).gameData.gameId;
+    const self = SummonerSchema.parse(fixture('current-summoner').body);
+
+    const envelope = fixture('gameflow-session--in-lobby');
+    expect(envelope.status).toBe(200);
+    const session = GameflowSessionSchema.parse(envelope.body);
+    expect(session.phase).toBe('Lobby');
+    expect(session.gameData.gameId).toBe(previousGame);
+    expect(session.gameData.isCustomGame).toBe(true);
+    // The session is not the lobby roster: one human on each side of the lobby at this moment, and the
+    // session lists only the local player, on team one, with the champion from the previous game.
+    expect(session.gameData.teamOne.map((member) => member.puuid)).toEqual([self.puuid]);
+    expect(session.gameData.teamTwo).toEqual([]);
+    expect(session.gameData.teamOne[0]?.championId).toBeGreaterThan(0);
+    expect(session.gameClient?.running).toBe(false);
+    const raw = envelope.body as { gameData: Record<string, unknown> };
+    expect(raw.gameData.password).toBe('[redacted]');
+    expect(raw.gameData.spectatorKey).toBe('[redacted]');
+
+    const events = eventsFor('/lol-gameflow/v1/session', 'second');
+    expect(events.length).toBeGreaterThan(5);
+    for (const event of events) {
+      const fromEvent = GameflowSessionSchema.parse(event.data);
+      expect(fromEvent.phase).toBe('Lobby');
+      expect(fromEvent.gameData.gameId).toBe(previousGame);
+      expect(fromEvent.gameData.teamTwo).toEqual([]);
+    }
+  });
 });
 
 describe(`lobby events from fixtures/${PATCH}/ws-events.ndjson`, () => {
   it('Create/Update carry the lobby, Delete carries null, and partyId is stable per lobby', () => {
-    const events = eventsFor('/lol-lobby/v2/lobby');
+    const events = eventsFor('/lol-lobby/v2/lobby', 'first');
     expect(events.length).toBeGreaterThan(10);
     expect(events[0]?.eventType).toBe('Create');
     const partyIds: string[] = [];
@@ -422,7 +481,7 @@ describe(`lobby events from fixtures/${PATCH}/ws-events.ndjson`, () => {
     expect(events.filter((event) => event.eventType === 'Create')).toHaveLength(2);
 
     // The lobby is deleted when the game starts.
-    const gameStarts = eventsFor('/lol-gameflow/v1/gameflow-phase').filter(
+    const gameStarts = eventsFor('/lol-gameflow/v1/gameflow-phase', 'first').filter(
       (entry) => entry.data === 'GameStart',
     );
     const deletes = events.filter((event) => event.eventType === 'Delete');
@@ -479,6 +538,299 @@ describe(`lobby events from fixtures/${PATCH}/ws-events.ndjson`, () => {
       const members = LobbyMembersSchema.parse(event.data);
       expect(members.length).toBeGreaterThan(0);
     }
+  });
+
+  it('every human in members[] is on exactly one of customTeam100/200/customSpectators, in every event', () => {
+    // The invariant M2.2's side derivation rests on: a member is never listed without a side, on either
+    // window, before or after a join, before or after a side switch.
+    const lobbies = eventsFor('/lol-lobby/v2/lobby')
+      .filter((event) => event.eventType !== 'Delete')
+      .map((event) => LobbySchema.parse(event.data));
+    expect(lobbies.length).toBeGreaterThan(30);
+    for (const lobby of lobbies) {
+      const sides = [
+        ...humanPuuids(lobby.gameConfig.customTeam100),
+        ...humanPuuids(lobby.gameConfig.customTeam200),
+        ...humanPuuids(lobby.gameConfig.customSpectators ?? []),
+      ];
+      expect(new Set(sides).size).toBe(sides.length);
+      expect([...sides].sort()).toEqual([...humanPuuids(lobby.members)].sort());
+    }
+  });
+});
+
+describe(`two-player lobby from fixtures/${PATCH} (second capture window)`, () => {
+  function twoPlayerLobby() {
+    const envelope = fixture('lobby--two-players');
+    expect(envelope.status).toBe(200);
+    return { envelope, lobby: LobbySchema.parse(envelope.body) };
+  }
+
+  it('GET in a lobby with two humans parses; both are in members[] with distinct ids, one per side', () => {
+    const { envelope, lobby } = twoPlayerLobby();
+    const self = SummonerSchema.parse(fixture('current-summoner').body);
+    expect(lobby.gameConfig.isCustom).toBe(true);
+    expect(lobby.gameConfig.queueId).toBe(3100);
+
+    expect(lobby.members).toHaveLength(2);
+    expect(new Set(lobby.members.map((member) => member.puuid)).size).toBe(2);
+    expect(new Set(lobby.members.map((member) => member.summonerId)).size).toBe(2);
+    for (const member of lobby.members) {
+      expect(member.puuid).toMatch(/^[0-9a-f-]{36}$/);
+      expect(member.summonerId).toBeGreaterThan(0);
+      expect(member.isBot).toBe(false);
+      expect(member.isSpectator).toBe(false);
+      // Question 3 again, now with a second human: teamId is 0 for both.
+      expect(member.teamId).toBe(0);
+    }
+    const friend = lobby.members.find((member) => member.puuid !== self.puuid);
+    expect(friend).toBeDefined();
+    expect(lobby.localMember.puuid).toBe(self.puuid);
+    expect(lobby.localMember.isLeader).toBe(true);
+    expect(friend?.isLeader).toBe(false);
+    // The leader is listed first.
+    expect(lobby.members[0]?.puuid).toBe(self.puuid);
+    // An open party lets a non-leader invite but not start.
+    expect(lobby.partyType).toBe('open');
+    expect(friend?.allowedInviteOthers).toBe(true);
+    expect(friend?.allowedStartActivity).toBe(false);
+
+    expect(lobby.gameConfig.customTeam100.map((member) => member.puuid)).toEqual([self.puuid]);
+    expect(lobby.gameConfig.customTeam200.map((member) => member.puuid)).toEqual([friend?.puuid]);
+    expect(lobby.gameConfig.customSpectators).toEqual([]);
+    expect(lobby.canStartActivity).toBe(true);
+
+    const raw = envelope.body as Record<string, unknown>;
+    expect(raw.mucJwtDto).toBe('[redacted]');
+    expect(raw.multiUserChatPassword).toBe('[redacted]');
+  });
+
+  it('is the same party as lobby.json (solo, 28 minutes earlier): partyId survives an invite and a join', () => {
+    const { lobby } = twoPlayerLobby();
+    const solo = LobbySchema.parse(fixture('lobby').body);
+    expect(solo.members).toHaveLength(1);
+    expect(lobby.partyId).toBe(solo.partyId);
+    expect(
+      fixture('lobby--two-players').capturedAt.localeCompare(fixture('lobby').capturedAt),
+    ).toBeGreaterThan(0);
+  });
+
+  it('invitations[] lists every member as Accepted and an outstanding invite as Pending', () => {
+    const { lobby } = twoPlayerLobby();
+    const invitations = (lobby.invitations ?? []).map((entry) => LobbyInvitationSchema.parse(entry));
+    expect(invitations).toHaveLength(3);
+    const memberPuuids = lobby.members.map((member) => member.puuid);
+    for (const puuid of memberPuuids) {
+      const entry = invitations.find((invitation) => invitation.toPuuid === puuid);
+      expect(entry?.state).toBe('Accepted');
+      expect(entry?.timestamp).toBe('0');
+      expect(entry?.toSummonerId).toBe(lobby.members.find((member) => member.puuid === puuid)?.summonerId);
+    }
+    const pending = invitations.filter((invitation) => invitation.state === 'Pending');
+    expect(pending).toHaveLength(1);
+    expect(memberPuuids).not.toContain(pending[0]?.toPuuid);
+    // Epoch milliseconds as a string, sent before this capture.
+    expect(pending[0]?.timestamp).toMatch(/^\d{13}$/);
+    expect(Number(pending[0]?.timestamp)).toBeLessThan(Date.parse(fixture('lobby--two-players').capturedAt));
+    // summonerId is not a 32-bit number on newer accounts; it must still be a safe integer for the schema.
+    expect(pending[0]?.toSummonerId).toBeGreaterThan(2 ** 31);
+    expect(Number.isSafeInteger(pending[0]?.toSummonerId)).toBe(true);
+    // Neither field identifies an invite; toPuuid does.
+    for (const invitation of invitations) {
+      expect(invitation.invitationId).toBe('');
+      expect(invitation.invitationType).toBe('invalid');
+    }
+    // The same Pending row was already in the solo lobby.
+    const solo = LobbySchema.parse(fixture('lobby').body);
+    expect(solo.invitations?.map((entry) => entry.toPuuid)).toContain(pending[0]?.toPuuid);
+  });
+
+  it('WS: the friend enters members[] and customTeam200[] in the same Update, then the members event follows', () => {
+    const self = SummonerSchema.parse(fixture('current-summoner').body);
+    const { lobby: snapshot } = twoPlayerLobby();
+    const friend = snapshot.members.find((member) => member.puuid !== self.puuid)?.puuid ?? '';
+
+    const events = eventsFor('/lol-lobby/v2/lobby', 'second');
+    expect(events.length).toBeGreaterThan(5);
+    expect(events.every((event) => event.eventType === 'Update')).toBe(true);
+    const lobbies = events.map((event) => ({ ts: event.ts, lobby: LobbySchema.parse(event.data) }));
+    for (const { lobby } of lobbies) {
+      expect(lobby.partyId).toBe(snapshot.partyId);
+      expect(lobby.gameConfig.customSpectators).toEqual([]);
+      for (const member of lobby.members) {
+        expect(member.teamId).toBe(0);
+        expect(member.isSpectator).toBe(false);
+      }
+    }
+
+    // Before the join: one member, the friend's invite Pending, nobody on red.
+    const before = lobbies[0];
+    expect(before?.lobby.members.map((member) => member.puuid)).toEqual([self.puuid]);
+    expect(before?.lobby.gameConfig.customTeam200).toEqual([]);
+    expect(before?.lobby.invitations?.find((invitation) => invitation.toPuuid === friend)?.state).toBe(
+      'Pending',
+    );
+
+    // The join: the first event that lists the friend anywhere lists them in members[] and customTeam200[]
+    // together. There is no event where one has them and the other does not.
+    const firstInMembers = lobbies.findIndex(({ lobby }) =>
+      lobby.members.some((member) => member.puuid === friend),
+    );
+    const firstOnSide = lobbies.findIndex(({ lobby }) =>
+      [...lobby.gameConfig.customTeam100, ...lobby.gameConfig.customTeam200].some(
+        (member) => member.puuid === friend,
+      ),
+    );
+    expect(firstInMembers).toBeGreaterThan(0);
+    expect(firstOnSide).toBe(firstInMembers);
+    const join = lobbies[firstInMembers];
+    expect(join?.lobby.members.map((member) => member.puuid)).toEqual([self.puuid, friend]);
+    expect(join?.lobby.gameConfig.customTeam100.map((member) => member.puuid)).toEqual([self.puuid]);
+    expect(join?.lobby.gameConfig.customTeam200.map((member) => member.puuid)).toEqual([friend]);
+    expect(join?.lobby.invitations?.find((invitation) => invitation.toPuuid === friend)?.state).toBe(
+      'Accepted',
+    );
+    // The friend stays in members[] from then on.
+    for (const { lobby } of lobbies.slice(firstInMembers)) {
+      expect(lobby.members.map((member) => member.puuid)).toEqual([self.puuid, friend]);
+    }
+
+    // The members event comes after that Update, with the same two humans.
+    const memberEvents = eventsFor('/lol-lobby/v2/lobby/members', 'second');
+    expect(memberEvents.length).toBeGreaterThan(0);
+    expect((memberEvents[0]?.ts ?? '').localeCompare(join?.ts ?? '')).toBeGreaterThan(0);
+    expect(LobbyMembersSchema.parse(memberEvents[0]?.data).map((member) => member.puuid)).toEqual([
+      self.puuid,
+      friend,
+    ]);
+  });
+
+  it('WS: a non-leader can move to the other side; members[] order does not change and teamId stays 0', () => {
+    const self = SummonerSchema.parse(fixture('current-summoner').body);
+    const { lobby: snapshot } = twoPlayerLobby();
+    const friend = snapshot.members.find((member) => member.puuid !== self.puuid)?.puuid ?? '';
+    const lobbies = eventsFor('/lol-lobby/v2/lobby', 'second').map((event) => LobbySchema.parse(event.data));
+
+    const sides = lobbies
+      .map((lobby) => {
+        if (lobby.gameConfig.customTeam100.some((member) => member.puuid === friend)) {
+          return 100;
+        }
+        if (lobby.gameConfig.customTeam200.some((member) => member.puuid === friend)) {
+          return 200;
+        }
+        return null;
+      })
+      .filter((side, index, all) => index === 0 || side !== all[index - 1]);
+    // Not in the lobby, joined on red, switched to blue, switched back to red.
+    expect(sides).toEqual([null, 200, 100, 200]);
+
+    const bothOnBlue = lobbies.find((lobby) => lobby.gameConfig.customTeam100.length === 2);
+    expect(bothOnBlue?.gameConfig.customTeam100.map((member) => member.puuid)).toEqual([self.puuid, friend]);
+    expect(bothOnBlue?.gameConfig.customTeam200).toEqual([]);
+    expect(bothOnBlue?.members.map((member) => member.puuid)).toEqual([self.puuid, friend]);
+    expect(bothOnBlue?.members.every((member) => member.teamId === 0)).toBe(true);
+    // The local player never moved.
+    for (const lobby of lobbies) {
+      expect(lobby.gameConfig.customTeam100.map((member) => member.puuid)).toContain(self.puuid);
+    }
+  });
+});
+
+describe(`spectator from fixtures/${PATCH} (third capture window, M2.13)`, () => {
+  it('a spectator stays in members[] with isSpectator true and is listed in customSpectators, on no team', () => {
+    const self = SummonerSchema.parse(fixture('current-summoner').body);
+    const envelope = fixture('lobby--spectator');
+    expect(envelope.status).toBe(200);
+    expect(envelope.method).toBe('WS');
+    const lobby = LobbySchema.parse(envelope.body);
+    expect(lobby.partyId).toBe(LobbySchema.parse(fixture('lobby--two-players').body).partyId);
+
+    expect(lobby.members).toHaveLength(2);
+    const friend = lobby.members.find((member) => member.puuid !== self.puuid);
+    expect(friend).toBeDefined();
+    expect(friend?.isSpectator).toBe(true);
+    expect(friend?.isBot).toBe(false);
+    expect(friend?.teamId).toBe(0);
+    expect(lobby.localMember.isSpectator).toBe(false);
+    expect(lobby.members.find((member) => member.puuid === self.puuid)?.isSpectator).toBe(false);
+
+    expect(lobby.gameConfig.customSpectators?.map((member) => member.puuid)).toEqual([friend?.puuid]);
+    expect(lobby.gameConfig.customSpectators?.[0]?.isSpectator).toBe(true);
+    expect(lobby.gameConfig.customTeam100.map((member) => member.puuid)).toEqual([self.puuid]);
+    expect(lobby.gameConfig.customTeam200).toEqual([]);
+    expect(lobby.gameConfig.customSpectatorPolicy).toBe('AllAllowed');
+    // The M1.8 caller-in-members check needs no widening: the spectating companion's own puuid is in members[].
+    expect(lobby.members.map((member) => member.puuid)).toContain(friend?.puuid);
+    const raw = envelope.body as Record<string, unknown>;
+    expect(raw.mucJwtDto).toBe('[redacted]');
+    expect(raw.multiUserChatPassword).toBe('[redacted]');
+  });
+
+  it('WS: team -> spectator -> team, with the members event mirroring isSpectator each time', () => {
+    const self = SummonerSchema.parse(fixture('current-summoner').body);
+    const friend =
+      LobbySchema.parse(fixture('lobby--two-players').body).members.find(
+        (member) => member.puuid !== self.puuid,
+      )?.puuid ?? '';
+    const events = eventsFor('/lol-lobby/v2/lobby', 'third');
+    expect(events.length).toBeGreaterThan(4);
+    const lobbies = events.map((event) => ({ ts: event.ts, lobby: LobbySchema.parse(event.data) }));
+
+    const where = lobbies
+      .map(({ lobby }) => {
+        if (lobby.gameConfig.customSpectators?.some((member) => member.puuid === friend)) {
+          return 'spectator';
+        }
+        if (lobby.gameConfig.customTeam100.some((member) => member.puuid === friend)) {
+          return 100;
+        }
+        if (lobby.gameConfig.customTeam200.some((member) => member.puuid === friend)) {
+          return 200;
+        }
+        return null;
+      })
+      .filter((side, index, all) => index === 0 || side !== all[index - 1]);
+    expect(where).toEqual([100, 200, 'spectator', 200]);
+
+    for (const { lobby } of lobbies) {
+      const member = lobby.members.find((entry) => entry.puuid === friend);
+      const spectating = lobby.gameConfig.customSpectators?.some((entry) => entry.puuid === friend) ?? false;
+      // members[] always lists the friend, and its isSpectator flag agrees with customSpectators.
+      expect(member).toBeDefined();
+      expect(member?.isSpectator).toBe(spectating);
+      expect(member?.teamId).toBe(0);
+      expect(lobby.members.map((entry) => entry.puuid)).toEqual([self.puuid, friend]);
+      expect(lobby.canStartActivity).toBe(true);
+    }
+
+    const spectatorEvent = lobbies.find(({ lobby }) => (lobby.gameConfig.customSpectators?.length ?? 0) > 0);
+    expect(spectatorEvent?.ts).toBe(fixture('lobby--spectator').capturedAt);
+
+    const memberEvents = eventsFor('/lol-lobby/v2/lobby/members', 'third');
+    expect(memberEvents).toHaveLength(2);
+    const flags = memberEvents.map(
+      (event) => LobbyMembersSchema.parse(event.data).find((member) => member.puuid === friend)?.isSpectator,
+    );
+    expect(flags).toEqual([true, false]);
+  });
+
+  it("the client pushes another player's ranked stats over the socket in the ranked-stats shape", () => {
+    const self = SummonerSchema.parse(fixture('current-summoner').body);
+    const friend =
+      LobbySchema.parse(fixture('lobby--two-players').body).members.find(
+        (member) => member.puuid !== self.puuid,
+      )?.puuid ?? '';
+    const envelope = fixture('ranked-stats-by-puuid--ws-cached');
+    expect(envelope.method).toBe('WS');
+    expect(envelope.path).toBe(`/lol-ranked/v1/cached-ranked-stats/${friend}`);
+    const stats = RankedStatsSchema.parse(envelope.body);
+    const solo = stats.queueMap.RANKED_SOLO_5x5;
+    expect(solo?.queueType).toBe('RANKED_SOLO_5x5');
+    expect(KNOWN_TIERS).toContain(solo?.tier);
+    // This friend is unranked: the same "" / "NA" pair as the GET.
+    expect(solo?.tier).toBe('');
+    expect(solo?.division).toBe('NA');
   });
 });
 
