@@ -1,0 +1,19 @@
+/** Shared domain types. Kept in one leaf module so `rating/` and `balance/` never import each other. */
+
+/** Team side, matching the League client's own numbering. */
+export type Side = 100 | 200;
+
+/** The five positions, in lane order. */
+export type Role = 'top' | 'jungle' | 'mid' | 'adc' | 'support';
+
+/** All roles, in lane order. Useful for iteration and for exhaustiveness tests. */
+export const ROLES = ['top', 'jungle', 'mid', 'adc', 'support'] as const satisfies readonly Role[];
+
+/** Lobby status. Transitions are owned by the API (see docs/01-architecture.md "Lobby lifecycle"). */
+export type LobbyStatus = 'open' | 'balanced' | 'in_game' | 'finished' | 'abandoned';
+
+/** An OpenSkill rating. Balance on `mu`, rank on `ordinal`, display `round(mu * 60)`. */
+export interface Rating {
+  mu: number;
+  sigma: number;
+}
