@@ -1,7 +1,7 @@
 /**
  * Step two of the release build: wrap `dist/customs-night.cjs` in a Node single-executable application.
  *
- *   pnpm --filter companion build:win     -> dist/customs-night-<version>.exe   (Windows x64, from any host)
+ *   pnpm --filter companion build:win     -> dist/CustomsNight.exe (+ .sha256)   (Windows x64, from any host)
  *   pnpm --filter companion build:host    -> dist/customs-night-<version>-<platform>  (this machine; a check)
  *
  * How (docs: nodejs.org/api/single-executable-applications.html):
@@ -46,7 +46,8 @@ import {
   CACHE_DIR,
   companionVersion,
   DIST_DIR,
-  exeFileName,
+  EXE_NAME,
+  EXE_SHA256_NAME,
   NODE_DIST_BASE,
   NODE_RELEASE,
   NODE_SHA256,
@@ -256,7 +257,7 @@ export async function buildSea(options: SeaOptions = {}): Promise<SeaResult> {
   let output: string;
   if (target === 'win-x64') {
     source = await windowsNode();
-    output = join(DIST_DIR, exeFileName(version));
+    output = join(DIST_DIR, EXE_NAME);
   } else {
     source = host;
     output = join(DIST_DIR, `customs-night-${version}-${process.platform}-${process.arch}`);
@@ -273,7 +274,12 @@ export async function buildSea(options: SeaOptions = {}): Promise<SeaResult> {
 
   const bytes = statSync(output).size;
   const sha256 = sha256Of(output);
-  writeFileSync(`${output}.sha256`, `${sha256}  ${output.split(/[\\/]/).pop()}\n`);
+  const fileName = output.split(/[\\/]/).pop() ?? EXE_NAME;
+  // `<hash>  <name>`: the format `sha256sum -c` and `certutil` users expect.
+  writeFileSync(
+    join(DIST_DIR, target === 'win-x64' ? EXE_SHA256_NAME : `${fileName}.sha256`),
+    `${sha256}  ${fileName}\n`,
+  );
   return { target, output, bytes, sha256, version, nodeRelease: NODE_RELEASE };
 }
 

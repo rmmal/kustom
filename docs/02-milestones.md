@@ -1391,9 +1391,10 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > ## 2. Paste your token
     >
-    > Double-click it. The first time, it asks for a token. Whoever runs the admin page makes one for you and
-    > sends it over — ask them for it. Paste it in and press Enter. You will not see it as you type; that is on
-    > purpose.
+    > Double-click it. The first time, it asks for a token. If it is your first time, join one of our custom
+    > lobbies first so the bot knows you exist, then ask for the token. Whoever runs the admin page makes one for
+    > you and sends it over — ask them for it. Paste it in and press Enter. You will not see it as you type; that
+    > is on purpose.
     >
     > It remembers the token, so this is the only time you do this.
     >

@@ -12,7 +12,7 @@
     "build:win": "tsx build/sea.ts --target win-x64",
     "build:exe": "tsx build/sea.ts --target win-x64",
     "build:host": "tsx build/sea.ts --target host",
-    "upload": "tsx build/upload.ts",
+    "publish": "tsx build/publish.ts",
     "release": "tsx build/release.ts"
   },
   "dependencies": {
@@ -26,7 +26,6 @@
     "postject": "1.0.0-alpha.6",
     "tsx": "4.23.13",
     "typescript": "5.9.3",
-    "undici": "8.10.2",
     "vitest": "5.0.0"
   }
 }

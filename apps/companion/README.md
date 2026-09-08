@@ -1,9 +1,48 @@
-# apps/companion
+# Customs Night companion
 
-The process a friend leaves running: it watches the local League client through `@customs/lcu` and posts
-lobbies, results and ranks to the API with a bearer companion token. The friend-facing copy is
-`README-friends.md` (product copy, shipped verbatim beside the download as `latest/README.txt`); this file is
-for us.
+This little app watches your League client and tells the bot who is in the lobby and who won, so nobody
+has to pick teams or report scores. It only reads the client — it never plays for you and never clicks
+anything in a game.
+
+## 1. Download it
+
+Get `CustomsNight.exe` from the link in the group chat and put it somewhere you will find it again. Your
+desktop is fine.
+
+Windows may say it does not recognise the app. Click **More info**, then **Run anyway**. It says that
+about anything that is not from a big company.
+
+## 2. Paste your token
+
+Double-click it. The first time, it asks for a token. If it is your first time, join one of our custom
+lobbies first so the bot knows you exist, then ask for the token. Whoever runs the admin page makes one for
+you and sends it over — ask them for it. Paste it in and press Enter. You will not see it as you type; that
+is on purpose.
+
+It remembers the token, so this is the only time you do this.
+
+## 3. Leave it running
+
+That is the whole job. Play League as usual. When you are in a custom lobby with the others, the teams
+show up in Discord on their own, and the result lands on the site when the game ends.
+
+Keep the window open while you play. Closing it breaks nothing — you just stop being the one reporting —
+but if nobody has it open when a game ends, that game is not counted.
+
+## If something looks wrong
+
+The app writes down everything it did. Press Windows+R, paste `%APPDATA%\customs-night\logs`, press
+Enter, and send the newest file to whoever set this up. There are no passwords in it.
+
+Your token is in `%APPDATA%\customs-night\config.json`. Do not paste that file anywhere; it is yours.
+
+---
+
+## Building it (for us)
+
+Everything above the rule is the friend-facing copy from the M2.6 brief in `docs/02-milestones.md`, verbatim;
+`build/publish.ts` ships it beside the download as `README.txt`. Change it there and here together, or not at
+all. What follows is for whoever builds and publishes the exe.
 
 ```
 src/main.ts          startup, flags (--version, --help), signals
@@ -13,10 +52,10 @@ src/lobbyWatcher.ts  POST /api/companion/lobby on every roster change (M2.2)
 src/gameWatcher.ts   end-of-game capture, disk queue, POST /api/companion/game (M2.3)
 src/rankSync.ts      own rank every 6 h, other ranks when the server asks (M2.4)
 src/log.ts           daily JSON log file (debug) plus the console (info)
-build/               the release build (M2.6): bundle, exe, upload
+build/               the release build (M2.6): bundle, exe, publish
 ```
 
-## Running from source
+### Running from source
 
 ```
 pnpm --filter companion dev            # tsx src/main.ts; API origin defaults to http://localhost:3000
@@ -24,15 +63,16 @@ CUSTOMS_NIGHT_CONFIG_DIR=/tmp/cn pnpm --filter companion dev   # a throwaway con
 CUSTOMS_NIGHT_LOG_LEVEL=debug pnpm --filter companion dev      # everything the file gets, on the console too
 ```
 
-## Building the exe
+### Building the exe
 
-One file, `dist/customs-night-<version>.exe`, no installer, no sidecar. Version is `package.json` `version`.
+One file, `dist/CustomsNight.exe`, no installer, no sidecar. The version is `package.json` `version`.
 
 ```
 pnpm --filter companion bundle       # esbuild: src/main.ts + workspace deps -> dist/customs-night.cjs
-pnpm --filter companion build:win    # bundle, then Node SEA -> dist/customs-night-<version>.exe (+ .sha256)
+pnpm --filter companion build:win    # bundle, then Node SEA -> dist/CustomsNight.exe + CustomsNight.exe.sha256
 pnpm --filter companion build:host   # the same, for this machine (macOS/Linux): a runnable check of the pipeline
-pnpm --filter companion release      # build:win, then upload to the public bucket; prints the public URLs
+pnpm --filter companion publish      # GitHub release v<version> with the exe, its hash and README.txt
+pnpm --filter companion release      # build:win, then publish
 ```
 
 How it works (`build/sea.ts`): the bundle is a single CommonJS file with the API origin, the version and
@@ -52,26 +92,22 @@ Run anyway" is a README sentence.
 The API origin defaults to the deployed Vercel URL (`RELEASE_API_BASE`); `CUSTOMS_NIGHT_API_BASE` overrides it
 for a build against another deployment. A `config.json` with its own `apiBase` always wins over the baked one.
 
-## Publishing
+### Publishing
 
-`pnpm --filter companion release` (or `upload` after a `build:win`) needs
-`CUSTOMS_NIGHT_RELEASE_SERVICE_ROLE_KEY` in the environment (see `.env.example`). It creates the public bucket
-`releases` on the hosted project if missing and upserts three objects:
+Releases are GitHub release assets on the public repo `suyaser/kustom-releases` (the app repo stays
+private; the Supabase bucket could not take a 90 MB object on the Free plan). One release per version, tag
+`v<version>`, assets `CustomsNight.exe`, `CustomsNight.exe.sha256` and `README.txt`. The link for the group
+chat never changes:
 
 ```
-https://ubwpmxujdzssfqfbrbej.supabase.co/storage/v1/object/public/releases/latest/CustomsNight.exe
-https://ubwpmxujdzssfqfbrbej.supabase.co/storage/v1/object/public/releases/v<version>/CustomsNight.exe
-https://ubwpmxujdzssfqfbrbej.supabase.co/storage/v1/object/public/releases/latest/README.txt
+https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe
 ```
 
-The project ref is hard-coded in `build/config.ts` and the upload refuses any other. Bump `version` in
-`package.json` before a release so the versioned object is new; `latest` is overwritten. The upload runs
-with no timeout (undici) because the exe is 90 MB and an uplink can be slow; the project's **global file
-size limit** must allow it (Free plan caps it at 50 MB, which returns `413 EntityTooLarge`; Pro lets it be
-raised in Storage settings). The README object is uploaded first so a transport or auth problem shows before
-the large one.
+`pnpm --filter companion publish` runs `gh release create` with the `gh` CLI's own login (`gh auth login`
+once; no token variable). If `gh` is not logged in it prints the exact command and exits 1. Bump `version`
+in `package.json` before a release: a tag that already exists is refused by GitHub, which is the point.
 
-## Tests
+### Tests
 
 `pnpm --filter companion test` runs against the in-process fake client and fake API (no League, no network).
 `build/bundle.test.ts` bundles to a temp file and runs it under plain `node` with `--version` and `--help`,

@@ -6,7 +6,9 @@
  *   copy for the blob, the win-x64 `node.exe` for the target) and never relies on whatever `node` is on PATH.
  * - The API origin baked into the exe (`DEFAULT_API_BASE` in `src/config.ts`), overridable per build with
  *   `CUSTOMS_NIGHT_API_BASE`. `pnpm --filter companion dev` never sees it and stays on localhost.
- * - Where the release is published: the public Supabase Storage bucket `releases` on the hosted project.
+ * - Where the release is published: GitHub releases on the public repo `suyaser/kustom-releases` (lead,
+ *   2026-09-09; the Supabase bucket could not take a 90 MB object on the Free plan). The link in the group
+ *   chat is `RELEASE_LATEST_URL`; each version is a tag `v<version>` with three assets.
  */
 
 import { readFileSync } from 'node:fs';
@@ -22,7 +24,22 @@ export const CACHE_DIR = join(COMPANION_DIR, 'build', 'cache');
 export const BUNDLE_FILE = join(DIST_DIR, 'customs-night.cjs');
 
 export const RIOT_ROOT_CA_FILE = join(REPO_ROOT, 'packages', 'lcu', 'certs', 'riotgames.pem');
-export const FRIEND_README_FILE = join(COMPANION_DIR, 'README-friends.md');
+
+/**
+ * `apps/companion/README.md`: the friend-facing copy from the M2.6 brief, verbatim, above a horizontal rule;
+ * our build notes below it. `friendReadme()` returns the part above the rule, which ships as `README.txt`.
+ */
+export const README_FILE = join(COMPANION_DIR, 'README.md');
+export const README_RULE = '\n---\n';
+
+export function friendReadme(): string {
+  const text = readFileSync(README_FILE, 'utf8');
+  const rule = text.indexOf(README_RULE);
+  if (rule < 0) {
+    throw new Error(`${README_FILE} has no horizontal rule separating the friend copy from the build notes`);
+  }
+  return text.slice(0, rule).trimEnd().concat('\n');
+}
 
 /** Node release carried by the exe. LTS "Krypton". Change it here and nowhere else. */
 export const NODE_RELEASE = '24.20.0';
@@ -47,7 +64,7 @@ export function apiBaseForBuild(env: NodeJS.ProcessEnv = process.env): string {
   return override && override.length > 0 ? override : RELEASE_API_BASE;
 }
 
-/** The version stamped into the exe and its file name: `apps/companion/package.json` `version`. */
+/** The version stamped into the exe and the release tag: `apps/companion/package.json` `version`. */
 export function companionVersion(): string {
   const pkg = JSON.parse(readFileSync(join(COMPANION_DIR, 'package.json'), 'utf8')) as { version?: unknown };
   if (typeof pkg.version !== 'string' || !/^\d+\.\d+\.\d+/.test(pkg.version)) {
@@ -56,34 +73,18 @@ export function companionVersion(): string {
   return pkg.version;
 }
 
-export function exeFileName(version: string): string {
-  return `customs-night-${version}.exe`;
+/** The one file a friend downloads, named as the README names it. */
+export const EXE_NAME = 'CustomsNight.exe';
+export const EXE_SHA256_NAME = `${EXE_NAME}.sha256`;
+export const README_ASSET_NAME = 'README.txt';
+
+export const RELEASE_REPO = 'suyaser/kustom-releases';
+export const RELEASE_LATEST_URL = `https://github.com/${RELEASE_REPO}/releases/latest/download/${EXE_NAME}`;
+
+export function releaseTag(version: string): string {
+  return `v${version}`;
 }
 
-/**
- * Object keys in the bucket, exactly as the M2.6 brief states them: the link in the group chat is
- * `.../releases/latest/CustomsNight.exe`, the versioned copy is `.../releases/v<version>/CustomsNight.exe`.
- */
-export const RELEASE_EXE_OBJECT = 'CustomsNight.exe';
-export const LATEST_EXE_KEY = `latest/${RELEASE_EXE_OBJECT}`;
-export const LATEST_README_KEY = 'latest/README.txt';
-
-export function versionedExeKey(version: string): string {
-  return `v${version}/${RELEASE_EXE_OBJECT}`;
-}
-
-/**
- * The hosted Supabase project the release goes to. Hard-coded on purpose: the user also owns an unrelated
- * project, and the upload refuses any other ref (`upload.ts`).
- */
-export const RELEASE_PROJECT_REF = 'ubwpmxujdzssfqfbrbej';
-export const RELEASE_BUCKET = 'releases';
-export const RELEASE_KEY_ENV = 'CUSTOMS_NIGHT_RELEASE_SERVICE_ROLE_KEY';
-
-export function storageBaseUrl(projectRef: string): string {
-  return `https://${projectRef}.supabase.co/storage/v1`;
-}
-
-export function publicObjectUrl(projectRef: string, name: string): string {
-  return `${storageBaseUrl(projectRef)}/object/public/${RELEASE_BUCKET}/${name}`;
+export function releaseAssetUrl(version: string, asset: string): string {
+  return `https://github.com/${RELEASE_REPO}/releases/download/${releaseTag(version)}/${asset}`;
 }
