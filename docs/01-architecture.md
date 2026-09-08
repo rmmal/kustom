@@ -198,10 +198,16 @@ watching: on lobby event -> POST /api/companion/lobby
 ## Security
 
 - Companion tokens are random 32 bytes, stored hashed, one per player, revocable from admin.
-- The API never trusts a PUUID claim beyond what the companion reports; a companion can only report games it was
-  in: the token's player PUUID must appear among the participants of the posted game, or the API answers 403.
-  The companion's end-of-game payload is flattened and carries no `localPlayer`, so participation is the check.
-  Backfill is the exception, and it is admin-approved the first time per player.
+- The API never trusts a PUUID claim beyond what the companion reports; a companion can only report games and
+  lobbies it was in. Both checks run before anything is written, so a refusal leaves no row behind.
+  - Games: the token's player PUUID must appear among the participants of the posted game, or the API answers
+    403. The companion's end-of-game payload is flattened and carries no `localPlayer`, so participation is the
+    check. Backfill is the exception, and it is admin-approved the first time per player.
+  - Lobbies: the token's player PUUID must appear in the posted `members` — `isSpectator: true` counts — or the
+    caller must already be that lobby's `reported_by_player_id`, or the API answers 403. The posted list
+    replaces the roster, so without this one stale companion could delete another lobby's members. The
+    `reported_by_player_id` fallback is what lets the companion that owns the lobby post the "everyone left"
+    empty list, which by definition cannot contain the caller.
 - Supabase Row Level Security: public read on `seasons`, `ratings`, `lobbies`, `lobby_members`, `splits`, `games`
   and `game_players`, plus `players` through the `players_public` view. `companion_tokens`,
   `companion_commands` and `discord_config` have no read policy at all. Writes only through the service role

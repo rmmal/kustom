@@ -7,6 +7,10 @@ import type { ServiceClient } from '../supabase';
  *
  * PUUID is the identity. Riot IDs and summoner ids are display data: refreshed when the
  * client reports them, never used to match a row and never overwritten with null.
+ *
+ * `display_name` (M1.7) is the name the group reads on every surface. It follows the Riot
+ * `gameName` automatically until an admin overrides it, and goes back on automatic when the
+ * admin clears the override — see `isDisplayNameAutomatic`.
  */
 
 export interface PlayerIdentityInput {
@@ -32,7 +36,19 @@ export async function ensurePlayers(
 
   const puuids = [...wanted.keys()];
 
-  const inserts: PlayerInsert[] = puuids.map((puuid) => ({ puuid }));
+  // A new row is created with everything the client just told us, `display_name` included:
+  // on creation the display name *is* the reported `gameName` (null when none was reported,
+  // e.g. a PUUID first seen in an eog block). Existing rows are untouched here.
+  const inserts: PlayerInsert[] = puuids.map((puuid) => {
+    const input = wanted.get(puuid);
+    return {
+      puuid,
+      summoner_id: input?.summonerId ?? null,
+      game_name: input?.gameName ?? null,
+      tag_line: input?.tagLine ?? null,
+      display_name: input?.gameName ?? null,
+    };
+  });
   const { error: insertError } = await client
     .from('players')
     .upsert(inserts, { onConflict: 'puuid', ignoreDuplicates: true });
@@ -42,7 +58,7 @@ export async function ensurePlayers(
 
   const { data, error } = await client
     .from('players')
-    .select('id, puuid, summoner_id, game_name, tag_line')
+    .select('id, puuid, summoner_id, game_name, tag_line, display_name')
     .in('puuid', puuids);
   if (error) {
     throw new Error(`ensurePlayers: select failed: ${error.message}`);
@@ -61,7 +77,14 @@ export async function ensurePlayers(
     if (input.summonerId != null && input.summonerId !== row.summoner_id) {
       patch.summoner_id = input.summonerId;
     }
-    if (input.gameName != null && input.gameName !== row.game_name) patch.game_name = input.gameName;
+    if (input.gameName != null) {
+      if (input.gameName !== row.game_name) patch.game_name = input.gameName;
+      // The Riot ID moved: carry the display name with it, but only while nobody has
+      // overridden it. An admin's name survives every rename after it.
+      if (isDisplayNameAutomatic(row) && input.gameName !== row.display_name) {
+        patch.display_name = input.gameName;
+      }
+    }
     if (input.tagLine != null && input.tagLine !== row.tag_line) patch.tag_line = input.tagLine;
     if (Object.keys(patch).length === 0) continue;
 
@@ -77,6 +100,18 @@ export async function ensurePlayers(
   }
 
   return ids;
+}
+
+/**
+ * "Nobody has overridden this name." True while `display_name` still equals the `gameName` we
+ * stored last time, and true when it is null — clearing the admin field posts `""`, stores
+ * null, and that is how a row is put back on automatic (M1.7).
+ */
+export function isDisplayNameAutomatic(row: {
+  game_name: string | null;
+  display_name: string | null;
+}): boolean {
+  return row.display_name === null || row.display_name === row.game_name;
 }
 
 /**
