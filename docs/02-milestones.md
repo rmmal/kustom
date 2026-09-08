@@ -8,7 +8,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
-| M1 Foundation | done | All tasks M1.1 to M1.10 done; product acceptance met 2026-09-08. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
+| M1 Foundation | done | M1.1 to M1.10 done; M1.11 (auth callback query string) queued after M2.5 leaves apps/web. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.1, M2.2, M2.9, M2.10, M2.13 done; M2.14+M2.5 and M2.3+M2.4 in flight. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -405,6 +405,24 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > `pnpm --filter web build` still passes. M3.4 replaces the whole page and this task is not a constraint
     > on it.
 
+
+- [ ] **M1.11** Discord sign-in never comes back to the hosted site. `/auth/signin` appends `?next=/admin` to the `redirect_to` it hands Supabase, so the allow-list entry `https://kustom-delta.vercel.app/auth/callback` never matches and Supabase silently falls back to the project's Site URL. Observed live 2026-09-08: signing in on the deployed site landed on `http://localhost:3000/?code=...`, which nobody can complete. **Fix:** `/auth/signin` stores `next` in a short-lived HttpOnly, same-site cookie (10 minutes) and sends `redirect_to` as the bare `<siteOrigin>/auth/callback`; `/auth/callback` reads and clears the cookie, validates that `next` is a same-origin path (leading `/`, no scheme, no `//`), and defaults to `/admin`. Owner: `web-engineer`, after the M2.5 work leaves `apps/web`.
+
+    > **Why (product).** `/admin` is where a companion token is minted, and a token is the first thing a friend
+    > needs. Today nobody can reach the admin page on the deployed site at all: the sign-in round trip ends on
+    > somebody's localhost. That blocks the M2 test night as surely as a missing deployment does, and it is not
+    > a thing a friend can work around.
+    >
+    > **Acceptance check.** The sign-in 303's `Location` carries a `redirect_to` with **no query string**. A
+    > sign-in started from `/admin` lands on `/admin`; one started from another page lands on that page; with no
+    > cookie at all the callback lands on `/admin`. A `next` of `https://example.com/x`, `//example.com/x` or
+    > anything without a leading slash is ignored and the default is used. The cookie is `HttpOnly`, same-site,
+    > and gone after the callback. The existing integration tests for the admin gate still pass. The hosted
+    > allow-list then needs exactly one entry, `https://kustom-delta.vercel.app/auth/callback`: say so in
+    > `apps/web/README.md` and delete the wildcard workaround note there.
+    >
+    > **Out of scope.** Anything else about the sign-in (providers, session length, the gate itself). The
+    > deployment (the M2 precondition). Linking Discord ids (M1.6, done).
 
 Acceptance: `pnpm -r test` green; a curl with a valid token creates a lobby row and a game row; a second identical curl changes nothing.
 
