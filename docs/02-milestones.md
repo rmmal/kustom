@@ -550,6 +550,14 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > to the M2.5 rating gate, the lobby state machine or the M2.9 freeze. No match-history or backfill shapes
     > (M5). No champion-name or icon lookup. No packaging.
 
+    > **Correction (product, 2026-09-08, written with the M2.5 brief).** Point 6 above says a `TerminatedInError`
+    > lobby "stays `in_game` and ages out to `abandoned` on the existing idle rule (M2.5)". The second half is
+    > wrong and M2.5 does not implement it: the 2-hour idle sweep covers `open` and `balanced` only, because
+    > `abandoned` keeps the replace semantics (M2.9) while an `in_game` roster must stay frozen forever. Such a
+    > lobby stays `in_game`, and M5.5 — "lobbies that reached `in_game` and never finished" — is the surface that
+    > lists it. Everything else in point 6 stands: the block is not posted, a block that reaches the API anyway is
+    > refused by name, nothing is written, nothing is rated, and no status is invented for it.
+
 - [x] **M2.1** `apps/companion` CLI: config file, first-run token prompt, connection state machine with reconnect and backoff, structured logs with rotation.
 
     > **Note (product, 2026-09-08, after M0.3).** The companion subscribes to the firehose
@@ -562,6 +570,134 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > on; that is the gameplay line in `03-lcu-reference.md`, and it is easier to hold when the events never
     > get past the filter.
 - [ ] **M2.2** Lobby watcher: on every lobby WS event, POST the member list with sides and spectator flags. Debouncing lives on the server, not here. Needs M2.10: sides come from `gameConfig.customTeam100`/`customTeam200`, never `members[].teamId`, and bots are filtered before posting.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **The scene.** Friends trickle into a custom lobby over a couple of minutes. Nothing is asked of them. On
+    > someone's PC a companion is running, and every time the lobby changes it tells the server who is in it — with
+    > their names, so the teams post reads like a group of friends and not a list of hex strings. That is this
+    > task: a faithful mirror of the lobby, pushed the instant it changes. It decides nothing. The ten seconds, the
+    > balance, the sit-outs and the states are all M2.5.
+    >
+    > **Input: one URI.** The companion reads `/lol-lobby/v2/lobby` events off the firehose (M2.1) and nothing else
+    > for this feature. `/lol-lobby/v2/lobby/members` fires 1-2 ms later with the members array **and no
+    > `gameConfig`**, so it cannot say which side anyone is on; it is dropped at the filter. Recorded in
+    > `04-decisions.md`. Parse every event with `LobbySchema` (`packages/lcu`); a body that does not parse is
+    > logged once with the URI and dropped, never crashing the watcher.
+    >
+    > **The payload** is `companionLobbyPayloadSchema` as M2.10 leaves it, built by the shared mapper M2.10 puts in
+    > one place:
+    >
+    > - `partyId` — `partyId` from the event body.
+    > - `lobbyName` — `gameConfig.customLobbyName`.
+    > - `lobbyPassword` — **always `null`.** There is no password anywhere in the 16.17 lobby body (checked against
+    >   all three lobby fixtures; the only `*assword` key is `multiUserChatPassword`, which is a chat credential
+    >   and is scrubbed, never sent). The column fills in with M4.1, when the companion is the one that set the
+    >   password. Recorded in `04-decisions.md`; M3.1's `Lobby` field is simply absent until then.
+    > - `members[]` — one entry per **human in `members[]`**. Never build the list from the team arrays: bots live
+    >   in `customTeam100`/`customTeam200` with `puuid: ""` and are not in `members[]` at all.
+    >   - `puuid` — as reported.
+    >   - `side` — from the same event, never from a later one: `customTeam100` → `100`, `customTeam200` → `200`,
+    >     in `customSpectators` or in none of the three → `null`. `members[].teamId` is `0` in a custom lobby and
+    >     must not be read (question 3 of the reference; decision row already exists).
+    >   - `isSpectator` — `true` when the puuid is in `customSpectators` **or** the member carries
+    >     `isSpectator: true`. On 16.17 the two always agree (question 9); the `or` costs nothing and survives the
+    >     day they do not.
+    >   - `summonerId` — normalised to a decimal string (M2.10, point 1).
+    >   - `gameName` / `tagLine` — whatever the companion already knows; see below. Never blocks the post.
+    > - **Bots are dropped before the payload is built** (`isBot: true`, or an empty or all-zero puuid), and dropped
+    >   *before* the caller-in-members check, so a bot can never push the local player out of a payload that would
+    >   then be refused (M2.10, point 4).
+    >
+    > **Names, without ever waiting.** Lobby members carry no `gameName`/`tagLine` and `summonerName` is `""`, so
+    > the first time the group meets someone the roster has a blank where their name goes. The companion fixes that
+    > without holding anything up:
+    >
+    > 1. Post immediately, with `gameName: null` for anyone it has no name for.
+    > 2. In the background, for each unknown puuid, `GET /lol-summoner/v2/summoners/puuid/{puuid}` (verified), at
+    >    most once per puuid per process, at most five lookups a second. Its own puuid comes free from
+    >    `current-summoner`.
+    > 3. When lookups finish, re-post the current roster once, coalesced, with the names filled in. The member set
+    >    has not changed, so M2.5's clock does not restart and the names arrive well inside the ten seconds — the
+    >    teams post is readable the first time it appears.
+    > 4. A lookup that 404s, times out or fails is logged **once** for that puuid and never retried in this
+    >    process. The roster is still correct without it; M2.4's sweep is the other route to a name.
+    >
+    > **Posting rules.**
+    >
+    > - **At most one POST in flight.** Events arrive in bursts (the 16.17 recording has eleven lobby events inside
+    >   400 ms). Keep only the newest payload while a post is in flight and send that one when it completes; drop
+    >   everything it superseded. A lobby post is only interesting while it is current, so — unlike the eog block
+    >   (M2.3) — nothing is queued to disk and nothing is retried from a previous run.
+    > - **A failed post** is retried with the existing backoff, but only while it is still the newest payload.
+    > - **`recheckInMs`** in the response (M2.5): if it is a number, re-post the identical payload after that many
+    >   milliseconds, unless a real lobby event has produced a newer one first. This is how "unchanged for ten
+    >   seconds" ever gets observed on a server with no timers. `null` means do nothing.
+    > - **`ranksNeeded`** in the response (M2.5, consumed by M2.4): hand it to the rank sync and otherwise ignore it.
+    > - **403** means the caller is not in the lobby they posted, which should be impossible; log one line with the
+    >   party id and stop posting that party until the next `Create`.
+    > - **On connect**, if the client is already in a lobby, `GET /lol-lobby/v2/lobby` once and post it. A 404
+    >   (`LOBBY_NOT_FOUND`) means there is no lobby: post nothing. This is the "someone started the companion after
+    >   everyone had already joined" case, and it is the common one on a real night.
+    > - **On `Delete` (data null), post nothing.** The `Delete` fires 30-100 ms after the phase hits `GameStart`,
+    >   so a post here would be an empty roster arriving moments before the game post — it would wipe the ten
+    >   people we are about to need. A lobby that really dissolved is handled by M2.5's 2-hour idle rule instead.
+    >   Recorded in `04-decisions.md`.
+    >
+    > **Edge cases.**
+    >
+    > - **Fewer than ten, more than ten.** The companion does not count. It posts what it sees, every time.
+    > - **Someone leaves mid-lobby.** One more event, one more post, the shorter list. The server's replace
+    >   semantics do the rest while the lobby is `open` or `balanced`; from `in_game` on the response says
+    >   `rosterFrozen: true` and the companion just logs it (M2.9).
+    > - **Companion disconnects.** No posts while it is down. On reconnect, the "already in a lobby" GET above puts
+    >   the roster back in one request.
+    > - **Two companions in one lobby.** Both post the same list; the server dedupes on `lcu_party_id` and only the
+    >   first becomes `reported_by_player_id`. No coordination between companions, ever.
+    > - **A friend in the spectator slot.** They are in `members[]` with `isSpectator: true` and in
+    >   `customSpectators` (question 9), so their own companion's post contains their puuid and passes the M1.8
+    >   check. Nothing special to do — but the fixture-backed check below is what keeps it that way.
+    > - **An unknown player.** Posted with a null name on the first event and a real name a second later, via the
+    >   name path above. The post is never delayed for them.
+    > - **A member the client has not placed** (in `members[]`, in none of the three arrays): `side: null`,
+    >   `isSpectator: false`. That is a valid roster, not an error, and it is how an eleventh player can reach the
+    >   server at all.
+    >
+    > **Acceptance check.**
+    >
+    > Fixture-driven, no live client required (`packages/lcu/fixtures/16.17/`).
+    >
+    > 1. Replaying every `/lol-lobby/v2/lobby` event in `ws-events.ndjson` through the mapper produces a payload
+    >    that `companionLobbyPayloadSchema.parse` accepts for each one, with a non-empty `partyId` and no throw on
+    >    the two `Delete` frames.
+    > 2. `lobby.json` → one member, `side: 100`, `isSpectator: false`, `lobbyName: "PRT Empty's Game"`,
+    >    `lobbyPassword: null`.
+    > 3. `lobby--two-players.json` → two members, one `side: 100`, one `side: 200`, neither a spectator.
+    > 4. `lobby--spectator.json` → two members; the spectator has `isSpectator: true` and `side: null`, the other
+    >    `side: 100`; the spectator's puuid is present, not dropped.
+    > 5. A synthetic event built from `lobby.json` with an extra member `{ isBot: true, puuid: "" }` in `members[]`
+    >    and a bot puuid in `customTeam100` posts exactly the human members, and the local player is still in the
+    >    payload.
+    > 6. The two `Delete` frames produce zero POSTs.
+    > 7. Connect-while-in-lobby: with the GET stubbed to `lobby.json`, exactly one POST goes out; with it stubbed
+    >    to a 404, zero POSTs and one log line.
+    > 8. Coalescing: feed the eleven events between 16:36:41.502 and 16:36:46.976 with a post that takes 500 ms —
+    >    at most two POSTs are made and the last one carries the state of the last event.
+    > 9. Names: a member whose puuid the process has not seen is posted with `gameName: null` within 50 ms; exactly
+    >    one `summoner-by-puuid` call is made for that puuid however many events arrive; when it resolves (stubbed
+    >    from `summoner-by-puuid--other.json`) exactly one extra POST goes out with `gameName` and `tagLine` filled;
+    >    a stubbed 404 produces one log line, no extra POST, and no retry.
+    > 10. `recheckInMs: 7000` in a response with no further events produces exactly one identical repost at
+    >     7 s (±1 s); `recheckInMs: null` produces none.
+    > 11. No log line contains a raw event body, and none contains `mucJwtDto` or `multiUserChatPassword`
+    >     (`scrub.ts`, M2.1).
+    > 12. `pnpm -r typecheck` and `pnpm -r test` pass.
+    >
+    > **Out of scope.** Debouncing, counting to ten, deciding anything about sides or sit-outs (all M2.5). The
+    > gameflow and end-of-game path (M2.3). Rank and the name *sweep* on a schedule (M2.4 — this task looks a name
+    > up only for someone it can see in a lobby right now). Creating lobbies, inviting, switching sides (M4).
+    > Anything that reads or posts to a champion-select or matchmaking URI, ever.
+
 - [ ] **M2.3** Game capture: on gameflow `InProgress` POST the game ID against the lobby; on `EndOfGame` fetch the eog block and POST it. Needs M2.10 for the payload shape (derived `startedAt`, `detectedTeamPosition` roles, real stat keys, `TerminatedInError` dropped). Handle the case where the client reaches `EndOfGame` while the companion was reconnecting: on connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post.
 
     > **Note (product, 2026-09-08, after M0.3).** Two facts from the 16.17 capture change how this task is
@@ -620,6 +756,116 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > Why it matters: without this, the first night a new friend plays, the teams embed has their rating and
     > a blank where their name should be until their first game ends. `losses` from the client is `0` for
     > anyone but yourself — do not read it, here or anywhere (M2.10, point 12).
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **The scene.** A friend plays with the group for the first time. Before anyone has typed their name anywhere,
+    > the teams post shows them with a name the group recognises and a rating that already looks roughly right,
+    > because the client knew their rank and the companion asked. Nobody was interviewed, nobody was "added". Six
+    > hours later the same quiet pass keeps everyone's rank current. Nothing a player can see happens in this task
+    > except that the two things they would have had to tell us are already there.
+    >
+    > **Two reads, one post.** For each PUUID this pass handles, the companion does:
+    >
+    > - `GET /lol-ranked/v1/ranked-stats/{puuid}` (verified 16.17, works for friends and non-friends alike) — or
+    >   `GET /lol-ranked/v1/current-ranked-stats` for its own player;
+    > - `GET /lol-summoner/v2/summoners/puuid/{puuid}` (verified) for `gameName` and `tagLine`;
+    >
+    > and posts both in one `POST /api/companion/rank`. That needs two optional fields on
+    > `companionRankPayloadSchema`: **`gameName` and `tagLine`, both `optionalText`, both nullable.**
+    > `ingestRank` passes them to `ensurePlayers`, which already refreshes `game_name`, `tag_line` and the
+    > automatic `display_name` and already refuses to overwrite an admin's override (M1.7). Flag the two fields for
+    > M2.10 — they are part of that contract pass, not a change made behind it. Recorded in `04-decisions.md`.
+    >
+    > **Normalisation, in the companion, before posting.**
+    >
+    > - Read only `queueMap.RANKED_SOLO_5x5`. Flex is not our ladder and TFT queues are noise.
+    > - Unranked is `tier: ""` with `division: "NA"`. Both become `null`, and a null tier forces a null division —
+    >   otherwise `"NA"` survives `optionalText` and prints on the player page as a division (M2.10, point 12).
+    > - `leaguePoints` → `lp`. A missing or negative value is `null`.
+    > - **`losses` is not read, not carried, not stored.** It is `0` for everyone but yourself, so it is not truth.
+    >   Wins and losses come from our own `games` rows. The string `losses` should not appear in the companion's
+    >   source at all.
+    > - `queue` stays `RANKED_SOLO_5x5`; the API ignores any other queue (`SEEDING_QUEUE` in `lib/ingest/rank.ts`).
+    > - A tier string we have never seen is posted **as the client said it**. `packages/core` treats anything it
+    >   does not recognise as unranked, so a new tier name never breaks ingest and shows up in the data instead.
+    >
+    > **Who counts as unknown: the server says so.** The companion holds no staleness rule. The lobby response
+    > (M2.5, M2.2) gains `ranksNeeded: string[]` — the puuids **among the members just posted** whose `players` row
+    > has `rank_updated_at` null or older than 7 days, capped at the member limit. That is the whole "once, then
+    > weekly": the server's 7-day window is the schedule, and a player drops off the list the moment their POST
+    > lands. One rule, one place, and a fix ships with the API instead of with a new exe on ten friends' PCs.
+    > Recorded in `04-decisions.md`.
+    >
+    > The companion keeps only a small in-memory guard so a burst of lobby posts cannot fetch the same puuid twice:
+    > a set of "asked in the last hour", cleared on restart. It is a de-duplicator, not a policy.
+    >
+    > **Own rank: on start and every 6 hours.** Immediately after the first successful client connection, then on a
+    > 6-hour interval, from an injected clock so it is testable. A restart re-posts; that is fine and cheap.
+    >
+    > **Privacy line: the companion posts a rank or a name only for a PUUID the server asked for, or its own.**
+    > The firehose carries `/lol-ranked/v1/cached-ranked-stats/{puuid}` `Update` events (question 10) for lobby
+    > members *and for the whole friends list*, in the same shape `RankedStatsSchema` already parses. Use it only as
+    > a shortcut: if an event arrives for a puuid that is currently in `ranksNeeded`, take it and skip the GET.
+    > Never post from an event for anyone else. Our database is a record of a group of friends' customs, not a
+    > scrape of somebody's friends list. Recorded in `04-decisions.md`.
+    >
+    > **Pacing and failure.** At most five client calls a second across this whole pass, so a lobby of ten unknown
+    > players cannot stall the client. A failed or 404 lookup is logged once per puuid per hour and simply left for
+    > the next lobby response, which will still list that puuid because `rank_updated_at` never moved. No retry
+    > loop, no backoff storm, and never a blocked lobby post.
+    >
+    > **Edge cases.**
+    >
+    > - **Fewer than ten, more than ten.** Irrelevant here: this pass is per PUUID, and it works from whoever the
+    >   server asked about.
+    > - **Someone leaves mid-lobby.** A lookup already in flight for them still posts. A rank row for a player who
+    >   is not in the lobby any more is correct data, and their `players` row already exists.
+    > - **Companion disconnects.** The pass stops. On reconnect, the first lobby response lists whoever is still
+    >   unknown, so nothing is lost, only delayed.
+    > - **Two companions in one lobby.** Both get the same `ranksNeeded` and both may post the same rank. The
+    >   second write is the same values plus a fresher `rank_updated_at`: harmless, idempotent, no dedupe needed.
+    > - **Unknown player.** First lobby event: posted with a null name and no rank; they balance at
+    >   `mu 20.00, sigma 10.00`. Their rank usually lands within a second or two — inside M2.5's ten-second window —
+    >   and they balance from their real rank instead. If it lands later, nothing needs fixing: M2.5 writes no
+    >   `ratings` row until a game is actually rated, so the next balance simply uses the newer rank. A rating that
+    >   already exists is **never** re-seeded from a rank.
+    > - **A player who is genuinely unranked.** `tier: null` forever, seeded 20/10 every time until they play.
+    >   They must not be re-asked more often than anyone else: `rank_updated_at` is set on every stored rank
+    >   report, unranked included, or the 7-day window never closes for them.
+    >
+    > **Acceptance check.**
+    >
+    > Fixtures in `packages/lcu/fixtures/16.17/`; the client and the API are stubbed; the clock is injected.
+    >
+    > 1. On start: exactly one `current-ranked-stats` GET and exactly one `POST /api/companion/rank` for the
+    >    companion's own puuid, with `tier`, `division` and `lp` taken from `current-ranked-stats.json` and
+    >    `queue: 'RANKED_SOLO_5x5'`.
+    > 2. An unranked reading (`tier: ""`, `division: "NA"`) posts `tier: null` and `division: null`.
+    > 3. A lobby response with `ranksNeeded: [a, b]` produces exactly two `ranked-stats/{puuid}` GETs, exactly two
+    >    `summoner-by-puuid` GETs and exactly two rank POSTs, each carrying `gameName` and `tagLine`
+    >    (asserted against `ranked-stats-by-puuid--other.json` and `summoner-by-puuid--other.json`).
+    > 4. The next lobby response repeating the same `ranksNeeded` within the hour produces **zero** further client
+    >    calls.
+    > 5. A `cached-ranked-stats` WS event for a puuid in `ranksNeeded` satisfies it with no GET; the same event for
+    >    a puuid that was never asked about produces no call and no POST.
+    > 6. Six hours of injected time: exactly two own-rank POSTs in seven hours, and no other player is refetched
+    >    because of the timer.
+    > 7. `grep -r losses apps/companion/src` finds nothing.
+    > 8. A `ranked-stats` GET that 500s produces one log line, no crash, no retry loop, and the lobby post that
+    >    carried the `ranksNeeded` still succeeded.
+    > 9. Server side, against the local stack: a rank POST carrying `gameName` sets `players.game_name` and the
+    >    automatic `display_name`, leaves an admin-set `display_name` alone, sets `rank_updated_at`, and the same
+    >    puuid is absent from `ranksNeeded` on the next lobby post. A puuid with `rank_updated_at` 8 days old is
+    >    present in it.
+    > 10. `pnpm -r typecheck` and `pnpm -r test` pass, and the ranked and summoner rows of
+    >     `03-lcu-reference.md` still match what this code reads.
+    >
+    > **Out of scope.** Seeding and re-seeding ratings (M2.5). Flex queue, LP history, win/loss records, and
+    > anything drawn from `wins` (M5). Rank on the tonight page or the leaderboard (M3). Match history (M5.1).
+    > Any lookup by Riot ID or summoner name — PUUID is the identity and this task never resolves anything the
+    > other way round.
+
 - [ ] **M2.5** Server: lobby state machine (open, balanced, in_game, finished, abandoned) with the 10-second stability rule; on eog, insert `games` and `game_players`, run `rateGame`, update `ratings`. Ignore eog blocks whose `gameType` is not `CUSTOM_GAME`.
 
     > **Note (product).** M1.5 already stores *every* `CUSTOM_GAME` eog block as a `games` row, remakes and
@@ -627,6 +873,217 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > it. Gate rating on the stored row: rate only when it has ten participants, five per side, and `durationS`
     > above 300 seconds (5 minutes); otherwise keep the row and leave `ratings` untouched. M2.5 records that
     > threshold in `04-decisions.md`. M2.3 may decide not to post remakes at all; the gate stands either way.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **The scene.** The tenth friend joins the lobby. Ten seconds later two teams are on the screen. They play.
+    > By the time the client is back in the lobby, the ratings have already moved. Nobody typed anything, nobody
+    > pressed anything, and nobody told the server that a game had started or who won. M2.5 is the whole server
+    > half of that scene: what "ready" means, when it fires, and what an end-of-game block does to the
+    > leaderboard. Discord is M3.1 — every acceptance check below must pass with the webhook switched off.
+    >
+    > **Where it lives.** One new module (`apps/web/lib/lobbyState.ts`) plus the two companion routes and the
+    > ingest files that already exist. `packages/core` gains nothing: it already exports `balance`, `explain`,
+    > `nextSplit`, `rateGame`, `seedFromRank` and `predictWin`, and everything here is I/O and policy. The three
+    > numbers live at the top of the new module and nowhere else: `ROSTER_STABLE_MS = 10_000`,
+    > `IDLE_ABANDON_MS = 7_200_000` (2 h), `MIN_RATED_DURATION_S = 300`.
+    >
+    > ### The transition table
+    >
+    > | From | To | Signal | What else happens |
+    > |---|---|---|---|
+    > | — | `open` | first lobby post for an unseen `lcu_party_id` | lobby row inserted (M1.5), members replaced |
+    > | `open` | `open` | lobby post whose non-spectator roster differs from what is stored | members replaced, the roster clock restarts |
+    > | `open` | `balanced` | lobby post whose non-spectator roster is byte-identical to what is stored **and** the clock says the last change was 10 s ago or more **and** there are ten or more of them | the ten are selected, `balance()` runs, three `splits` rows are inserted |
+    > | `balanced` | `open` | lobby post whose non-spectator roster differs | members replaced, clock restarts, the old splits stay (they are history, and `roster_key` keeps them findable) |
+    > | `balanced` | `balanced` | lobby post with an identical roster | nothing at all — no second balance, no new splits |
+    > | `open` or `balanced` | `in_game` | game post with `phase: 'in_progress'` whose `partyId` resolves to this lobby | the roster freezes (M2.9) from this moment |
+    > | `in_game` | `finished` | `phase: 'eog'` post, `gameType === 'CUSTOM_GAME'`, whose `partyId` resolves to this lobby | `games` + `game_players` are written (M1.5 code), then the rating fold |
+    > | `open` or `balanced` | `finished` | the same eog post, when the `in_progress` post never arrived | same, and the roster freezes on the way through |
+    > | `open` or `balanced` | `abandoned` | the idle sweep: the lobby row's `updated_at` is more than 2 h old | nothing else; the roster keeps replace semantics (M2.9) |
+    >
+    > Everything not in that table is not a transition. `finished` and `abandoned` are terminal. **`in_game` never
+    > ages out** — see "The sweep" below, and note that this corrects half a sentence in the M2.10 brief.
+    >
+    > ### How "unchanged for 10 seconds" is measured with no timers
+    >
+    > Vercel gives us no timer, no queue and, on the free plan, no cron worth having. So the rule is measured on
+    > the posts we already get, and the server tells the companion when to knock again.
+    >
+    > 1. **The roster's identity** is `rosterKey()` from `@customs/db` over the puuids of the posted members with
+    >    `isSpectator: false`, bots already dropped (M2.10, point 4). Sorted, so member order and side churn never
+    >    look like a change. Sides, names, `role_override`, the lobby name and the password are **not** part of
+    >    the identity: a friend swapping from blue to red must not restart the clock, because the balancer assigns
+    >    sides itself.
+    > 2. **The clock** is the lobby row's own `updated_at`. Ingest already reads the stored members before it
+    >    writes; when the identity differs from what is stored, it replaces the members **and** writes the lobby
+    >    row (`status = 'open'`), which fires `lobbies_set_updated_at` and restarts the clock. When the identity is
+    >    the same, nothing is written and `updated_at` stays where it was. `now() - updated_at >= ROSTER_STABLE_MS`
+    >    is the whole stability rule. A lobby-name change also touches the row and so costs one more recheck; that
+    >    is acceptable and is not worth a column.
+    > 3. **The knock.** The lobby response gains `recheckInMs: number | null`. The server returns the milliseconds
+    >    left on the clock (minimum 1000, `ROSTER_STABLE_MS` when the roster just changed) whenever the roster has
+    >    ten or more non-spectators and the lobby is still `open`; `null` in every other case, including fewer than
+    >    ten and already `balanced`. The companion re-posts the identical payload after that delay unless a real
+    >    lobby event supersedes it (M2.2). That keeps the ten seconds in one place — the server — and leaves the
+    >    companion with no rule to get wrong, only a number to obey.
+    > 4. **Two companions.** The transition is claimed with a compare-and-set:
+    >    `update lobbies set status = 'balanced' where id = ? and status = 'open'`. Only the request whose update
+    >    returns a row balances and inserts splits; the loser answers 200 and writes nothing. If the split insert
+    >    then fails, the lobby is `balanced` with no splits for its current `roster_key`; the next post (or the next
+    >    recheck) sees that and balances again. Say so in a comment — it is the self-healing path, not a bug.
+    >
+    > **The sweep.** At the start of every companion lobby and game post, one statement:
+    > `update lobbies set status = 'abandoned' where status in ('open','balanced') and updated_at < now() - interval '2 hours'`.
+    > The partial index `lobbies_open_idx` covers it. `in_game` is deliberately **not** in that list: `abandoned`
+    > keeps the replace semantics (M2.9) and an `in_game` roster must stay frozen, so a lobby whose game was
+    > dropped by the server stays `in_game` for good and M5.5 is the surface that lists it. This corrects the
+    > second half of point 6 of the M2.10 brief; nothing else in that point changes.
+    >
+    > ### Choosing the ten, and who sits
+    >
+    > The candidate pool is the lobby's members with `is_spectator = false` (bots are already gone). Spectators are
+    > never balanced and are never in the sit-out list — they are already sitting.
+    >
+    > - **Exactly ten:** those ten.
+    > - **More than ten:** order the pool by (a) games played tonight, most first; (b) least recent sit-out first
+    >   (a player who has never sat out sorts first); (c) `puuid` ascending. The first `n - 10` sit; the rest play.
+    >   In one sentence for a friend: *whoever has played the most sits, and between equals, whoever has gone
+    >   longest without sitting.*
+    > - **"Tonight"** is the calendar day, in the timezone named by `CUSTOMS_NIGHT_TZ` (an IANA name, default
+    >   `UTC`), containing the moment of the balance, counted over `games.started_at` joined through
+    >   `game_players`. Add the variable to `.env.example` and `readServerEnv`. Recorded in `04-decisions.md`.
+    > - **"Sat out"** needs no table and gets no column. A sit-out is: the player was a `lobby_members` row of a
+    >   lobby that reached `in_game` or `finished`, and has no `game_players` row for that lobby's game. The most
+    >   recent such game's `started_at` is their last sit-out. One query per balance over a night's worth of
+    >   lobbies; do not cache it.
+    > - **The sit-out list is derived, never stored:** it is the non-spectator members minus the ten in the chosen
+    >   split. M3.1 and M3.4 read it that way, so it can never disagree with the split beside it.
+    >
+    > In practice a custom lobby caps each side at five, so the eleventh friend usually lands in the spectator slot
+    > rather than in this pool, and the rotation above never sees them. That is a real hole in the nightly loop's
+    > step 6 and it is **not** M2.5's to fix — it is written up as **M2.15**. The path above still
+    > earns its place: a member the client has not placed on either side arrives with `side: null` and
+    > `isSpectator: false`, and that is an eleventh candidate.
+    >
+    > ### The balance call
+    >
+    > On the transition to `balanced`, and only then:
+    >
+    > - Build one `BalancePlayer` per selected player from `lobby_members` + `players` + `ratings` (active season):
+    >   `puuid`, `name` = `display_name` (M1.7 guarantees one), `mu`/`sigma`, `mainRole` = `players.main_role`,
+    >   `secondaryRole` = `players.secondary_role`, `roleOverride` = `lobby_members.role_override` when set.
+    > - **No `ratings` row: seed in memory with `seedFromRank(players.rank_tier, players.rank_division)`** — no rank
+    >   at all gives `mu 20.00, sigma 10.00`. **Do not write a `ratings` row here.** Rows are written by the rating
+    >   fold and by nothing else, which is what makes "re-seed a new player until they have actually played" free:
+    >   with no row, every balance re-reads their newest rank, and the moment they finish a game the fold writes the
+    >   row and the seeding stops. There is no explicit re-seed code and there must not be one.
+    > - `duos`: pass none. Duo locks have no source yet (no UI, no column); they land with M3.6 at the earliest.
+    >   Say `duos: []` and leave a comment naming this line, so the day duos exist there is one place to change.
+    > - `lastSplit`: M2.7's lookup — the newest `is_chosen` split whose `roster_key` equals this ten's
+    >   `rosterKey()`, taking the five puuids of its `blue`. Null when there is none.
+    > - Store all three returned splits in one insert: `rank` 1..3, `blue`/`red` as the balancer's
+    >   `{ puuid, role }` arrays, `gap`, `blue_win_prob`, `score`, `off_role_count`, `explanation` verbatim from
+    >   core (never recomposed), `roster_key` = `rosterKey()` of the ten, `is_chosen` on rank 1 only.
+    > - **A rebalance must clear `is_chosen` on that lobby's earlier splits in the same write.**
+    >   `splits_one_chosen_per_lobby_idx` allows exactly one chosen row per lobby and will reject the insert
+    >   otherwise. The old rows stay; only the flag moves.
+    > - `balance()` throws on anything but exactly ten (`BalanceError`). That throw must never reach the companion:
+    >   log one line and answer 200 with the lobby left `open`.
+    >
+    > ### The rating fold
+    >
+    > On an eog post, after `ingestEogGame` has written `games` and `game_players` (M1.5 code, unchanged):
+    >
+    > 1. **Gate.** Rate only when the stored game has exactly ten `game_players` rows, five with `side = 100` and
+    >    five with `side = 200`, and `duration_s > 300`. Otherwise keep the row, leave `ratings` untouched, log one
+    >    line naming which clause failed. 300 exactly is not rated. A `TerminatedInError` block never gets this far
+    >    (the companion drops it, the API refuses it, M2.10 point 6) and must never be rated even if it does.
+    > 2. **Claim.** Rating runs exactly once per game, and the claim is the null rating column, not a new column:
+    >    the update that writes `mu_before/sigma_before/mu_after/sigma_after` for the game's ten rows carries
+    >    `where game_id = ? and mu_after is null`. If it affects zero rows, this game was already rated — answer
+    >    200 and stop. If it affects ten, this request owns the fold. Anything between zero and ten is a crash
+    >    scar: log it loudly, finish the rows you claimed, and leave the rest to the M5.2 rebuild.
+    > 3. **Before.** For each of the ten, the current `ratings` row for `games.season_id`, or a `seedFromRank` seed
+    >    when there is none. Order each side by `puuid` ascending so the two arrays handed to `rateGame` are
+    >    deterministic and a rebuild produces the same numbers.
+    > 4. **Rate.** `rateGame(blue, red, winningSide)` with the real `{ mu, sigma }`. Write the four columns on
+    >    `game_players`, then upsert `ratings`: `mu`, `sigma` from the result, `games = games + 1`,
+    >    `wins = wins + (side === winningSide ? 1 : 0)`. Read-then-write is fine here — the claim above serialises
+    >    the same game, and one group cannot play two games at once.
+    > 5. **The lobby.** Move it to `finished` (from `in_game`, `balanced` or `open`). An eog whose `partyId`
+    >    resolves to no lobby is stored with `lobby_id: null` and **still rated** — ratings do not depend on a
+    >    lobby ever having existed, which is also what makes backfill (M5.1) possible.
+    >
+    > ### Edge cases
+    >
+    > - **Fewer than ten.** Stays `open` forever, no splits, no post, `recheckInMs: null`. Nine people who sit
+    >   there for an hour cost the server nothing.
+    > - **Eleven to fourteen non-spectators.** Selection above picks ten; `balance()` still receives exactly ten.
+    >   If selection cannot produce exactly ten (a tie the comparator cannot break is impossible once `puuid` is
+    >   the last key, so this means a bug), log and leave the lobby `open`. A wrong ten is worse than no teams.
+    > - **Someone leaves while `balanced`.** Back to `open`, clock restarts, the earlier three splits stay in the
+    >   table. When the roster returns to those same ten, M2.7's `lastSplit` lookup will find the chosen one of
+    >   them and the balancer will avoid repeating it — that is the repeat-split penalty doing its job across a
+    >   rebalance, and it is correct.
+    > - **Companion disconnects.** Nothing happens: no posts, no transitions, and the lobby ages out after 2 h. If
+    >   it comes back it re-posts and the clock restarts. There is no state on the server that decays in between.
+    > - **Two companions in one lobby.** Both post the same roster; the identity check makes the second post a
+    >   no-op, the CAS makes the balance happen once, `lcu_party_id` and `lcu_game_id` make the writes idempotent.
+    >   Two companions must produce exactly three splits and one `games` row.
+    > - **Unknown player joins.** A `players` row appears lazily (M1.5), with no rank until M2.4's sweep answers.
+    >   They balance at `mu 20.00, sigma 10.00`, they are never marked in any output, and if their rank lands
+    >   before their first game finishes they are seeded from it instead. After their first rated game they have a
+    >   `ratings` row and their rank never seeds them again.
+    > - **A game the server dropped.** No eog is posted; the lobby stays `in_game`; the group opens a new lobby.
+    > - **An eog for a lobby that is already `finished`.** Repeat post: no rows change, no re-rating, 200.
+    >
+    > ### Acceptance check
+    >
+    > Integration tests against the local Supabase stack, in the style of `companion.integration.test.ts`, with an
+    > injected clock so the 10 s and 2 h waits are not real.
+    >
+    > 1. Post nine members, wait 30 s of injected time, post again: `status: 'open'`, zero `splits` rows,
+    >    `recheckInMs: null`, HTTP 200 both times.
+    > 2. Post ten: `recheckInMs` is 10000 (or less on the repost), `status: 'open'`, zero splits. Repost the
+    >    identical ten at +10 s: `status: 'balanced'`, exactly **3** `splits` rows, exactly one `is_chosen` with
+    >    `rank = 1`, and all three carry the same `roster_key`, equal to `rosterKey()` of the ten puuids.
+    > 3. Repost the identical ten again: still exactly 3 split rows, still `balanced`, and the chosen split's id is
+    >    unchanged.
+    > 4. Swap one member: `status: 'open'`, still 3 split rows. Post the new ten at +10 s: **6** split rows, still
+    >    exactly one `is_chosen`, and it belongs to the newer set.
+    > 5. Post eleven non-spectators where one player already has 2 `game_players` rows tonight and the rest have 0:
+    >    the chosen split's ten exclude that player, and `lobby_members` still has eleven rows.
+    > 6. `phase: 'in_progress'` for that party: `status: 'in_game'`. Repost the lobby with three members:
+    >    `rosterFrozen: true` and `lobby_members` still has the full count (M2.9 regression check).
+    > 7. Post an eog with ten participants, five a side, `durationS: 900`: `status: 'finished'`, one `games` row,
+    >    ten `game_players` rows with all four rating columns non-null, ten `ratings` rows with `games = 1` and
+    >    `wins = 1` for exactly the five on `winningSide`. Post the same eog again from a second token: every one
+    >    of those numbers is unchanged and no `ratings.updated_at` moved.
+    > 8. Gate: `durationS: 300` → stored, `mu_after` null on all ten, zero `ratings` rows. `durationS: 301` → rated.
+    >    Nine participants → stored, not rated. Six-and-four → stored, not rated.
+    > 9. An eog whose `partyId` matches no lobby: `games.lobby_id` is null and the ten players are still rated.
+    > 10. A player with no `ratings` row and no rank in `players`: their `mu_before` is `20` and `sigma_before` is
+    >     `10`. A player with `PLATINUM`/`I` and no row: `28.25` and `8.33`.
+    > 11. Idle: a lobby whose `updated_at` is 2 h 1 min old is `abandoned` after any later companion post; one at
+    >     1 h 59 min is untouched; one in `in_game` at 3 h old is still `in_game`.
+    > 12. Two identical posts fired concurrently at the 10 s mark produce exactly 3 splits and one `is_chosen`.
+    > 13. `pnpm -r typecheck` and `pnpm -r test` pass; `docs/04-decisions.md` has the rows listed below.
+    >
+    > ### Decisions this task records in `04-decisions.md`
+    >
+    > The stability clock and `recheckInMs`; the 300-second rating gate; the 2-hour sweep excluding `in_game`;
+    > "tonight" and `CUSTOMS_NIGHT_TZ`; the sit-out ordering and how a sit-out is derived; the null-`mu_after`
+    > claim as the rate-once guarantee. Several of these are already written above — the row is the durable record,
+    > not a second decision.
+    >
+    > ### Out of scope
+    >
+    > Discord, entirely (M3.1, M3.3). The tonight page (M3.4). Reroll (M3.2) — this task only sets `is_chosen` on
+    > rank 1 and must not add an endpoint that moves it. Duos and role overrides as an input surface (M3.6). Voice
+    > (M4). The rating rebuild (M5.2) and season carryover (M5.3). Any new column or migration: if one turns out to
+    > be unavoidable, stop and tell the lead rather than adding it here. Reusing a party id for a second game the
+    > same night is **M2.14** and needs the lead's decision; M2.5 ships with `finished` terminal.
 
 - [ ] **M2.6** Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
 
@@ -716,6 +1173,29 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > **Out of scope.** The ten-human lobby fixture (see the note under this milestone's acceptance line).
     > M4's lobby creation. Any spectator-facing UI.
+
+- [ ] **M2.14** One `lcu_party_id` covers a whole night, so today only the first game of the night can ever be balanced. `lobbies.lcu_party_id` is unique and M2.9 freezes the roster from `in_game` through `finished`, so once the first game ends the party's lobby row is terminal — and the client keeps the same party. Evidence in `packages/lcu/fixtures/16.17/ws-events.ndjson`: party `e3c69392` was created at 16:36:41, its game ran 16:37:39 (`GameStart`) to 16:53:05 (`EndOfGame`), and the same party id was still emitting lobby `Update` events at 17:39:27 with no new `Create` and no new id. Needs a decision from the lead before it is built, because the smallest fix is a migration: drop the unique constraint on `lcu_party_id` and replace it with a partial unique index for the live row (`where status in ('open','balanced','in_game')`), so a post to a party whose newest lobby is `finished` starts a fresh lobby row while the old one keeps its frozen ten and its `games` link. `selectLobby` (lobby ingest) and `findLobbyId` (game ingest) then resolve a party to its newest live row.
+
+    > **Why (product).** This is the whole scene failing at 21:30. Game one gets teams; game two, three and
+    > four get silence, and the group goes back to arguing while the bot watches. It is also the case that
+    > M2.7 and the repeat-split penalty exist for — "not the same five again" only means something across
+    > games of one night. Ship M2.5 without it if the lead prefers, but the first test night will find it.
+    >
+    > **Acceptance check.** Drive a lobby to `finished`. Post the same party id again with the same ten:
+    > a second `lobbies` row exists, the first still has its ten frozen members and its `games` row, the new
+    > one balances after 10 s, and `lastSplit` for it is the five puuids of the first game's chosen split, so
+    > the second game's teams are not a repeat. The tonight page shows one live lobby, not two.
+
+- [ ] **M2.15** The eleventh friend is a spectator, so the sit-out rotation never sees them. A custom lobby caps each side at five, so an eleventh person who joins lands in the spectator slot (`isSpectator: true`, in `customSpectators`) rather than in the pool M2.5 balances from. M2.5 excludes spectators from balancing by design, which means the rotation promised in step 6 of the nightly loop — "who sits next game based on who sat last" — only ever fires for an unplaced member, which may not happen at all. Decide whether a spectator with fewer games tonight than someone on a team is a candidate to play, and if so, what the group is told: the teams post would have to name someone in the spectator slot as playing and someone on a team as sitting, and they would have to swap seats in the client themselves. Copy goes through product.
+
+    > **Why (product).** Eleven around is an ordinary Tuesday, and the person in the spectator slot is
+    > frequently the one running the companion because they have nothing else to do. Today they sit every
+    > game until they think to move themselves, and the referee never says a word about it.
+    >
+    > **Acceptance check.** Eleven in the lobby, ten on the teams and one spectating, where the spectator has
+    > the fewest games tonight: the chosen split contains the spectator, the sit-out line names the player
+    > they replace, and both are told in one sentence what to click. Ten in the lobby with a spectator who
+    > has played every game: nothing changes and no sit-out line appears.
 
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
 
