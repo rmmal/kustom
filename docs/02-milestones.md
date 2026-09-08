@@ -8,7 +8,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), spectator shape (M2.13, needs a friend to click the spectator slot), Windows run (M2.11). |
-| M1 Foundation | in progress | M1.1 to M1.6 and M1.8 done; product acceptance met; M1.7 ingest half done (admin field open), M1.9 and M1.10 open. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
+| M1 Foundation | done | All tasks M1.1 to M1.10 done; product acceptance met 2026-09-08. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.9 done early (roster freeze); M2.1 in flight; M2.10 (payload alignment) next, before M2.2/M2.3. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -334,7 +334,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
 
 - [x] **M1.5** `apps/web` API skeleton: companion token auth middleware, `POST /api/companion/lobby`, `POST /api/companion/game`, `POST /api/companion/rank`, all zod-validated, writing to Supabase with idempotency on `lcu_party_id` and `lcu_game_id`. Lazy player creation by PUUID.
 - [x] **M1.6** `/admin`: Discord OAuth via Supabase Auth, `is_admin` gate. Pages to list players, set roles, link a Discord ID, mint and revoke companion tokens, edit `discord_config`, create a season. Seed the first admin by PUUID in a migration or env var. The role editor must be able to clear a main or secondary role back to null, not only change it — a null main means flexible (M1.4), and there has to be a way back to it.
-- [ ] **M1.7** Give every player a name a friend recognises. `players.display_name` is written nowhere today: `ensurePlayers` only fills `summoner_id`, `game_name` and `tag_line`, and `/admin/players` has no field for it, so every row lands with `display_name` null and stays that way. `/admin/players` shows `—` for every name, `/admin/tokens` shows an 8-character PUUID fragment, and M1.4's explanation string is built from `display_name` (M1.4 brief, "Input"), so the first Discord embed would read `Next best: swap  and , gap 170`. Fill `display_name` from the Riot `gameName` when a `players` row is created and when the client reports a changed `gameName`, and add a display-name field to the `/admin/players` row form so an admin can override it with what the group actually calls someone. An admin-set name is never overwritten by the client.
+- [x] **M1.7** Give every player a name a friend recognises. `players.display_name` is written nowhere today: `ensurePlayers` only fills `summoner_id`, `game_name` and `tag_line`, and `/admin/players` has no field for it, so every row lands with `display_name` null and stays that way. `/admin/players` shows `—` for every name, `/admin/tokens` shows an 8-character PUUID fragment, and M1.4's explanation string is built from `display_name` (M1.4 brief, "Input"), so the first Discord embed would read `Next best: swap  and , gap 170`. Fill `display_name` from the Riot `gameName` when a `players` row is created and when the client reports a changed `gameName`, and add a display-name field to the `/admin/players` row form so an admin can override it with what the group actually calls someone. An admin-set name is never overwritten by the client.
 
     > **Brief (product, 2026-09-08)**
     >
@@ -383,7 +383,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > whose player is in the list as `isSpectator: true` gets 200. Posting an unknown `partyId` with the
     > caller in the list still creates the lobby.
 
-- [ ] **M1.9** Rewrite the minted-token page for the friend who has to use it (`apps/web/lib/admin/tokenPage.ts`). It currently ends "Paste it into the companion's first-run prompt (`%APPDATA%/customs-night/config.json`)", which reads as if the file path is where you paste. Copy goes through product; the replacement wording is below and must ship verbatim.
+- [x] **M1.9** Rewrite the minted-token page for the friend who has to use it (`apps/web/lib/admin/tokenPage.ts`). It currently ends "Paste it into the companion's first-run prompt (`%APPDATA%/customs-night/config.json`)", which reads as if the file path is where you paste. Copy goes through product; the replacement wording is below and must ship verbatim.
 
     > **Copy (product, 2026-09-08).** Body, in order:
     >
@@ -399,7 +399,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > exactly one HTTP response and in no URL or cookie, and `renderMintedTokenPage`'s existing escaping test
     > still passes.
 
-- [ ] **M1.10** The placeholder tonight page (`apps/web/app/page.tsx`, from M1.1) renders "Nothing tonight yet." followed by a bare `<ul>` of `top jungle mid adc support` with no explanation, and `/admin` links friends to it as "Tonight". Anyone who opens the site during M2 sees what looks like a broken page. Pure copy until M3.4 replaces the page: keep the heading, replace the body with `Nothing tonight yet. When ten of you are in a custom lobby with the companion running, the teams show up here.` and drop the role list.
+- [x] **M1.10** The placeholder tonight page (`apps/web/app/page.tsx`, from M1.1) renders "Nothing tonight yet." followed by a bare `<ul>` of `top jungle mid adc support` with no explanation, and `/admin` links friends to it as "Tonight". Anyone who opens the site during M2 sees what looks like a broken page. Pure copy until M3.4 replaces the page: keep the heading, replace the body with `Nothing tonight yet. When ten of you are in a custom lobby with the companion running, the teams show up here.` and drop the role list.
 
     > **Acceptance check.** `/` renders the heading and that one sentence, no role list, and nothing else.
     > `pnpm --filter web build` still passes. M3.4 replaces the whole page and this task is not a constraint
@@ -916,7 +916,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > **Out of scope.** Changing the sort, the rating model, or `ordinal`. No separate "new players" board, no
     > provisional/placement badge that hides a rating, no change to how teams are balanced — balancing is on
     > `mu` and is unaffected.
-- [ ] **M3.9** Make starting a season a deliberate act. `/admin/seasons` has a name field and a `Start` button that fires on one click. From M3.5 on, that click empties the leaderboard: `ratings` is keyed `(player_id, season_id)`, nothing is carried over until M5.3, and there is no undo — the old season's rows survive but every public page reads the active one. Require a typed confirmation (the name of the season being ended) before the post is accepted, and say in the response what just happened. The copy on the page already spells out the consequence (product, 2026-09-08); this is the guardrail behind it.
+- [x] **M3.9** Make starting a season a deliberate act. `/admin/seasons` has a name field and a `Start` button that fires on one click. From M3.5 on, that click empties the leaderboard: `ratings` is keyed `(player_id, season_id)`, nothing is carried over until M5.3, and there is no undo — the old season's rows survive but every public page reads the active one. Require a typed confirmation (the name of the season being ended) before the post is accepted, and say in the response what just happened. The copy on the page already spells out the consequence (product, 2026-09-08); this is the guardrail behind it.
 
     > **Why (product).** Everything else in `/admin` is reversible in one more click. This is the only button
     > in the app that destroys a month of the group's history in the eyes of everyone who looks at the board,
