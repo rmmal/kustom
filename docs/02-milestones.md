@@ -7,9 +7,9 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 
 | Milestone | Status | Notes |
 |---|---|---|
-| M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), spectator shape (M2.13, needs a friend to click the spectator slot), Windows run (M2.11). |
+| M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | All tasks M1.1 to M1.10 done; product acceptance met 2026-09-08. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.9 done early (roster freeze); M2.1 in flight; M2.10 (payload alignment) next, before M2.2/M2.3. |
+| M2 Companion v1: roster and results | in progress | M2.9 and M2.13 done; M2.1 and M2.10 in flight; M2.2/M2.3 after M2.10. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -694,7 +694,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > **Out of scope.** Packaging (M2.6). Any new endpoint. Re-verifying the M4 rows.
 
-- [ ] **M2.13** Find out where a spectator appears in the lobby payload. Two people and ten minutes: one runs `pnpm --filter @customs/lcu record-ws` in a custom lobby, the other clicks the spectator slot and back out. The whole question is whether that person shows up in `members[]` with `isSpectator: true`, or only in `gameConfig.customSpectators[]`, or in both. Nothing in the 16.17 capture answers it — `customSpectators` was `[]` in all 30 lobby events and no member ever carried `isSpectator: true`, because it was a solo lobby with bots. Deliverable: `packages/lcu/fixtures/16.17/lobby-spectator.json`, parsed in `schemas.test.ts`, and the answer written into the lobby row and into question 3 of "Behaviors to confirm" with a date and patch.
+- [x] **M2.13** Find out where a spectator appears in the lobby payload. Two people and ten minutes: one runs `pnpm --filter @customs/lcu record-ws` in a custom lobby, the other clicks the spectator slot and back out. The whole question is whether that person shows up in `members[]` with `isSpectator: true`, or only in `gameConfig.customSpectators[]`, or in both. Nothing in the 16.17 capture answers it — `customSpectators` was `[]` in all 30 lobby events and no member ever carried `isSpectator: true`, because it was a solo lobby with bots. Deliverable: `packages/lcu/fixtures/16.17/lobby-spectator.json`, parsed in `schemas.test.ts`, and the answer written into the lobby row and into question 3 of "Behaviors to confirm" with a date and patch.
 
     > **Why (product).** Two rules rest on the unobserved answer. M1.8 (done, shipped) refuses a lobby post
     > unless the caller's PUUID is in the posted `members`, "`isSpectator: true` counts". M2.8 accepts a
