@@ -8,7 +8,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | in progress | M0.1 done. M0.2 needs the user to run the client (see M0.1 OPEN steps in packages/lcu/README.md). Blocks M2. |
-| M1 Foundation | in progress | M1.1 to M1.4 done; M1.5 in flight. Hosted Supabase project not yet linked. Can run in parallel with M0. |
+| M1 Foundation | in progress | M1.1 to M1.5 done; M1.6 next. Hosted Supabase project not yet linked. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -332,7 +332,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > - Tuning any constant. `1.00 / 0.93 / 0.85`, `120`, `200` and `* 60` are decided in `01-architecture.md`
     >   and `04-decisions.md`. Changing one is a decision row and a new task, not a commit.
 
-- [ ] **M1.5** `apps/web` API skeleton: companion token auth middleware, `POST /api/companion/lobby`, `POST /api/companion/game`, `POST /api/companion/rank`, all zod-validated, writing to Supabase with idempotency on `lcu_party_id` and `lcu_game_id`. Lazy player creation by PUUID.
+- [x] **M1.5** `apps/web` API skeleton: companion token auth middleware, `POST /api/companion/lobby`, `POST /api/companion/game`, `POST /api/companion/rank`, all zod-validated, writing to Supabase with idempotency on `lcu_party_id` and `lcu_game_id`. Lazy player creation by PUUID.
 - [ ] **M1.6** `/admin`: Discord OAuth via Supabase Auth, `is_admin` gate. Pages to list players, set roles, link a Discord ID, mint and revoke companion tokens, edit `discord_config`, create a season. Seed the first admin by PUUID in a migration or env var. The role editor must be able to clear a main or secondary role back to null, not only change it — a null main means flexible (M1.4), and there has to be a way back to it.
 
 Acceptance: `pnpm -r test` green; a curl with a valid token creates a lobby row and a game row; a second identical curl changes nothing.
