@@ -911,7 +911,9 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >    and no `GameStart` frame: zero POSTs. A stale id is never posted.
     > 4. `startedAt`: with the `InProgress` moment held, the eog payload carries it; feeding only the eog frame,
     >    it is `2026-09-08T16:37:47.672Z` (`endOfGameTimestamp - gameLength * 1000` from `eog-stats-block.json`).
-    > 5. **The crash sequence, on the test night.** With the API answering 500: play a custom, confirm
+    > 5. **The crash sequence, on the test night.** With the API unreachable (a dead origin in the companion's
+    >    `apiBase`: nobody can make the deployed API answer 500 on demand, and a true 500 is covered by check 6
+    >    below — both are the same retryable path). Play a custom, confirm
     >    `queue/<gameId>.json` exists and parses, click past the end-of-game screen so the client's GET 404s,
     >    kill the companion (`taskkill /f`), bring the API back, start the companion — the game lands **exactly
     >    once**, with ten `game_players` rows. Repeat with the kill placed before the first POST attempt: same
@@ -1392,8 +1394,9 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > ## 2. Paste your token
     >
     > Double-click it. The first time, it asks for a token. Whoever runs the admin page makes one for you and
-    > sends it over — ask them for it. Paste it in and press Enter. You will not see it as you type; that is on
-    > purpose.
+    > sends it over — ask them for it. If it is your first time, join one of our custom lobbies first so the
+    > bot knows you exist, then ask for the token. Paste it in and press Enter. You will not see it as you
+    > type; that is on purpose.
     >
     > It remembers the token, so this is the only time you do this.
     >
@@ -1434,7 +1437,10 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > 6. **Size.** One file, under **120 MB** (it carries Node; the README says so if anyone is surprised).
     > 7. **No spam.** An hour with the client open and no lobby produces at most 20 console lines, and no line
     >    contains the token, a lockfile password or a raw event body. The log file has the rest.
-    > 8. `pnpm -r typecheck` and `pnpm -r test` still pass, and `pnpm --filter companion dev` still starts
+    > 8. **One URL, everywhere.** The download link printed in `apps/companion/README.md`, in this brief, in
+    >    `docs/06-test-night.md` and on `/admin` is byte-identical to the object that exists in the `releases`
+    >    bucket, and `curl -I` on it answers 200 before the link goes into the group chat.
+    > 9. `pnpm -r typecheck` and `pnpm -r test` still pass, and `pnpm --filter companion dev` still starts
     >    against `http://localhost:3000` with no config file present.
     >
     > ### Out of scope
@@ -1619,21 +1625,32 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > **Out of scope.** Moving anyone (M4.3 switches sides, and only for the local player). A reaction, button
     > or command to volunteer to sit — that is a typed step, and this product does not have those.
 
+- [ ] **M2.18** Say it out loud when no season is active. `games.season_id` is `not null default public.active_season_id()` (`0001_init.sql`), so with no active season **every** game insert of the night fails — after the game, on a Vercel function, with nothing on any console but a failed post and a retried queue file. `POST /api/companion/game` answers with a message that names the missing active season (and is refused before any write rather than surfacing as a generic insert error), and `/admin` says the same sentence where it today prints "No season is active. Start one on the seasons page." — that page already knows; the API does not. Owner: `platform-engineer`, **after M3.1 and M3.3** (found while writing the M2 test-night sheet, where it is precondition 2 and a human checks it by eye).
+
+    > **Acceptance check.** With no active season: an eog post is refused with a body naming the season, nothing is written to `games`, the companion keeps its queue file (a retryable failure, not a permanent one, so the night is recovered by starting a season and letting the queue drain), and the log line names the season rather than a Postgres error. With a season active every M2.5 check still passes unchanged. `/admin` and the tonight page (M3.4) print the same sentence.
+    >
+    > **Out of scope.** Auto-creating a season (a season is a thing the group decides together, `00-product.md`). Any change to the rating fold or the gate.
+
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
 
-> **Run sheet (product, 2026-09-08): `docs/06-test-night.md`.** The exact sequence for the night, what the
-> friend is told, what the user pastes back, and a pass/fail table mapping every line of this acceptance to
-> its evidence. Two parts, because **a custom with fewer than ten humans is stored and never rated** (the ten
-> participants / 300 s gate): a two-person rehearsal proves capture, the freeze, dedupe, M2.3 check 5's crash
-> recovery and check 8's mid-game kill; only a ten-human game proves "updated ratings". If ten cannot be
-> gathered, **M2 is partial, not done** — the only standing proof of the fold is then
+> **Run sheet (product, 2026-09-08): `docs/06-test-night.md`.** The exact sequence, what the friend is told,
+> what the user pastes back, and a pass/fail table mapping every line of this acceptance to its evidence.
+> **Two sessions, and this milestone is ticked only after the second** (lead, 2026-09-08), because a custom
+> with fewer than ten humans is stored and never rated (the ten-participant / 300 s gate). **Session 1, the
+> rehearsal:** two people, the Windows exe plus the Mac companion, proving capture, the roster freeze, dedupe,
+> M2.3 check 5's crash recovery and check 8's kill-one-companion-mid-game. **Session 2, the ten-human night:**
+> the rating fold and the "appears once with ten rows" half of the line. Until Session 2 lands, M2 is
+> **partial**, and the only standing proof of the fold is
 > `apps/web/app/api/companion/lobbyState.integration.test.ts`, "rates a real game once, however many
-> companions post it". Three things end the night before it starts and are checked first: a season must be
-> active (`games.season_id` is `not null default active_season_id()`, so with none every insert fails), the
-> Vercel variables of the precondition below must be set, and **both player rows must exist before tokens are
-> minted** — `/admin/tokens` mints against an existing player and there is no "add player", so the second
-> machine's PUUID has to be seen in a lobby post first. M2.3 check 5's "API answering 500" is run as a dead
-> origin on the posting machine; a true 500 stays covered by that task's stubbed check 6.
+> companions post it".
+>
+> Three things end a session before it starts and are checked first: a season must be active (**M2.18** is the
+> task that makes that failure say so instead of failing after the game), the Vercel variables of the
+> precondition below must be set, and **the second machine's player row must exist before its token is
+> minted** — `/admin/tokens` mints against an existing player, which is why the M2.6 README now tells a
+> first-timer to join a lobby before asking for a token (`04-decisions.md`). Session 1 also needs a **second
+> League account** for the Mac companion: the user's own or the friend's, decided in the pre-night list, not
+> on the night.
 
 > **Precondition (product, 2026-09-08).** The API has to be deployed on Vercel before the test night: ten
 > friends' companions cannot reach a laptop on someone's desk, so the deployment is not an M3 nicety but the
@@ -1941,6 +1958,8 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
 - [ ] **M5.3** Seasons: admin starts a new season; ratings copy `mu` and reset `sigma`; leaderboard and pages are season-aware.
 - [ ] **M5.4** Stats pages: win rate by role, by side, by duo pairing (min five games together), average game length, longest streaks. Awards at season end: most improved, best off-role, cursed duo.
 - [ ] **M5.5** Missed-game report: a page listing lobbies that reached `in_game` but never `finished`, so someone knows the companion rule was broken that night.
+
+    > **Candidate for this page (product, 2026-09-08), not a task.** A read-only `/admin/games` list — one row per `games` row with its `lcu_game_id`, participant count, duration and whether it was rated. There is no such surface today, so the M2 test night is verified by reading row counts out of the database by hand (`docs/06-test-night.md`). If M5.5 gets built, "the games we did capture" is the same query as "the lobbies we did not", and one page can answer both. Nobody needs it before then.
 - [ ] **M5.6** Find out how far back match history goes. M0 only ever read the default window (`begIndex=0&endIndex=20`, which returned 21 games, inclusive) and never paged past it, so the reach of backfill is a guess. Walk `begIndex` back in pages of 20 on a real client until the client stops returning games or starts erroring, and write the answer into `03-lcu-reference.md`: how many games deep it goes, whether `gameCount` is the true total or just the window, and what an over-the-end request does (empty `games[]`, 400, or a repeat of the last page).
 
     > **Why (product).** The product doc promises backfill "recovers it" when the companion misses a game.
