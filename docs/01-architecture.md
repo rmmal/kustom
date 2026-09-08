@@ -44,36 +44,69 @@ never holds a database credential; it holds a per-player companion token.
 
 ## Data model
 
-Postgres, managed by Supabase migrations in `packages/db/supabase/migrations/`.
+Postgres, managed by Supabase migrations in `packages/db/supabase/migrations/`. `0001_init.sql` is the whole
+schema below; the listing is kept in step with it.
 
 ```sql
-seasons        (id, name, starts_at, ends_at, is_active)
+seasons        (id, name, starts_at, ends_at, is_active, created_at)
 players        (id, puuid unique, summoner_id, game_name, tag_line, display_name,
                 discord_id null, is_admin, main_role, secondary_role,
                 rank_tier, rank_division, rank_lp, rank_updated_at, created_at)
-ratings        (player_id, season_id, mu, sigma, games, wins, updated_at)  pk (player_id, season_id)
+ratings        (player_id, season_id, mu, sigma, ordinal generated (mu - 2 * sigma) stored,
+                games, wins, updated_at)  pk (player_id, season_id), index (season_id, ordinal desc)
 lobbies        (id, lcu_party_id unique, status, reported_by_player_id, lobby_name, lobby_password,
                 created_at, updated_at)
-lobby_members  (lobby_id, player_id, side null, role null, role_override null, is_spectator)
-splits         (id, lobby_id, rank, blue jsonb, red jsonb, gap, blue_win_prob, score, off_role_count, is_chosen)
+lobby_members  (lobby_id, player_id, side null, role null, role_override null, is_spectator, created_at)
+splits         (id, lobby_id, rank, blue jsonb, red jsonb, gap, blue_win_prob, score, off_role_count,
+                is_chosen, explanation, roster_key, created_at)
 games          (id, lcu_game_id unique, lobby_id null, season_id, started_at, duration_s, winning_side,
-                source 'eog' | 'backfill', raw jsonb)
+                source 'eog' | 'backfill', raw jsonb, created_at)
 game_players   (game_id, player_id, side, role null, champion_id, kills, deaths, assists, gold, damage_to_champs,
-                cs, mu_before, sigma_before, mu_after, sigma_after)
-companion_tokens (id, player_id, token_hash, label, last_seen_at, created_at)
+                cs, mu_before null, sigma_before null, mu_after null, sigma_after null)
+companion_tokens (id, player_id, token_hash, label, last_seen_at, revoked_at null, created_at)
 companion_commands (id, target_player_id, kind, payload jsonb, status, created_at, acked_at)
 discord_config (guild_id pk, webhook_url, results_channel_id, lobby_voice_channel_id,
-                blue_voice_channel_id, red_voice_channel_id)
+                blue_voice_channel_id, red_voice_channel_id, created_at, updated_at)
+
+players_public view (players minus discord_id; keeps is_admin)
 ```
+
+Also in the schema:
+
+- **Enums, not check constraints**, for the string unions: `lobby_status`, `player_role`, `game_source`,
+  `companion_command_kind` (`create_lobby`, `invite`, `switch_side`), `companion_command_status` (`pending`,
+  `sent`, `acked`, `failed`). The generated types then carry the same unions `packages/core` declares. `side`
+  stays a smallint with a check, because 100 and 200 are the client's numbers, not a vocabulary of ours.
+- **Season 1** is inserted by `0001_init.sql`, active, with the fixed id `00000000-0000-0000-0000-000000000001`
+  (exported as `SEASON_ONE_ID`), so ratings and games always have a season to hang off.
+- **Functions.** `active_season_id()` (the default for `games.season_id`), `bootstrap_admin(puuid)` (idempotent
+  insert-or-promote, service role only, called by the API on start with `BOOTSTRAP_ADMIN_PUUID`), and
+  `set_updated_at()` (the trigger behind every `updated_at`).
+- **Realtime.** The `supabase_realtime` publication covers `lobbies`, `lobby_members`, `splits`, `games`,
+  `game_players` and `ratings`. A table outside the publication never emits a change event, silently, and the
+  tonight page (M3.4) and the bot (M4.4) are built on those events. `players` is left out; it is not publicly
+  readable.
 
 Rules:
 
 - `players.puuid` is the identity. Riot IDs are display data refreshed from the client.
 - A player row is created lazily the first time a PUUID appears in a lobby or a game. Discord linking is optional
   and done by an admin (`/admin/players`) or self-service via Discord OAuth.
-- `ratings` is per season. A new season copies `mu` and resets `sigma` to the starting value.
+- `ratings` is per season. A new season copies `mu` and resets `sigma` to the starting value. `ordinal` is a
+  stored generated column so the leaderboard sorts in one index scan and SQL cannot disagree with
+  `packages/core` about the formula; `packages/core` stays the only place that computes a rating.
 - `games.raw` keeps the full end-of-game block. Every derived column can be recomputed from it.
-- `splits` keeps the top three for every balanced lobby so the explanation and reroll are reproducible.
+- `game_players` rating columns are nullable: the API inserts the game and its ten players, then rates, and a
+  rebuild (M5.2) overwrites them.
+- `splits` keeps the top three for every balance run so the explanation and reroll are reproducible. A rebalance
+  appends a new set of three rather than replacing the old one, and a partial unique index allows at most one
+  `is_chosen` split per lobby. `explanation` is the string core built; the embed and the tonight page render it,
+  they never recompute it.
+- `splits.roster_key` is the ten puuids of that split, sorted and joined with `,`. The API computes it with
+  `rosterKey()` from `@customs/db` when it stores a split, and the `lastSplit` lookup is the newest chosen split
+  with the same `roster_key` — one indexed lookup instead of a jsonb set comparison.
+- A companion token is revoked by setting `companion_tokens.revoked_at`, never by deleting the row: the auth path
+  filters on it and `last_seen_at` stays as the audit trail of a token that may have leaked.
 
 ## Rating model (`packages/core/rating`)
 
@@ -168,8 +201,14 @@ watching: on lobby event -> POST /api/companion/lobby
 - The API never trusts a PUUID claim beyond what the companion reports; a companion can only report games it was
   in (the eog block's `localPlayer` must match the token's player) except for backfill, which is admin-approved
   the first time per player.
-- Supabase Row Level Security: public read on players (minus discord_id), ratings, games, game_players, splits,
-  lobbies. Writes only through the service role used by the API.
+- Supabase Row Level Security: public read on `seasons`, `ratings`, `lobbies`, `lobby_members`, `splits`, `games`
+  and `game_players`, plus `players` through the `players_public` view. `companion_tokens`,
+  `companion_commands` and `discord_config` have no read policy at all. Writes only through the service role
+  used by the API.
+- Public reads of players go through the `players_public` view, which is `players` without `discord_id` and with
+  `is_admin` kept, so the tonight page can decide whether to draw the reroll button on the anon key. Anon and
+  authenticated have no read privilege on the `players` table itself and get a 401 from it. The web app and the
+  bot read `players_public`.
 
 ## Operational notes
 

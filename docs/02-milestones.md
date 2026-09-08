@@ -8,7 +8,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | not started | Blocks M2. Do first. |
-| M1 Foundation | in progress | M1.1, M1.2, M1.3 done. Hosted Supabase project not yet linked. Can run in parallel with M0. |
+| M1 Foundation | in progress | M1.1 to M1.4 done; M1.5 in flight. Hosted Supabase project not yet linked. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -103,7 +103,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > **Out of scope for M1.3.** Season resets (M5.3), the rating-rebuild fold (M5.2), any database or API call,
     > and anything that reads the clock. `rateGame` is a pure function of its arguments.
 
-- [ ] **M1.4** `packages/core/balance`: partition enumeration, role assignment, scoring, top three, explanation string, reroll. Tests: the worked example from the product vision (ten named players with ranks) yields a gap of 100 with everyone on a main role; duo lock is respected; repeat-split penalty changes the choice; nine or eleven players throws.
+- [x] **M1.4** `packages/core/balance`: partition enumeration, role assignment, scoring, top three, explanation string, reroll. Tests: the worked example from the product vision (ten named players with ranks) yields a gap of 100 with everyone on a main role; duo lock is respected; repeat-split penalty changes the choice; nine or eleven players throws.
 
     > **Brief (product, 2026-09-08)**
     >
