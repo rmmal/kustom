@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | All tasks M1.1 to M1.10 done; product acceptance met 2026-09-08. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.1, M2.9, M2.10, M2.13 done; M2.2 and M2.14+M2.5 in flight. |
+| M2 Companion v1: roster and results | in progress | M2.1, M2.2, M2.9, M2.10, M2.13 done; M2.14+M2.5 and M2.3+M2.4 in flight. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -586,7 +586,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > not carried into application state. Champion-select and matchmaking URIs are dropped and never acted
     > on; that is the gameplay line in `03-lcu-reference.md`, and it is easier to hold when the events never
     > get past the filter.
-- [ ] **M2.2** Lobby watcher: on every lobby WS event, POST the member list with sides and spectator flags. Debouncing lives on the server, not here. Needs M2.10: sides come from `gameConfig.customTeam100`/`customTeam200`, never `members[].teamId`, and bots are filtered before posting.
+- [x] **M2.2** Lobby watcher: on every lobby WS event, POST the member list with sides and spectator flags. Debouncing lives on the server, not here. Needs M2.10: sides come from `gameConfig.customTeam100`/`customTeam200`, never `members[].teamId`, and bots are filtered before posting.
 
     > **Brief (product, 2026-09-08)**
     >
