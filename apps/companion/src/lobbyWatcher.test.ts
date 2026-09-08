@@ -124,6 +124,8 @@ async function setup(
     summoner?: Summoner | null;
     /** Do not run `onConnected` in setup; the test drives the connect path itself. */
     skipConnect?: boolean;
+    /** Build the ApiClient exactly as main.ts does: default attempts, backoff and timeout. */
+    apiDefaults?: boolean;
   } = {},
 ): Promise<Harness> {
   const api = await startFakeApi({
@@ -166,14 +168,16 @@ async function setup(
     };
   };
   const watcher = new LobbyWatcher({
-    api: new ApiClient({
-      apiBase: api.baseUrl,
-      token: TOKEN,
-      logger,
-      backoff: { minMs: 5, maxMs: 20 },
-      maxAttempts: options.apiMaxAttempts ?? 1,
-      timeoutMs: 3_000,
-    }),
+    api: options.apiDefaults
+      ? new ApiClient({ apiBase: api.baseUrl, token: TOKEN, logger })
+      : new ApiClient({
+          apiBase: api.baseUrl,
+          token: TOKEN,
+          logger,
+          backoff: { minMs: 5, maxMs: 20 },
+          maxAttempts: options.apiMaxAttempts ?? 1,
+          timeoutMs: 3_000,
+        }),
     logger,
     lookupIntervalMs: 5,
     backoff: { minMs: 10, maxMs: 40 },
@@ -600,6 +604,76 @@ describe('LobbyWatcher: failures', () => {
     expect(h2.scheduled[0]?.cancelled).toBe(true);
     expect(h2.lobbyPosts()).toHaveLength(2);
     expect(h2.lobbyPosts()[1]?.members).toHaveLength(2);
+  });
+
+  it('never re-sends a superseded 5xx payload through ApiClient retries, even with the default attempts', async () => {
+    // main.ts wires ApiClient with 4 attempts and a 1-30 s backoff. The watcher must make one attempt per
+    // post so a stale roster is never retried while a newer one waits.
+    const h = await setup({
+      apiDefaults: true,
+      manualTimers: true,
+      lobbyResponses: [{ status: 503, body: { ok: false, error: 'try later' } }, okResponse()],
+      lcuRoutes: { [FRIEND_LOOKUP]: { status: 404, body: {} } },
+    });
+    update(h, lobbyFixture('lobby'));
+    await h.watcher.settled();
+    expect(h.lobbyPosts()).toHaveLength(1);
+    expect(h.scheduled).toHaveLength(1);
+    expect(h.scheduled[0]?.ms).toBeLessThanOrEqual(40);
+
+    const started = Date.now();
+    update(h, lobbyFixture('lobby--two-players'));
+    await until(() => h.lobbyPosts().length === 2);
+    expect(Date.now() - started).toBeLessThan(500);
+    await h.watcher.settled();
+    await pause(50);
+
+    const posts = h.lobbyPosts();
+    expect(posts).toHaveLength(2);
+    expect(posts[0]?.members).toHaveLength(1);
+    expect(posts[1]?.members).toHaveLength(2);
+    expect(h.scheduled[0]?.cancelled).toBe(true);
+    expect(h.logger.lines.filter((line) => line.message === 'api call failed, retrying')).toEqual([]);
+  });
+
+  it('starts a fresh retry schedule for a new payload after a superseded one was failing', async () => {
+    const h = await setup({
+      manualTimers: true,
+      lobbyResponses: [
+        { status: 503, body: { ok: false, error: 'a' } },
+        { status: 503, body: { ok: false, error: 'b' } },
+        { status: 503, body: { ok: false, error: 'c' } },
+        okResponse(),
+      ],
+      watcher: { backoff: { minMs: 100, maxMs: 10_000, factor: 10, random: () => 1 } },
+      lcuRoutes: { [FRIEND_LOOKUP]: { status: 404, body: {} } },
+    });
+    update(h, lobbyFixture('lobby'));
+    await h.watcher.settled();
+    expect(h.scheduled[0]?.ms).toBe(100);
+    h.scheduled[0]?.fire();
+    await until(() => h.lobbyPosts().length === 2);
+    await h.watcher.settled();
+    expect(h.scheduled[1]?.ms).toBe(1_000);
+
+    update(h, lobbyFixture('lobby--two-players'));
+    await until(() => h.lobbyPosts().length === 3);
+    await h.watcher.settled();
+    // Not 10 000: the new roster starts at the first delay again.
+    expect(h.scheduled[2]?.ms).toBe(100);
+  });
+
+  it('does not look names up for a party it refuses to post after a 403', async () => {
+    const h = await setup({
+      lobbyResponses: [{ status: 403, body: { ok: false, error: 'not in lobby' } }],
+      lcuRoutes: { [FRIEND_LOOKUP]: { status: 200, body: fixtureBody('summoner-by-puuid--other') } },
+    });
+    update(h, lobbyFixture('lobby'));
+    await h.watcher.settled();
+    update(h, lobbyFixture('lobby--two-players'));
+    await pause(50);
+    expect(h.lobbyPosts()).toHaveLength(1);
+    expect(h.lookups()).toBe(0);
   });
 
   it('stops posting a party after a 403 until the next Create', async () => {

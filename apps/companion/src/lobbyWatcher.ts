@@ -234,17 +234,22 @@ export class LobbyWatcher {
       return;
     }
     this.currentLobby = lobby;
-    this.enqueue(mapLobby(lobby, this.names), source);
-    this.scheduleLookups(lobby);
+    if (this.enqueue(mapLobby(lobby, this.names), source)) {
+      // Names are only worth fetching for a roster that is actually being posted.
+      this.scheduleLookups(lobby);
+    }
   }
 
-  private enqueue(payload: CompanionLobbyPayloadInput, source: Source): void {
+  /** Makes `payload` the newest; returns false when the party is blocked after a 403. */
+  private enqueue(payload: CompanionLobbyPayloadInput, source: Source): boolean {
     if (this.blockedParty === payload.partyId) {
       this.logger.debug('lobby post skipped: party refused earlier', { partyId: payload.partyId, source });
-      return;
+      return false;
     }
     this.sequence += 1;
     this.cancelDeferred();
+    // A new payload starts its own retry schedule; the old one's delays belonged to the old roster.
+    this.retryBackoff.reset();
     const item: Item = { payload, sequence: this.sequence };
     this.latest = item;
     this.logger.debug('lobby payload ready', {
@@ -255,15 +260,25 @@ export class LobbyWatcher {
     });
     if (this.inFlight) {
       this.pending = item;
-      return;
+      return true;
     }
     void this.post(item);
+    return true;
   }
 
   private async post(item: Item): Promise<void> {
     this.inFlight = true;
     try {
-      const result = await this.api.post(LOBBY_API_PATH, item.payload, companionLobbyResponseSchema);
+      // One attempt per call: `ApiClient`'s own retries would re-send a payload that a newer event has
+      // already superseded and hold the coalescing slot for a minute. The newest-only retry lives in
+      // `handleResult` -> `defer`.
+      const result = await this.api.request(
+        'POST',
+        LOBBY_API_PATH,
+        item.payload,
+        companionLobbyResponseSchema,
+        1,
+      );
       this.handleResult(item, result);
     } catch (error) {
       // `ApiClient.post` never throws; this guards the handling above so the loop below always runs.
