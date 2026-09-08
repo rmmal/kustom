@@ -23,6 +23,11 @@ export function isCustomGame(payload: CompanionGameEogPayload): boolean {
 /**
  * A companion may only report a game it played in (`docs/01-architecture.md` "Security").
  * The token says who the caller is; this asks whether that player is on the scoreboard.
+ *
+ * The architecture doc phrases this as "the block's `localPlayer` must match the token's
+ * player". The companion flattens the block before posting, so there is no `localPlayer`
+ * field to compare; membership of `participants` is the same check against one fewer
+ * claimed field. See `04-decisions.md`.
  */
 export function isParticipant(payload: CompanionGameEogPayload, puuid: string): boolean {
   return payload.participants.some((participant) => participant.puuid === puuid);
