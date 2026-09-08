@@ -98,10 +98,24 @@ export interface TeamsEmbedInput {
   /** Only when somebody has to move, which is not the same question. */
   seats: readonly SeatLine[];
   lobby: { name: string | null; password: string | null };
+  /**
+   * Which of the lobby's stored splits this post is, and how many the lobby has (M3.2).
+   *
+   * Absent for a fresh balance, which is always rank 1 and keeps the plain title. A reroll
+   * passes the promoted split's rank so the title says how far down the list the group has
+   * gone; nothing else about the embed changes.
+   */
+  promoted?: PromotedSplit | undefined;
   /** The tonight page, or `undefined` when there is no honest URL to post. */
   url?: string | undefined;
   /** ISO 8601. Injected, so this function has no clock. */
   timestamp: string;
+}
+
+/** `splits.rank` of the split being posted, and how many splits the lobby stored. */
+export interface PromotedSplit {
+  rank: number;
+  splitCount: number;
 }
 
 export interface ResultPlayer {
@@ -166,7 +180,7 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
     embeds: [
       {
         color: ACCENT_COLOR,
-        title: 'Teams are set',
+        title: teamsTitle(input.promoted),
         ...(input.url === undefined ? {} : { url: input.url }),
         description: input.explanation,
         fields,
@@ -214,6 +228,22 @@ export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
       },
     ],
   };
+}
+
+/**
+ * `Teams are set`, and `Teams are set · reroll 1 of 2` when an admin has promoted split 2
+ * (M3.2, `05-design.md` "The title on a reroll").
+ *
+ * Split 1 keeps the plain title, including when an admin promotes it back: it is the teams
+ * the balancer chose, whatever route it took to be on the board again. The count comes from
+ * how many splits the lobby actually stored — core returns three, so it reads `of 2` — rather
+ * than from a literal, because a lobby that stored fewer must not promise a reroll it has not
+ * got.
+ */
+export function teamsTitle(promoted: PromotedSplit | undefined): string {
+  if (promoted === undefined || promoted.rank <= 1) return 'Teams are set';
+  const rerolls = Math.max(promoted.splitCount - 1, promoted.rank - 1);
+  return `Teams are set · reroll ${promoted.rank - 1} of ${rerolls}`;
 }
 
 /** `` `top` Hana · 1434 `` , plus ` · off-role` on the line of whoever is off it. */

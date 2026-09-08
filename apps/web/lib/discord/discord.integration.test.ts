@@ -53,7 +53,10 @@ if (stack === null) {
   /** Eleven of their own, so no other case's rotation or ratings can order this one. */
   const eleven = Array.from({ length: 11 }, (_, index) => `it-${runId}-el${String(index).padStart(2, '0')}`);
   /** Ten more, one of whom the client has never named (M3.15). */
-  const nameless = Array.from({ length: 10 }, (_, index) => `it-${runId}-nn${String(index).padStart(2, '0')}`);
+  const nameless = Array.from(
+    { length: 10 },
+    (_, index) => `it-${runId}-nn${String(index).padStart(2, '0')}`,
+  );
   const allPuuids = [...puuids, ...eleven, ...nameless];
   const partyIds = new Set<string>();
   const gameIds = new Set<number>();

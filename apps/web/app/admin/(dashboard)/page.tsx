@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { getRerollableLobby, NO_MORE_SPLITS, type RerollableLobby } from '@/lib/admin/reroll';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { getServiceClient } from '@/lib/supabase';
+import { Empty, formatTimestamp, Notices, type SearchParams } from '../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,10 +14,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** The index: who you are, which season is live, and where everything is. */
-export default async function AdminIndexPage() {
-  const admin = await requireAdmin();
-  const season = await getActiveSeason(getServiceClient());
+/** The index: who you are, which season is live, tonight's reroll, and where everything is. */
+export default async function AdminIndexPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const [params, admin] = await Promise.all([searchParams, requireAdmin()]);
+  const client = getServiceClient();
+  const [season, lobby] = await Promise.all([getActiveSeason(client), getRerollableLobby(client)]);
 
   return (
     <main>
@@ -24,6 +27,11 @@ export default async function AdminIndexPage() {
         Everything here writes through <span className="admin-mono">/api/admin/*</span>, which checks the
         session on the server. The rest of the site is public and needs no account.
       </p>
+
+      <Notices params={params} />
+
+      <h2>Tonight</h2>
+      <Reroll lobby={lobby} />
 
       <h2>You</h2>
       <dl>
@@ -67,5 +75,70 @@ export default async function AdminIndexPage() {
         </li>
       </ul>
     </main>
+  );
+}
+
+/**
+ * The reroll control (M3.2), until the tonight page grows its own (M3.4).
+ *
+ * Deliberately the plainest thing that works: one form per split, each naming the split it
+ * promotes, so a double tap posts the same split twice rather than skipping one. The page is
+ * a server component and the admin area ships no client JavaScript, so pressing this is an
+ * ordinary form post and the answer comes back as `?notice=` on this page.
+ */
+function Reroll({ lobby }: { lobby: RerollableLobby | null }) {
+  if (lobby === null) {
+    return (
+      <Empty>
+        No lobby has teams on the board right now. Reroll appears here while a lobby is balanced — from the
+        moment the teams are posted until the game starts.
+      </Empty>
+    );
+  }
+
+  const chosen = lobby.splits.find((split) => split.isChosen) ?? null;
+  const lastRank = lobby.splits.reduce((highest, split) => Math.max(highest, split.rank), 0);
+  // The third press: with the last split up, the only promotion left is back to split 1.
+  const exhausted = chosen !== null && chosen.rank === lastRank;
+  const rerolls = Math.max(lobby.splits.length - 1, 1);
+
+  return (
+    <>
+      <p>
+        <span className="admin-mono">{lobby.lobbyName ?? 'unnamed lobby'}</span> · balanced{' '}
+        {formatTimestamp(lobby.updatedAt)}
+      </p>
+      {chosen === null ? (
+        <p className="admin-error" role="alert">
+          This lobby has no chosen split. The next companion post rebalances it.
+        </p>
+      ) : (
+        <p>
+          Split {chosen.rank} is on the board. {chosen.explanation}
+        </p>
+      )}
+      {exhausted ? <p className="admin-muted">{NO_MORE_SPLITS}</p> : null}
+
+      {lobby.splits
+        .filter((split) => !split.isChosen && (split.rank === 1 || !exhausted))
+        .map((split) => (
+          <form
+            key={split.id}
+            method="post"
+            action={`/api/admin/lobbies/${lobby.id}/reroll`}
+            className="admin-stacked"
+          >
+            <input type="hidden" name="splitId" value={split.id} />
+            <p className="admin-muted">
+              Split {split.rank} · gap {split.gap} · {split.explanation}
+            </p>
+            <button type="submit">
+              {split.rank === 1
+                ? 'Put split 1 back'
+                : `Promote split ${split.rank} · reroll ${split.rank - 1} of ${rerolls}`}
+            </button>
+          </form>
+        ))}
+    </>
   );
 }

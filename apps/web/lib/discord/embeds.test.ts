@@ -17,6 +17,7 @@ import {
   resultEmbed,
   type TeamsEmbedInput,
   teamsEmbed,
+  teamsTitle,
 } from './embeds';
 
 /**
@@ -335,6 +336,31 @@ describe('resultEmbed, the worked example lost by the favourite', () => {
   it('reads the underdog win the other way round when red was favoured', () => {
     const embedded = resultEmbed(workedResultInput({ blueWinProb: 0.42, topDamage: null })).embeds[0];
     expect(embedded?.description).toBe('Red was favored 58%.');
+  });
+});
+
+describe('teamsTitle, the title on a reroll (M3.2)', () => {
+  it('leaves split 1 plain, including when an admin promotes it back', () => {
+    expect(teamsTitle(undefined)).toBe('Teams are set');
+    expect(teamsTitle({ rank: 1, splitCount: 3 })).toBe('Teams are set');
+  });
+
+  it('says which reroll this is, and that the second one is the last', () => {
+    expect(teamsTitle({ rank: 2, splitCount: 3 })).toBe('Teams are set · reroll 1 of 2');
+    expect(teamsTitle({ rank: 3, splitCount: 3 })).toBe('Teams are set · reroll 2 of 2');
+  });
+
+  it('counts the splits the lobby stored rather than assuming three', () => {
+    // `of 2` is true because core returns three. A lobby that stored two must not promise a
+    // reroll it has not got.
+    expect(teamsTitle({ rank: 2, splitCount: 2 })).toBe('Teams are set · reroll 1 of 1');
+  });
+
+  it('titles the embed, and changes nothing else about it', () => {
+    const plain = teamsEmbed(workedTeamsInput()).embeds[0];
+    const rerolled = teamsEmbed(workedTeamsInput({ promoted: { rank: 2, splitCount: 3 } })).embeds[0];
+    expect(rerolled?.title).toBe('Teams are set · reroll 1 of 2');
+    expect({ ...rerolled, title: 'Teams are set' }).toEqual(plain);
   });
 });
 

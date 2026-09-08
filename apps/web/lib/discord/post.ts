@@ -68,7 +68,9 @@ export async function postTeamsForEvent(
  *
  * The sitters and the seat moves are rebuilt from the lobby's members with the same pure
  * functions M2.5 used (`selection.ts`), so a reroll's embed says the same things about who
- * sits as the first one did.
+ * sits as the first one did. It is a new message and never an edit of the earlier one; the
+ * title carries the promoted split's rank, so the channel reads how far down the list the
+ * group has gone (M3.2).
  */
 export async function postTeamsForSplit(
   client: ServiceClient,
@@ -120,11 +122,19 @@ async function loadTeamsSource(
 ): Promise<TeamsSource | null> {
   const { data, error } = await client
     .from('splits')
-    .select('blue, red, explanation, lobbies!inner(id, lobby_name, lobby_password)')
+    .select('rank, blue, red, explanation, lobbies!inner(id, lobby_name, lobby_password)')
     .eq('id', splitId)
     .maybeSingle();
   if (error) throw new Error(`discord: split lookup failed: ${error.message}`);
   if (!data) return null;
+
+  // How many the lobby stored, so the title can say `of 2` without assuming core returned
+  // three (`teamsTitle`). One count, on the same index the promotion uses.
+  const { count, error: countError } = await client
+    .from('splits')
+    .select('id', { count: 'exact', head: true })
+    .eq('lobby_id', data.lobbies.id);
+  if (countError) throw new Error(`discord: split count failed: ${countError.message}`);
 
   const blue = readAssignments(data.blue);
   const red = readAssignments(data.red);
@@ -154,6 +164,7 @@ async function loadTeamsSource(
     sitters,
     seatMoves: planSeats({ playing, sitters, tiedOnGames }),
     tiedOnGames,
+    promoted: { rank: data.rank, splitCount: count ?? data.rank },
   };
 }
 

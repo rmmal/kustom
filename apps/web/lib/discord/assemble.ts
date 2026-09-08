@@ -5,6 +5,7 @@ import { displayDelta } from '../ratingDisplay';
 import type { ServiceClient } from '../supabase';
 import type {
   PlayerName,
+  PromotedSplit,
   ResultEmbedInput,
   ResultPlayer,
   SeatLine,
@@ -34,6 +35,12 @@ export interface TeamsSource {
   sitters: readonly PoolMember[];
   seatMoves: readonly SeatMove[];
   tiedOnGames: boolean;
+  /**
+   * Which stored split this is, when the post is a promotion of one (M3.2). A fresh balance
+   * leaves it absent and gets the plain title; `LobbyBalancedEvent` therefore still satisfies
+   * this interface unchanged.
+   */
+  promoted?: PromotedSplit | undefined;
 }
 
 export interface EmbedContext {
@@ -88,6 +95,7 @@ export function buildTeamsInput(
           },
     seats: source.seatMoves.map((move) => toSeatLine(move, names)),
     lobby: { name: source.lobbyName, password: source.lobbyPassword },
+    promoted: source.promoted,
     url: context.url,
     timestamp: context.timestamp,
   };
