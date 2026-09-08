@@ -71,8 +71,8 @@ One file, `dist/CustomsNight.exe`, no installer, no sidecar. The version is `pac
 pnpm --filter companion bundle       # esbuild: src/main.ts + workspace deps -> dist/customs-night.cjs
 pnpm --filter companion build:win    # bundle, then Node SEA -> dist/CustomsNight.exe + CustomsNight.exe.sha256
 pnpm --filter companion build:host   # the same, for this machine (macOS/Linux): a runnable check of the pipeline
-pnpm --filter companion publish      # GitHub release v<version> with the exe, its hash and README.txt
-pnpm --filter companion release      # build:win, then publish
+pnpm --filter companion publish:gh   # GitHub release v<version> with the exe, its hash and README.txt
+pnpm --filter companion release      # build:win, then publish:gh
 ```
 
 How it works (`build/sea.ts`): the bundle is a single CommonJS file with the API origin, the version and
@@ -103,7 +103,7 @@ chat never changes:
 https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe
 ```
 
-`pnpm --filter companion publish` runs `gh release create` with the `gh` CLI's own login (`gh auth login`
+`pnpm --filter companion publish:gh` runs `gh release create` (the script is `publish:gh` because pnpm intercepts a script named `publish`) with the `gh` CLI's own login (`gh auth login`
 once; no token variable). If `gh` is not logged in it prints the exact command and exits 1. Bump `version`
 in `package.json` before a release: a tag that already exists is refused by GitHub, which is the point.
 

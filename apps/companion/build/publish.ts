@@ -2,7 +2,8 @@
  * Step three of the release build: publish the exe as a GitHub release on the public repo
  * `suyaser/kustom-releases` (lead, 2026-09-09), through the `gh` CLI and its own login.
  *
- *   pnpm --filter companion publish            # after build:win; needs `gh auth login` once
+ *   pnpm --filter companion publish:gh         # after build:win; needs `gh auth login` once
+ *   (`publish:gh`, not `publish`: pnpm intercepts a script named `publish` with its own command)
  *
  * One release per version: tag `v<version>`, title `Customs Night companion <version>`, notes = the friend
  * README, assets `CustomsNight.exe`, `CustomsNight.exe.sha256` and `README.txt`. The stable link for the group
@@ -109,16 +110,20 @@ export function ghLoggedIn(gh: string): boolean {
 export async function publish(options: PublishOptions = {}): Promise<PublishPlan> {
   const gh = options.gh ?? 'gh';
   const plan = publishPlan(options.version);
-  stageAssets(plan);
   if (!ghLoggedIn(gh)) {
-    console.error('gh is not logged in (or not installed). Run `gh auth login`, then publish by hand with:');
+    console.error(
+      'gh is not logged in (or not installed). Run `gh auth login`, then `pnpm --filter companion publish:gh` ' +
+        'again (it writes dist/README.txt and runs exactly this):',
+    );
     console.error('');
     console.error(`  cd ${DIST_DIR}`);
     console.error(`  ${commandLine(plan)}`);
     console.error('');
     console.error(`Expected download link afterwards: ${plan.latestUrl}`);
+    console.error('(dist/ was left untouched; README.txt is written only once gh is logged in.)');
     process.exit(1);
   }
+  stageAssets(plan);
   const [, ...args] = plan.command;
   const result = spawnSync(gh, args, { stdio: 'inherit' });
   if (result.status !== 0) {

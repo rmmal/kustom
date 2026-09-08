@@ -12,7 +12,7 @@
     "build:win": "tsx build/sea.ts --target win-x64",
     "build:exe": "tsx build/sea.ts --target win-x64",
     "build:host": "tsx build/sea.ts --target host",
-    "publish": "tsx build/publish.ts",
+    "publish:gh": "tsx build/publish.ts",
     "release": "tsx build/release.ts"
   },
   "dependencies": {
