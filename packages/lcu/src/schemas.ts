@@ -185,6 +185,13 @@ export type GameflowTeamMember = z.infer<typeof GameflowTeamMemberSchema>;
  * in `None`, 3100 ("SR Blind Pick Custom") in a blind custom; `queue.type` is `NORMAL` even for customs, so
  * use `isCustomGame`. `gameData.password` exists (empty here); never persist it. 404 when idle (from the
  * user's first smoke run; the 404 body is not in the fixtures).
+ *
+ * **`Lobby` does not always mean `gameId: 0`.** In the lobby the client returns to after the end-of-game screen
+ * (`gameflow-session--in-lobby.json`, and 9 events in the second recording window), `phase` is `Lobby` but
+ * `gameData.gameId`, `teamOne` (one entry, the local player with last game's champion) and `gameClient.serverIp`
+ * are still the *previous* game's, and `teamTwo` stays empty while a second human sits in `customTeam200` of the
+ * lobby. So the session is never the lobby roster and a `gameId` read in `Lobby` is stale; take the id from
+ * `GameStart` onward (or from the end-of-game block).
  */
 export const GameflowSessionSchema = z.looseObject({
   phase: GameflowPhaseSchema,
@@ -442,13 +449,38 @@ export const LobbyMemberSchema = z.looseObject({
 export type LobbyMember = z.infer<typeof LobbyMemberSchema>;
 
 /**
+ * One entry of `lobby.invitations[]`. Verified 16.17 (`lobby--two-players.json` and the second recording
+ * window) after the user invited two friends from the client UI (not through our POST, which stays
+ * unverified): every current member has an `Accepted` entry with `timestamp: "0"`, an outstanding invite is
+ * `Pending` with the send time as an epoch-millisecond *string*, and the same `Pending` row was still there
+ * 29 minutes later. `invitationId` was `""` and `invitationType` `"invalid"` on every row, including the
+ * accepted ones, so neither identifies an invite; `toPuuid` does. Both `toPuuid` and `toSummonerId` are
+ * filled, which is what M4.2 needs to pick a request body. One `toSummonerId` was `2686822975473024`
+ * (above 2^51: still a safe JS integer, but not a 32-bit one).
+ */
+export const LobbyInvitationSchema = z.looseObject({
+  invitationId: z.string(),
+  invitationType: z.string(),
+  state: z.string(),
+  timestamp: z.string(),
+  toPuuid: z.string(),
+  toSummonerId: z.number().int(),
+  toSummonerName: z.string().optional(),
+});
+export type LobbyInvitation = z.infer<typeof LobbyInvitationSchema>;
+
+/**
  * `GET /lol-lobby/v2/lobby` (200) and the `OnJsonApiEvent` for the same URI. Verified 16.17: a blind-pick
  * custom lobby created from the client (`gameConfig.queueId` 3100, `isCustom` true, `mapId` 11,
  * `customMutatorName` "SimulPickStrategy", `customLobbyName` "<name>'s Game"). `partyId` is stable for the
- * life of the lobby and changes when a new one is created (two lobbies, two ids); the WebSocket sends
- * `Create` on creation, `Update` on every change (two per change), `Delete` with `data: null` at
- * `GameStart`. The body also carries `mucJwtDto` and `multiUserChatPassword` (lobby chat credentials): never
- * persist the raw body. `restrictions`, `invitations`, `warnings` are untyped.
+ * life of the lobby and changes when a new one is created (two lobbies, two ids), and it did not change when a
+ * friend accepted an invite 29 minutes after `lobby.json` was taken (`lobby--two-players.json` has the same
+ * id); the WebSocket sends `Create` on creation, `Update` on every change (two per change), `Delete` with
+ * `data: null` at `GameStart`. When a second human joined, the first `Update` that listed them in `members[]`
+ * already listed them in `gameConfig.customTeam200[]` (the same event, never one before the other), and the
+ * `/lol-lobby/v2/lobby/members` event followed 2 ms later. The body also carries `mucJwtDto` and
+ * `multiUserChatPassword` (lobby chat credentials): never persist the raw body. `restrictions` and `warnings`
+ * are untyped.
  */
 export const LobbySchema = z.looseObject({
   partyId: z.string().min(1),
@@ -470,7 +502,7 @@ export const LobbySchema = z.looseObject({
   }),
   members: z.array(LobbyMemberSchema),
   localMember: LobbyMemberSchema,
-  invitations: z.array(z.unknown()).optional(),
+  invitations: z.array(LobbyInvitationSchema).optional(),
 });
 export type Lobby = z.infer<typeof LobbySchema>;
 
