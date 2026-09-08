@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | M1.1 to M1.10 done; M1.11 (auth callback query string) queued after M2.5 leaves apps/web. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.1, M2.2, M2.9, M2.10, M2.13 done; M2.14+M2.5 and M2.3+M2.4 in flight. |
+| M2 Companion v1: roster and results | in progress | M2.1 to M2.4, M2.9, M2.10, M2.13 done; M2.14+M2.5 in review; M2.6 next. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -733,7 +733,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > up only for someone it can see in a lobby right now). Creating lobbies, inviting, switching sides (M4).
     > Anything that reads or posts to a champion-select or matchmaking URI, ever.
 
-- [ ] **M2.3** Game capture: on gameflow `InProgress` POST the game ID against the lobby; on `EndOfGame` fetch the eog block and POST it. Needs M2.10 for the payload shape (derived `startedAt`, `detectedTeamPosition` roles, real stat keys, `TerminatedInError` dropped). Handle the case where the client reaches `EndOfGame` while the companion was reconnecting: on connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post.
+- [x] **M2.3** Game capture: on gameflow `InProgress` POST the game ID against the lobby; on `EndOfGame` fetch the eog block and POST it. Needs M2.10 for the payload shape (derived `startedAt`, `detectedTeamPosition` roles, real stat keys, `TerminatedInError` dropped). Handle the case where the client reaches `EndOfGame` while the companion was reconnecting: on connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post.
 
     > **Note (product, 2026-09-08, after M0.3).** Two facts from the 16.17 capture change how this task is
     > built, without changing what it does.
@@ -946,7 +946,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > (M2.2), rank and names (M2.4), the server's state machine and rating fold (M2.5). A UI or tray indicator
     > for the queue (M6.1). Anything that writes to the League client.
 
-- [ ] **M2.4** Rank sync: own rank on start and every 6 hours; rank for every unknown PUUID seen in a lobby, once, then weekly.
+- [x] **M2.4** Rank sync: own rank on start and every 6 hours; rank for every unknown PUUID seen in a lobby, once, then weekly.
 
     > **Note (product, 2026-09-08, after M0.3).** This sweep also fetches **names**, not just ranks. Lobby
     > members carry no `gameName`/`tagLine` — `summonerName` is an empty string on 16.17 — so a roster posted
