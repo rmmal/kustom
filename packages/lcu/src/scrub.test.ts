@@ -21,6 +21,10 @@ describe('isSensitiveUri', () => {
       '/rso-auth/v1/authorization',
       '/lol-chat/v1/conversations/abc/messages',
       '/lol-chat/v1/me',
+      '/lol-game-client-chat/v2/buddies/1',
+      '/lol-hovercard/v1/friend-info/232f4e6d-d475-5dca-adc1-104414fbabdc',
+      '/riot-messaging-service/v1/message/lol-gsm-server/v1/gsm/game-update/IN_PROGRESS',
+      '/lol-gameflow/v1/player-credentials',
       '/lol-cookie-jar/v1/cookies',
     ]) {
       expect(isSensitiveUri(uri), uri).toBe(true);
@@ -64,6 +68,64 @@ describe('scrubValue', () => {
       list: [{ password: REDACTED, kills: 3 }, 'plain', null],
       cookie: REDACTED,
     });
+  });
+
+  it('scrubs credentials nested inside a JSON string, the way gsm game-update payloads carry them', () => {
+    const payload = JSON.stringify({
+      id: 4000965483,
+      gameState: 'IN_PROGRESS',
+      playerCredentials: {
+        gameId: 4000965483,
+        serverIp: '162.249.72.6',
+        serverPort: 7042,
+        encryptionKey: 'b64key==',
+        spectatorKey: 'spec',
+        observerEncryptionKey: 'obs',
+        packetCopMetadata: { a: 1 },
+        summonerId: 47890856,
+      },
+    });
+    const out = scrubValue({ ackRequired: true, payload }) as { ackRequired: boolean; payload: string };
+    expect(out.ackRequired).toBe(true);
+    expect(out.payload).not.toContain('b64key==');
+    expect(out.payload).not.toContain('spec"');
+    expect(out.payload).not.toContain('"obs"');
+    const inner = JSON.parse(out.payload) as { playerCredentials: unknown; gameState: string };
+    expect(inner.gameState).toBe('IN_PROGRESS');
+    // The key itself matches "credential", so the whole object goes.
+    expect(inner.playerCredentials).toBe(REDACTED);
+
+    // The same fields under a neutral key: each credential key is replaced on its own, the rest survives.
+    const neutral = scrubValue({
+      payload: JSON.stringify({
+        game: {
+          serverIp: '162.249.72.6',
+          serverPort: 7042,
+          encryptionKey: 'b64key==',
+          spectatorKey: 'spec',
+          observerEncryptionKey: 'obs',
+          packetCopMetadata: { a: 1 },
+          summonerId: 47890856,
+        },
+      }),
+    }) as { payload: string };
+    expect(neutral.payload).not.toContain('b64key==');
+    expect((JSON.parse(neutral.payload) as { game: Record<string, unknown> }).game).toEqual({
+      serverIp: '162.249.72.6',
+      serverPort: 7042,
+      encryptionKey: REDACTED,
+      spectatorKey: REDACTED,
+      observerEncryptionKey: REDACTED,
+      packetCopMetadata: REDACTED,
+      summonerId: 47890856,
+    });
+  });
+
+  it('text-scrubs a string that starts like JSON but does not parse, and leaves plain strings alone', () => {
+    expect(scrubValue('{encryptionKey=abc, x=1')).toBe(`{encryptionKey="${REDACTED}", x=1`);
+    expect(scrubValue('[not json, token: t')).toBe(`[not json, token: "${REDACTED}"`);
+    expect(scrubValue("Summoner's Rift")).toBe("Summoner's Rift");
+    expect(scrubValue('')).toBe('');
   });
 
   it('passes primitives through and does not mutate the input', () => {

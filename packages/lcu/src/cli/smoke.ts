@@ -10,7 +10,8 @@
  * of writing. This is the post-patch health check named in docs/01-architecture.md.
  *
  * `--puuid` and `--riot-id` add probes for another player (M0.3 question 4: does `ranked-stats/{puuid}` work
- * for someone who is not you?).
+ * for someone who is not you?). `--game-id` pins the match-detail probe to one game (the history list cannot
+ * tell a full 5v5 from a solo abort, so the automatic choice is only "newest completed custom").
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -35,6 +36,7 @@ import {
 } from '../fixtures.js';
 import { discoverLockfile } from '../lockfile.js';
 import { CurrentSummonerMinimalSchema, MatchHistoryMinimalSchema } from '../schemas.js';
+import { scrubText, scrubValue } from '../scrub.js';
 import { describeTlsMode } from '../tls.js';
 import {
   describeAttempts,
@@ -53,6 +55,7 @@ const HELP = `smoke: hit every read-only LCU endpoint and save the raw responses
   --lockfile <p>    lockfile path for a non-default install
   --puuid <puuid>   also probe ranked-stats and summoner lookup for another player
   --riot-id N#TAG   also probe the alias lookup for another Riot ID
+  --game-id <id>    probe match-detail for this game instead of the newest completed custom in the history
   --out <dir>       fixtures root (default packages/lcu/fixtures)
   --live-port <n>   port of the in-game live data server (default 2999; tests point it at a dead port)
   --verbose         debug logging
@@ -68,12 +71,17 @@ interface Row {
   readonly changed: boolean;
 }
 
+/**
+ * Builds the fixture envelope. Bodies go through the same key scrub as recorded WebSocket events
+ * (`eog-stats-block` carries `mucJwtDto` and `multiUserChatPassword`, for example); `redacted` says whether
+ * anything was replaced so the table can show it.
+ */
 function envelopeFor(
   endpoint: { id: string; path: string },
   response: Extract<RawResponse, { kind: 'response' }>,
   patch: string,
   clientVersion: string | null,
-): FixtureEnvelope {
+): { envelope: FixtureEnvelope; redacted: boolean } {
   const base = {
     id: endpoint.id,
     method: 'GET',
@@ -84,7 +92,15 @@ function envelopeFor(
     clientVersion,
     contentType: response.contentType ?? null,
   };
-  return response.body.parsed ? { ...base, body: response.body.value } : { ...base, bodyText: response.text };
+  if (response.body.parsed) {
+    const body = scrubValue(response.body.value);
+    return {
+      envelope: { ...base, body },
+      redacted: JSON.stringify(body) !== JSON.stringify(response.body.value),
+    };
+  }
+  const bodyText = scrubText(response.text, response.text.length);
+  return { envelope: { ...base, bodyText }, redacted: bodyText !== response.text };
 }
 
 function describeDiff(
@@ -137,6 +153,7 @@ async function main(): Promise<number> {
       lockfile: { type: 'string' },
       puuid: { type: 'string' },
       'riot-id': { type: 'string' },
+      'game-id': { type: 'string' },
       out: { type: 'string' },
       'live-port': { type: 'string' },
       verbose: { type: 'boolean', default: false },
@@ -181,6 +198,9 @@ async function main(): Promise<number> {
   const rows: Row[] = [];
   const envelopes: FixtureEnvelope[] = [];
   const params: Partial<Record<PathParam, string>> = {};
+  if (values['game-id']) {
+    params.gameId = values['game-id'];
+  }
 
   const probes: { endpoint: ReadEndpoint; suffix: string; overrides: Partial<Record<PathParam, string>> }[] =
     READ_ENDPOINTS.map((endpoint) => ({ endpoint, suffix: '', overrides: {} }));
@@ -220,11 +240,14 @@ async function main(): Promise<number> {
       });
       return null;
     }
-    const envelope = envelopeFor({ id, path }, response, resolved.patch, resolved.version);
+    const { envelope, redacted } = envelopeFor({ id, path }, response, resolved.patch, resolved.version);
     envelopes.push(envelope);
     const notes: string[] = [];
     if (!idle.includes(response.status)) {
       notes.push(`unexpected status (idle: ${idle.join('/')})`);
+    }
+    if (redacted) {
+      notes.push('credential-looking keys redacted');
     }
     if (!response.body.parsed) {
       notes.push('body is not JSON');
@@ -290,16 +313,20 @@ async function main(): Promise<number> {
         );
       }
     }
-    if (endpoint.id === 'match-history') {
+    if (endpoint.id === 'match-history' && params.gameId === undefined) {
       const history = MatchHistoryMinimalSchema.safeParse(envelope.body);
       if (history.success) {
         const games = history.data.games.games;
-        const custom = games.find((game) => game.gameType === 'CUSTOM_GAME');
+        const customs = games.filter((game) => game.gameType === 'CUSTOM_GAME');
+        // A completed custom carries every participant; an aborted one (Abort_TooFewPlayers) only the local
+        // player, which makes a poor fixture. Fall back to any custom, then to anything.
+        const custom = customs.find((game) => game.endOfGameResult === 'GameComplete') ?? customs[0];
         const chosen = custom ?? games[0];
         if (chosen) {
           params.gameId = String(chosen.gameId);
+          const label = custom ? ` (custom, ${custom.endOfGameResult ?? 'result unknown'})` : '';
           console.log(
-            `match-history: ${games.length} games, ${games.filter((game) => game.gameType === 'CUSTOM_GAME').length} CUSTOM_GAME; match-detail will use ${chosen.gameId}${custom ? ' (custom)' : ''}`,
+            `match-history: ${games.length} games, ${customs.length} CUSTOM_GAME; match-detail will use ${chosen.gameId}${label}`,
           );
         }
       } else {

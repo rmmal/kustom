@@ -1,0 +1,182 @@
+{
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "versionSource": "/lol-patch/v1/game-version",
+  "capturedAt": "2026-09-08T16:53:37.139Z",
+  "tls": "pinned to riotgames.pem",
+  "tlsAttempts": [
+    {
+      "mode": "pinned to riotgames.pem",
+      "outcome": "HTTP 200"
+    }
+  ],
+  "lockfile": "/Applications/League of Legends.app/Contents/LoL/lockfile",
+  "results": [
+    {
+      "id": "game-version",
+      "path": "/lol-patch/v1/game-version",
+      "status": "200",
+      "bytes": 84,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "system-builds",
+      "path": "/system/v1/builds",
+      "status": "200",
+      "bytes": 123,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "current-summoner",
+      "path": "/lol-summoner/v1/current-summoner",
+      "status": "200",
+      "bytes": 457,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "alias-lookup",
+      "path": "/lol-summoner/v1/alias/lookup?gameName=PRT%20Empty&tagLine=EUNE",
+      "status": "200",
+      "bytes": 98,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "summoner-by-puuid",
+      "path": "/lol-summoner/v2/summoners/puuid/34151cbd-d9f8-5dad-9dc8-c6a8e253c0de",
+      "status": "200",
+      "bytes": 456,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "current-ranked-stats",
+      "path": "/lol-ranked/v1/current-ranked-stats",
+      "status": "200",
+      "bytes": 9546,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "ranked-stats-by-puuid",
+      "path": "/lol-ranked/v1/ranked-stats/34151cbd-d9f8-5dad-9dc8-c6a8e253c0de",
+      "status": "200",
+      "bytes": 9546,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "gameflow-phase",
+      "path": "/lol-gameflow/v1/gameflow-phase",
+      "status": "200",
+      "bytes": 11,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "gameflow-session",
+      "path": "/lol-gameflow/v1/session",
+      "status": "200",
+      "bytes": 7371,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "lobby",
+      "path": "/lol-lobby/v2/lobby",
+      "status": "404",
+      "bytes": 97,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "eog-stats-block",
+      "path": "/lol-end-of-game/v1/eog-stats-block",
+      "status": "200",
+      "bytes": 44738,
+      "note": "unexpected status (idle: 404)",
+      "changed": false
+    },
+    {
+      "id": "match-history",
+      "path": "/lol-match-history/v1/products/lol/34151cbd-d9f8-5dad-9dc8-c6a8e253c0de/matches?begIndex=0&endIndex=20",
+      "status": "200",
+      "bytes": 86586,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "match-detail",
+      "path": "/lol-match-history/v1/games/4000965483",
+      "status": "200",
+      "bytes": 3609,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "swagger-v2",
+      "path": "/swagger/v2/swagger.json",
+      "status": "404",
+      "bytes": 82,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "openapi-v3",
+      "path": "/swagger/v3/openapi.json",
+      "status": "404",
+      "bytes": 82,
+      "note": "",
+      "changed": false
+    },
+    {
+      "id": "live-client-data",
+      "path": "/liveclientdata/allgamedata",
+      "status": "ERR",
+      "bytes": 0,
+      "note": "ECONNREFUSED connect ECONNREFUSED 127.0.0.1:2999",
+      "changed": false
+    }
+  ],
+  "overlays": [
+    {
+      "file": "lobby.json",
+      "path": "/lol-lobby/v2/lobby",
+      "status": 200,
+      "capturedAt": "2026-09-08T17:03:59.546Z",
+      "note": "copied from a later smoke --out run against the same client and patch; supersedes the results row of the same id"
+    },
+    {
+      "file": "match-detail.json",
+      "path": "/lol-match-history/v1/games/4000769615",
+      "status": 200,
+      "capturedAt": "2026-09-08T17:03:59.772Z",
+      "note": "copied from a later smoke --out run against the same client and patch; supersedes the results row of the same id"
+    },
+    {
+      "file": "ranked-stats-by-puuid--other.json",
+      "path": "/lol-ranked/v1/ranked-stats/aebd7c57-83d8-551d-a7b2-7caa7e8b1960",
+      "status": 200,
+      "capturedAt": "2026-09-08T16:43:52.596Z",
+      "note": "copied from a later smoke --out run against the same client and patch; supersedes the results row of the same id"
+    },
+    {
+      "file": "summoner-by-puuid--other.json",
+      "path": "/lol-summoner/v2/summoners/puuid/aebd7c57-83d8-551d-a7b2-7caa7e8b1960",
+      "status": 200,
+      "capturedAt": "2026-09-08T16:43:52.598Z",
+      "note": "copied from a later smoke --out run against the same client and patch; supersedes the results row of the same id"
+    },
+    {
+      "file": "match-history--other.json",
+      "path": "/lol-match-history/v1/products/lol/aebd7c57-83d8-551d-a7b2-7caa7e8b1960/matches?begIndex=0&endIndex=20",
+      "status": 200,
+      "capturedAt": "2026-09-08T16:43:56.310Z",
+      "note": "copied from a later smoke --out run against the same client and patch; supersedes the results row of the same id"
+    }
+  ],
+  "note": "Base files from the run above (end-of-game screen). eog-stats-block.json and the other base envelopes were passed through scrubValue afterwards (that smoke build did not scrub bodies). ws-events.ndjson is trimmed to the URIs the companion reads."
+}

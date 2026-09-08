@@ -1,0 +1,11 @@
+{
+  "id": "game-version",
+  "method": "GET",
+  "path": "/lol-patch/v1/game-version",
+  "status": 200,
+  "capturedAt": "2026-09-08T16:53:36.518Z",
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "contentType": "application/json",
+  "body": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard"
+}

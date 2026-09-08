@@ -1,0 +1,11 @@
+{
+  "id": "gameflow-phase",
+  "method": "GET",
+  "path": "/lol-gameflow/v1/gameflow-phase",
+  "status": 200,
+  "capturedAt": "2026-09-08T16:53:37.108Z",
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "contentType": "application/json",
+  "body": "EndOfGame"
+}

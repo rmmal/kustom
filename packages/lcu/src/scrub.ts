@@ -20,6 +20,11 @@ export const SENSITIVE_URI_PREFIXES: readonly string[] = [
   '/riot-client-auth',
   '/rso-auth',
   '/lol-chat',
+  '/lol-game-client-chat',
+  '/lol-hovercard',
+  // Server-push messages; the gsm game-update ones carry the player's game credentials inside a JSON string.
+  // The companion never reads this prefix.
+  '/riot-messaging-service',
   '/lol-cookie-jar',
   '/lol-license-agreement',
   '/lol-email-verification',
@@ -41,12 +46,36 @@ export function isSensitiveUri(uri: string): boolean {
 }
 
 /** Keys whose values are replaced inside otherwise-kept payloads. */
-const SENSITIVE_KEY = /token|password|secret|cookie|authorization|credential|jwt|bearer/i;
+const SENSITIVE_KEY =
+  /token|password|secret|cookie|authorization|credential|jwt|bearer|encryptionkey|spectatorkey|observerencryptionkey|packetcop/i;
 
 export const REDACTED = '[redacted]';
 
-/** Returns a deep copy of `value` with every sensitive key's value replaced. */
+/**
+ * A string value that looks like JSON is scrubbed as JSON and re-serialised: the client nests whole payloads
+ * as strings (`/riot-messaging-service` `payload`, for one), and a key-based scrub that stopped at the string
+ * boundary let `playerCredentials.encryptionKey` through. Anything that starts like JSON but does not parse
+ * gets the free-text scrub over its whole length.
+ */
+function scrubString(text: string): string {
+  const head = text.trimStart();
+  if (!(head.startsWith('{') || head.startsWith('['))) {
+    return text;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return scrubText(text, text.length);
+  }
+  return JSON.stringify(scrubValue(parsed));
+}
+
+/** Returns a deep copy of `value` with every sensitive key's value replaced, looking inside JSON strings too. */
 export function scrubValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return scrubString(value);
+  }
   if (Array.isArray(value)) {
     return value.map(scrubValue);
   }
@@ -74,7 +103,7 @@ export function scrubEvent(event: LcuEvent): ScrubbedEvent {
 
 /** Redacts `key: value` / `"key": "value"` pairs for credential-looking keys inside free text. */
 const SENSITIVE_TEXT_PAIR =
-  /("?[\w-]*(?:token|password|secret|cookie|authorization|credential|jwt|bearer)[\w-]*"?\s*[:=]\s*)("(?:[^"\\]|\\.)*"?|[^,;\s}\]]+)/gi;
+  /("?[\w-]*(?:token|password|secret|cookie|authorization|credential|jwt|bearer|encryptionkey|spectatorkey|packetcop)[\w-]*"?\s*[:=]\s*)("(?:[^"\\]|\\.)*"?|[^,;\s}\]]+)/gi;
 
 export const DROPPED_PREVIEW_CHARS = 200;
 

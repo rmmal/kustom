@@ -1,0 +1,34 @@
+{
+  "id": "summoner-by-puuid--other",
+  "method": "GET",
+  "path": "/lol-summoner/v2/summoners/puuid/aebd7c57-83d8-551d-a7b2-7caa7e8b1960",
+  "status": 200,
+  "capturedAt": "2026-09-08T16:43:52.598Z",
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "contentType": "application/json",
+  "body": {
+    "accountId": 216559677,
+    "displayName": "",
+    "gameName": "XETA",
+    "internalName": "",
+    "nameChangeFlag": false,
+    "percentCompleteForNextLevel": 21,
+    "privacy": "PUBLIC",
+    "profileIconId": 5470,
+    "puuid": "aebd7c57-83d8-551d-a7b2-7caa7e8b1960",
+    "rerollPoints": {
+      "currentPoints": 0,
+      "maxRolls": 2,
+      "numberOfRolls": 0,
+      "pointsCostToRoll": 250,
+      "pointsToReroll": 250
+    },
+    "summonerId": 52699007,
+    "summonerLevel": 527,
+    "tagLine": "EUNE",
+    "unnamed": true,
+    "xpSinceLastLevel": 591,
+    "xpUntilNextLevel": 2688
+  }
+}
