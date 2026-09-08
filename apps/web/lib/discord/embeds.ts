@@ -307,13 +307,20 @@ function lobbyFieldValue(lobby: { name: string | null; password: string | null }
  * `Blue was favored 54%.` Past tense, because the game has been played; the teams embed's
  * present-tense clause is core's and this one is not a recomposition of it — it is the same
  * number said about a game that is over.
+ *
+ * The coin flip is `Neither side was favored.` and not core's `Even 50%.` (M3.11, product
+ * 2026-09-09): under the headline `Red wins · 34:12`, beside a full past-tense sentence,
+ * *even, 50%* reads as a scoreline before it reads as a prediction — and on a first night,
+ * everyone unrated and every split gap 0, it is the first result sentence the group ever
+ * reads. The number goes with it, because 50 is what "neither" means. Core's fragment in the
+ * teams explanation is untouched and stays core's.
  */
 function favoredClause(blueWinProb: number | null): string | null {
   if (blueWinProb === null) return null;
   const percent = Math.round(blueWinProb * 100);
   if (percent > 50) return `Blue was favored ${percent}%.`;
   if (percent < 50) return `Red was favored ${100 - percent}%.`;
-  return 'Even 50%.';
+  return 'Neither side was favored.';
 }
 
 function topDamageClause(top: { name: PlayerName; damage: number } | null): string | null {

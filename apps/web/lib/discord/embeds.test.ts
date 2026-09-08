@@ -316,6 +316,14 @@ describe('resultEmbed, the worked example lost by the favourite', () => {
     expect(bare).not.toHaveProperty('description');
   });
 
+  it('names neither side for the coin flip, and drops the number with it (M3.11)', () => {
+    // `Even 50%.` is core's present-tense fragment and stays core's; under `Red wins · 34:12`
+    // it reads as a scoreline. 50 is what "neither" means, so the percent goes too.
+    const embedded = resultEmbed(workedResultInput({ blueWinProb: 0.5 })).embeds[0];
+    expect(embedded?.description).toBe('Neither side was favored. Top damage: Lena, 47.3k.');
+    expect(embedded?.description).not.toContain('50%');
+  });
+
   it('reads the underdog win the other way round when red was favoured', () => {
     const embedded = resultEmbed(workedResultInput({ blueWinProb: 0.42, topDamage: null })).embeds[0];
     expect(embedded?.description).toBe('Red was favored 58%.');
