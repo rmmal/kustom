@@ -1327,19 +1327,20 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > costs them a second evening they will not run it, and a night with nobody running it is a night the bot
     > does not exist.
     >
-    > **What ships, and where it lives.** One file, `CustomsNight.exe`, and the README below. It is uploaded to
-    > a **public Supabase Storage bucket named `releases`** on the hosted project (lead, 2026-09-08): one object
-    > per version plus a `latest` copy, so the link in the group chat is
-    > `https://<project>.supabase.co/storage/v1/object/public/releases/latest/CustomsNight.exe` and the
-    > versioned one is `.../releases/v<version>/CustomsNight.exe`. `/admin` links to it (the tonight page later),
-    > so a friend needs no GitHub login and the repo stays private. The upload is part of the build step, not a
-    > manual drag: `pnpm --filter companion build:exe` produces the file and the command that publishes it is
-    > written down beside it. No installer, no sidecar DLLs, and no `.zip` a friend has to unpack — an unpack
-    > step is a step.
+    > **What ships, and where it lives.** One file, `CustomsNight.exe`, and the README below. Releases are
+    > **GitHub release assets on the public repo `suyaser/kustom-releases`** (lead, 2026-09-09); the code repo
+    > stays private. One tag per version, `v<version>`, carrying `CustomsNight.exe` and `README.txt`, and the
+    > link in the group chat is the stable one GitHub keeps pointed at the newest tag:
+    > `https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe`. It needs no
+    > GitHub account to download. This replaces the Supabase `releases` bucket, whose free plan caps an object
+    > at 50 MB against a 90 MB exe — see `04-decisions.md`. `/admin` links to it (the tonight page later). The
+    > upload is part of the build step, not a manual drag: `pnpm --filter companion build:exe` produces the
+    > file and the command that publishes the tag is written down beside it. No installer, no sidecar DLLs,
+    > and no `.zip` a friend has to unpack — an unpack step is a step.
     >
     > **Which origin gets baked in.** The deployed Vercel URL, once it exists. If it is not ready when this task
     > starts, build with a placeholder origin, finish everything else, and rebuild the exe against the real URL
-    > before the file is uploaded to `releases` — no friend ever downloads the placeholder build.
+    > before the tag is published — no friend ever downloads the placeholder build.
     >
     > **How it is built.** The companion runs on `tsx` today, with `.js` relative imports and two workspace
     > dependencies, so a bundle comes first: one esbuild pass (`--bundle --platform=node --target=node22`) over
@@ -1385,8 +1386,10 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > ## 1. Download it
     >
-    > Get `CustomsNight.exe` from the link in the group chat and put it somewhere you will find it again. Your
-    > desktop is fine.
+    > Get `CustomsNight.exe` from the link in the group chat —
+    > <https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe>, which always
+    > gives you the newest one — and put it somewhere you will find it again. Your desktop is fine. You do not
+    > need a GitHub account.
     >
     > Windows may say it does not recognise the app. Click **More info**, then **Run anyway**. It says that
     > about anything that is not from a big company.
@@ -1438,8 +1441,10 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > 7. **No spam.** An hour with the client open and no lobby produces at most 20 console lines, and no line
     >    contains the token, a lockfile password or a raw event body. The log file has the rest.
     > 8. **One URL, everywhere.** The download link printed in `apps/companion/README.md`, in this brief, in
-    >    `docs/06-test-night.md` and on `/admin` is byte-identical to the object that exists in the `releases`
-    >    bucket, and `curl -I` on it answers 200 before the link goes into the group chat.
+    >    `docs/06-test-night.md` and on `/admin` is byte-identical to
+    >    `https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe`, the tag
+    >    `v<version>` carries both `CustomsNight.exe` and `README.txt`, and `curl -IL` on the link answers 200
+    >    from a signed-out session before it goes into the group chat.
     > 9. `pnpm -r typecheck` and `pnpm -r test` still pass, and `pnpm --filter companion dev` still starts
     >    against `http://localhost:3000` with no config file present.
     >
