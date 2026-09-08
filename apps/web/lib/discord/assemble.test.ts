@@ -37,7 +37,7 @@ function teamsSource(overrides: Partial<TeamsSource> = {}): TeamsSource {
   };
 }
 
-function sitter(puuid: string, gamesTonight = 4): PoolMember {
+function sitter(puuid: string, gamesTonight = 4, lastSitOutAt: number | null = null): PoolMember {
   return {
     playerId: `player-${puuid}`,
     puuid,
@@ -50,7 +50,7 @@ function sitter(puuid: string, gamesTonight = 4): PoolMember {
     mu: 20,
     sigma: 10,
     gamesTonight,
-    lastSitOutAt: null,
+    lastSitOutAt,
   };
 }
 
@@ -104,8 +104,45 @@ describe('buildTeamsInput', () => {
     const most = buildTeamsInput(teamsSource({ sitters }), names, CONTEXT);
     expect(most.sitOut).toEqual({ names: ['Sara', 'Deniz'], reason: 'most-games' });
 
-    const tied = buildTeamsInput(teamsSource({ sitters, tiedOnGames: true }), names, CONTEXT);
+    // Tied on games, and one of the ten has sat out before: that history is the reason.
+    const playing = workedPool();
+    const withHistory = playing.map((member, index) =>
+      index === 0 ? { ...member, lastSitOutAt: 1_757_000_000_000 } : member,
+    );
+    const tied = buildTeamsInput(
+      teamsSource({ sitters, tiedOnGames: true, playing: withHistory }),
+      names,
+      CONTEXT,
+    );
     expect(tied.sitOut?.reason).toBe('longest-since');
+  });
+
+  /**
+   * M3.12. The three clauses, and the boundary between the last two: `longest-since` is only
+   * true once somebody around has actually sat out, and on the first balance of a night that
+   * is nobody.
+   */
+  it('says nobody has sat out before when the pool is tied and carries no sit-out at all', () => {
+    const sitters = [sitter('puuid-sara', 0)];
+    const names = new Map([...workedNames(), ['puuid-sara', 'Sara']]);
+
+    const first = buildTeamsInput(teamsSource({ sitters, tiedOnGames: true }), names, CONTEXT);
+    expect(first.sitOut).toEqual({ names: ['Sara'], reason: 'first-sit-out' });
+
+    // One sit-out anywhere in the pool — here the sitter's own — and the clause goes back.
+    const sat = buildTeamsInput(
+      teamsSource({ sitters: [sitter('puuid-sara', 0, 1_757_000_000_000)], tiedOnGames: true }),
+      names,
+      CONTEXT,
+    );
+    expect(sat.sitOut?.reason).toBe('longest-since');
+  });
+
+  it('never reaches for the first-night clause when somebody has played more tonight', () => {
+    // Not tied is answered before any history is looked at: M3.12 only refines the tie.
+    const sitters = [sitter('puuid-sara', 3)];
+    const names = new Map([...workedNames(), ['puuid-sara', 'Sara']]);
+    expect(buildTeamsInput(teamsSource({ sitters }), names, CONTEXT).sitOut?.reason).toBe('most-games');
   });
 
   it('turns a seat move with a sitter into a swap and one without into an open slot', () => {

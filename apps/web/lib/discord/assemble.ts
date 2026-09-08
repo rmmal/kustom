@@ -8,6 +8,7 @@ import type {
   ResultEmbedInput,
   ResultPlayer,
   SeatLine,
+  SitOutReason,
   TeamsEmbedInput,
   TeamsPlayer,
 } from './embeds';
@@ -83,13 +84,31 @@ export function buildTeamsInput(
         ? null
         : {
             names: source.sitters.map((member) => names.get(member.puuid) ?? null),
-            reason: source.tiedOnGames ? 'longest-since' : 'most-games',
+            reason: sitOutReason(source),
           },
     seats: source.seatMoves.map((move) => toSeatLine(move, names)),
     lobby: { name: source.lobbyName, password: source.lobbyPassword },
     url: context.url,
     timestamp: context.timestamp,
   };
+}
+
+/**
+ * Which of the three clauses is true of this pool (M2.15, M3.12).
+ *
+ * Not tied on games: somebody has played more than the rest and that is why they sit. Tied,
+ * and somebody around has sat out before: the second key of `compareForSitOut` decided it, so
+ * "longest since they last sat out" is the reason. Tied with **nobody** carrying a sit-out —
+ * the first balance of a night, and of the group — and the comparator has fallen through to
+ * PUUID order; there is no history to point at, so the clause says exactly that instead of
+ * claiming one (product, 2026-09-09).
+ *
+ * The pool is the ten plus the sitters: everyone around, which is what the comparator ordered.
+ */
+export function sitOutReason(source: Pick<TeamsSource, 'playing' | 'sitters' | 'tiedOnGames'>): SitOutReason {
+  if (!source.tiedOnGames) return 'most-games';
+  const around = [...source.playing, ...source.sitters];
+  return around.every((member) => member.lastSitOutAt === null) ? 'first-sit-out' : 'longest-since';
 }
 
 function toSeatLine(move: SeatMove, names: NameLookup): SeatLine {

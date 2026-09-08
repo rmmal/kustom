@@ -417,8 +417,13 @@ if (stack === null) {
       expect(await balanced.json()).toMatchObject({ status: 'balanced', memberCount: 11 });
       expect(posts).toHaveLength(1);
 
+      // The first balance of a night for these eleven: tied on games *and* nobody carrying a
+      // sit-out, which is exactly the case M3.12 gave its own clause. `longest since they last
+      // sat out` was true here and vacuous — the comparator had fallen through to puuid order.
       const fields = fieldsOf(0);
-      expect(fields['Sitting out']).toBe('Sitting out: Player0 — longest since they last sat out.');
+      expect(fields['Sitting out']).toBe(
+        'Sitting out: Player0 — nobody has sat out before, so somebody had to be first.',
+      );
       expect(fields.Seats).toBe('Swap: Player0 out, Player10 in.');
 
       // The ten in the two side fields are the other ten, and the sitter is in neither.

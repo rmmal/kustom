@@ -150,6 +150,14 @@ describe('teamsEmbed, the fields that only sometimes exist', () => {
     );
   });
 
+  it('says nobody had sat out before on the first balance of a night (M3.12)', () => {
+    const embed = teamsEmbed(workedTeamsInput({ sitOut: { names: ['Player0'], reason: 'first-sit-out' } }))
+      .embeds[0];
+    expect(embed?.fields.find((field) => field.name === 'Sitting out')?.value).toBe(
+      'Sitting out: Player0 — nobody has sat out before, so somebody had to be first.',
+    );
+  });
+
   it('prints one Seats line per move, swap and open slot', () => {
     const embed = teamsEmbed(
       workedTeamsInput({

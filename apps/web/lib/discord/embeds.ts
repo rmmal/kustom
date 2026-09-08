@@ -64,8 +64,16 @@ export interface TeamsPlayer {
   offRole: boolean;
 }
 
-/** Why the sitters are sitting. M2.15's two reason clauses, and no third. */
-export type SitOutReason = 'most-games' | 'longest-since';
+/**
+ * Why the sitters are sitting. M2.15's two clauses, plus M3.12's third one for the first
+ * balance of a night.
+ *
+ * `first-sit-out` is the case where everyone around is tied on games tonight *and* nobody
+ * around has a sit-out on record: the comparator has fallen through to PUUID order, so
+ * `longest-since` would be stating a fact about a history that does not exist and sending the
+ * reader looking for a night they sat out that never happened (product, 2026-09-09).
+ */
+export type SitOutReason = 'most-games' | 'longest-since' | 'first-sit-out';
 
 export type SeatLine =
   /** Somebody leaves the ten and somebody takes their slot. */
@@ -276,11 +284,17 @@ export function joinNames(names: readonly PlayerName[]): string {
   return `${rendered.slice(0, -1).join(', ')} and ${rendered[rendered.length - 1]}`;
 }
 
-/** M2.15's copy, verbatim. Product owns both sentences; neither is composed anywhere else. */
+/** M2.15's and M3.12's copy, verbatim. Product owns all three; none is composed elsewhere. */
 function sitOutLine(names: readonly PlayerName[], reason: SitOutReason): string {
-  const clause = reason === 'most-games' ? 'most games tonight' : 'longest since they last sat out';
-  return `Sitting out: ${joinNames(names)} — ${clause}.`;
+  return `Sitting out: ${joinNames(names)} — ${SIT_OUT_CLAUSES[reason]}.`;
 }
+
+/** The three clauses. Words from `05-design.md`, "Sit-out fields"; nothing derives them. */
+const SIT_OUT_CLAUSES: Readonly<Record<SitOutReason, string>> = {
+  'most-games': 'most games tonight',
+  'longest-since': 'longest since they last sat out',
+  'first-sit-out': 'nobody has sat out before, so somebody had to be first',
+};
 
 /** M2.15's two seat lines, verbatim. */
 function seatLine(move: SeatLine): string {
