@@ -12,3 +12,6 @@ apps/companion/build/
 coverage/
 *.tsbuildinfo
 next-env.d.ts
+# Raw OpenAPI dumps from the client are multi-MB; M0.3 extracts what it needs into schemas
+packages/lcu/fixtures/**/swagger-*.json
+packages/lcu/fixtures/**/openapi-*.json
