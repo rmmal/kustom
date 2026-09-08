@@ -35,6 +35,35 @@ The first `supabase start` pulls ~5 GB of images; `supabase/postgres` alone is ~
 link, pull it on its own first: `docker pull public.ecr.aws/supabase/postgres:<tag>`, where the tag
 comes from `supabase services`.
 
+## Discord OAuth (the `/admin` sign-in)
+
+`config.toml` carries the provider block, with the credentials as environment placeholders so
+nothing secret is in the repo:
+
+```toml
+[auth.external.discord]
+enabled = true
+client_id = "env(SUPABASE_AUTH_DISCORD_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_DISCORD_SECRET)"
+```
+
+Both variables are in the repo's `.env.example`. The CLI reads them from your **shell**, not from
+`apps/web/.env.local`, and they are read at `supabase start`, so export them and restart the stack:
+
+```
+export SUPABASE_AUTH_DISCORD_CLIENT_ID=...
+export SUPABASE_AUTH_DISCORD_SECRET=...
+pnpm db:stop && pnpm db:start
+```
+
+With them unset the CLI prints `WARN: environment variable is unset` and passes the placeholder
+through: the stack still starts, so nobody who is not working on `/admin` needs credentials.
+
+The redirect URL to register in the Discord developer portal is Supabase's, not the app's:
+`http://127.0.0.1:54321/auth/v1/callback` locally, `https://<project-ref>.supabase.co/auth/v1/callback`
+hosted (where it is configured in the dashboard instead of here). Full steps, and how the app maps
+a Discord identity onto `players.discord_id`, are in `apps/web/README.md`.
+
 ## The hosted project
 
 There is no hosted project yet. Once someone creates one, per machine, once:
@@ -88,6 +117,17 @@ Rules:
   `supabase_realtime` publication, which is what the tonight page (M3.4) and the bot (M4.4)
   subscribe to. `players` is not: it is not publicly readable.
 
+## What 0002_start_season.sql adds
+
+Two service-role-only functions, both there because exactly one season may be active and
+PostgREST has no transactions — doing the switch in two calls can leave *zero* active seasons,
+and then `active_season_id()` is null and every `games` insert fails on its not-null `season_id`.
+
+- `public.start_season(name)` — close the active season and open a new one. `/api/admin/seasons`
+  calls this. It does not carry ratings forward; that is M5.3.
+- `public.set_active_season(id)` — move the active flag to an existing season. Used by the web
+  integration tests to hand the shared local database back with Season 1 active.
+
 ## Reading data: RLS
 
 - **Public (anon and authenticated) read:** `seasons`, `ratings`, `lobbies`, `lobby_members`,
@@ -99,7 +139,11 @@ Rules:
 - **No anon or authenticated writes anywhere.** There is not a single insert/update/delete policy;
   the DML grants are revoked as well. The API writes with the service role key, which bypasses RLS,
   so every write goes through a route handler that has already checked the companion token.
-- Admin session policies land with M1.6; `0001_init.sql` marks the spot.
+- M1.6 added **no** session policies, and the spot `0001_init.sql` marks is still empty: `/admin`
+  and `/api/admin/*` check the Supabase session in the app and then read and write with the
+  service role, so `authenticated` still has no privilege on `players`, `companion_tokens`,
+  `companion_commands` or `discord_config`. A policy would be a second copy of the `is_admin`
+  rule; add one only when something in the browser needs to read these tables directly.
 
 ## Tests
 

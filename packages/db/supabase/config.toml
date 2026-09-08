@@ -302,6 +302,23 @@ max_frequency = "5s"
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
+# Discord is the only provider Customs Night uses: /admin is gated on a Discord identity
+# matched to players.discord_id (M1.6). The default scope (`identify email`) is what carries
+# the snowflake we match on. Enabled with the credentials in the environment:
+#   1. Discord developer portal -> New Application -> OAuth2. Add the redirect URL
+#      http://127.0.0.1:54321/auth/v1/callback (hosted: https://<ref>.supabase.co/auth/v1/callback).
+#   2. export SUPABASE_AUTH_DISCORD_CLIENT_ID=... SUPABASE_AUTH_DISCORD_SECRET=...
+#   3. pnpm db:stop && pnpm db:start
+# With the variables unset the CLI only warns and passes the placeholder through, so the local
+# stack still starts for everyone who does not need to sign in. Full steps: apps/web/README.md.
+[auth.external.discord]
+enabled = true
+client_id = "env(SUPABASE_AUTH_DISCORD_CLIENT_ID)"
+# DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
+secret = "env(SUPABASE_AUTH_DISCORD_SECRET)"
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+
 [auth.external.apple]
 enabled = false
 client_id = ""

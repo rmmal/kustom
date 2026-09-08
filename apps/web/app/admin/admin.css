@@ -1,0 +1,118 @@
+/*
+ * Admin styling, deliberately almost nothing.
+ *
+ * M3.0 brings the design system (docs/05-design.md) and restyles the public pages; the admin
+ * area is five people on a laptop, so it uses the browser's own colours and controls. Two
+ * rules it does keep to, because they are not cosmetic:
+ *
+ *   - `color-scheme: light dark` means every control and the page itself follow the system
+ *     theme. Nothing here hard-codes a colour, so there is no light-only page.
+ *   - Tables scroll horizontally instead of overflowing, so the pages work on a phone.
+ */
+
+.admin {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 1rem;
+}
+
+.admin h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+
+.admin h2 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0 0 0.75rem;
+  border-bottom: 1px solid;
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+}
+
+.admin-identity {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  gap: 0.5rem;
+  opacity: 0.85;
+}
+
+.admin-notice,
+.admin-error {
+  border: 1px solid;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 0.25rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.admin-error {
+  font-weight: 600;
+}
+
+.admin-scroll {
+  overflow-x: auto;
+}
+
+.admin table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+.admin th,
+.admin td {
+  border: 1px solid;
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.admin form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.admin-field {
+  display: block;
+  margin: 0 0 0.75rem;
+}
+
+.admin-field span {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.admin-stacked {
+  display: block;
+  max-width: 32rem;
+}
+
+.admin-mono {
+  font-family: ui-monospace, monospace;
+}
+
+.admin-muted {
+  opacity: 0.7;
+}
+
+.admin-empty {
+  border: 1px dashed;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 0.25rem;
+  padding: 1rem;
+}

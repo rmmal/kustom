@@ -3,3 +3,5 @@ packages:
   - "packages/*"
 allowBuilds:
   esbuild: false
+minimumReleaseAgeExclude:
+  - '@supabase/ssr@0.12.7'

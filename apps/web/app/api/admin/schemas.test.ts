@@ -1,0 +1,176 @@
+import { describe, expect, it } from 'vitest';
+import { internalPathSchema } from '@/lib/admin/formValues';
+import { discordConfigRequestSchema } from './discord-config/schema';
+import { adminPlayersRequestSchema } from './players/schema';
+import { startSeasonRequestSchema } from './seasons/schema';
+import { adminTokensRequestSchema } from './tokens/schema';
+
+/**
+ * The request schemas, from both sides: what a browser form sends (strings, empties) and what
+ * a JSON caller sends (nulls, booleans). Both have to land on the same value.
+ */
+
+const PLAYER = '11111111-1111-4111-8111-111111111111';
+
+describe('adminPlayersRequestSchema', () => {
+  it('clears a main role back to null from an empty form field', () => {
+    const parsed = adminPlayersRequestSchema.parse({
+      action: 'set-roles',
+      playerId: PLAYER,
+      mainRole: '',
+      secondaryRole: 'none',
+    });
+
+    expect(parsed).toEqual({
+      action: 'set-roles',
+      playerId: PLAYER,
+      mainRole: null,
+      secondaryRole: null,
+    });
+  });
+
+  it('takes real nulls from a JSON caller', () => {
+    const parsed = adminPlayersRequestSchema.parse({
+      action: 'set-roles',
+      playerId: PLAYER,
+      mainRole: null,
+      secondaryRole: 'support',
+    });
+
+    expect(parsed).toMatchObject({ mainRole: null, secondaryRole: 'support' });
+  });
+
+  it('rejects a role that is not one of the five', () => {
+    const result = adminPlayersRequestSchema.safeParse({
+      action: 'set-roles',
+      playerId: PLAYER,
+      mainRole: 'carry',
+      secondaryRole: '',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a player id that is not a uuid', () => {
+    const result = adminPlayersRequestSchema.safeParse({
+      action: 'set-roles',
+      playerId: 'puuid-hana',
+      mainRole: '',
+      secondaryRole: '',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('trims a Discord id and turns an empty one into an unlink', () => {
+    expect(
+      adminPlayersRequestSchema.parse({
+        action: 'set-discord',
+        playerId: PLAYER,
+        discordId: '  204255221925378048  ',
+      }),
+    ).toMatchObject({ discordId: '204255221925378048' });
+
+    expect(
+      adminPlayersRequestSchema.parse({ action: 'set-discord', playerId: PLAYER, discordId: '' }),
+    ).toMatchObject({ discordId: null });
+  });
+
+  it('reads the admin flag as a target state, from a string or a boolean', () => {
+    expect(
+      adminPlayersRequestSchema.parse({ action: 'set-admin', playerId: PLAYER, isAdmin: 'false' }),
+    ).toMatchObject({ isAdmin: false });
+    expect(
+      adminPlayersRequestSchema.parse({ action: 'set-admin', playerId: PLAYER, isAdmin: true }),
+    ).toMatchObject({ isAdmin: true });
+  });
+
+  it('rejects an unknown action', () => {
+    expect(adminPlayersRequestSchema.safeParse({ action: 'delete', playerId: PLAYER }).success).toBe(false);
+  });
+});
+
+describe('adminTokensRequestSchema', () => {
+  it('accepts a mint with no label', () => {
+    expect(adminTokensRequestSchema.parse({ action: 'mint', playerId: PLAYER, label: '' })).toMatchObject({
+      action: 'mint',
+      label: null,
+    });
+  });
+
+  it('accepts a revoke by token id', () => {
+    expect(adminTokensRequestSchema.safeParse({ action: 'revoke', tokenId: PLAYER }).success).toBe(true);
+  });
+
+  it('rejects a revoke without a token id', () => {
+    expect(adminTokensRequestSchema.safeParse({ action: 'revoke' }).success).toBe(false);
+  });
+});
+
+describe('discordConfigRequestSchema', () => {
+  const base = {
+    guildId: '123',
+    webhookUrl: '',
+    resultsChannelId: '',
+    lobbyVoiceChannelId: '',
+    blueVoiceChannelId: '',
+    redVoiceChannelId: '',
+  };
+
+  it('treats an empty webhook as "leave it alone" and empty ids as null', () => {
+    expect(discordConfigRequestSchema.parse(base)).toEqual({
+      guildId: '123',
+      webhookUrl: null,
+      resultsChannelId: null,
+      lobbyVoiceChannelId: null,
+      blueVoiceChannelId: null,
+      redVoiceChannelId: null,
+    });
+  });
+
+  it('accepts a real Discord webhook URL', () => {
+    const parsed = discordConfigRequestSchema.parse({
+      ...base,
+      webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    });
+    expect(parsed.webhookUrl).toBe('https://discord.com/api/webhooks/123/abc');
+  });
+
+  it('rejects a webhook URL that is not a Discord webhook', () => {
+    const result = discordConfigRequestSchema.safeParse({
+      ...base,
+      webhookUrl: 'https://evil.example/api/webhooks/123/abc',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an empty guild id', () => {
+    expect(discordConfigRequestSchema.safeParse({ ...base, guildId: '  ' }).success).toBe(false);
+  });
+
+  it('reads the clear checkbox', () => {
+    expect(discordConfigRequestSchema.parse({ ...base, clearWebhook: 'true' }).clearWebhook).toBe(true);
+  });
+});
+
+describe('startSeasonRequestSchema', () => {
+  it('trims the name', () => {
+    expect(startSeasonRequestSchema.parse({ name: '  Season 2 ' })).toEqual({ name: 'Season 2' });
+  });
+
+  it('rejects an empty name', () => {
+    expect(startSeasonRequestSchema.safeParse({ name: '   ' }).success).toBe(false);
+  });
+});
+
+describe('internalPathSchema', () => {
+  it('accepts a path on this site', () => {
+    expect(internalPathSchema.safeParse('/admin/players').success).toBe(true);
+  });
+
+  it('rejects anything that could leave the site', () => {
+    for (const value of ['//evil.example', 'https://evil.example', '/\\evil.example', 'admin']) {
+      expect(internalPathSchema.safeParse(value).success).toBe(false);
+    }
+  });
+});

@@ -661,6 +661,40 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_active_season: {
+        Args: { p_id: string }
+        Returns: {
+          created_at: string
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          starts_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "seasons"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      start_season: {
+        Args: { p_name: string }
+        Returns: {
+          created_at: string
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          starts_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "seasons"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       companion_command_kind: "create_lobby" | "invite" | "switch_side"
