@@ -5,6 +5,7 @@ import type {
   LobbyStatusValue,
   LobbyUpdate,
 } from '@customs/db';
+import type { CompanionIdentity } from '../companionAuth';
 import type { ServiceClient } from '../supabase';
 import { ensurePlayers } from './players';
 
@@ -23,6 +24,61 @@ export interface LobbyIngestResult {
   /** False when the party id was already known — the idempotent case. */
   created: boolean;
   memberCount: number;
+  /** True when the roster was frozen and this post changed no `lobby_members` row (M2.9). */
+  rosterFrozen: boolean;
+}
+
+/**
+ * Statuses in which `lobby_members` is history rather than live state (M2.9). From `in_game`
+ * on, who was in the lobby is what M2.7 matches tonight's ten against and what M5.5 lists,
+ * so a late or partial post must not be able to rewrite it.
+ *
+ * `abandoned` is deliberately not here: a lobby that dissolves without ever starting keeps
+ * the normal replace semantics (M2.9 brief, "Edge cases").
+ */
+const ROSTER_FROZEN_STATUSES: readonly LobbyStatusValue[] = ['in_game', 'finished'];
+
+/** True when later posts may no longer add, remove or change a `lobby_members` row. */
+export function isRosterFrozen(status: LobbyStatusValue): boolean {
+  return ROSTER_FROZEN_STATUSES.includes(status);
+}
+
+/**
+ * Is this PUUID in the list? Whole-PUUID equality, spectators included: a friend who watches
+ * a round is in the lobby and their companion is a legitimate reporter.
+ *
+ * Takes anything with a `puuid`, so the same predicate serves the posted member list here
+ * and, when M2.8 widens the game check to "a member of the lobby with the same party id",
+ * the `lobby_members` rows read out of the database.
+ */
+export function isLobbyMember(members: readonly { puuid: string }[], puuid: string): boolean {
+  return members.some((member) => member.puuid === puuid);
+}
+
+/**
+ * May this companion report this party? (M1.8)
+ *
+ * The token says who the caller is; the body says who is in the lobby. A companion may only
+ * report a lobby it is in, because `replaceMembers` below deletes everyone the post leaves
+ * out — without this, one stale companion silently rewrites another lobby's roster.
+ *
+ * Two ways to pass:
+ * - the caller's PUUID is in the posted `members` (any `isSpectator` value);
+ * - the caller already owns the lobby row (`reported_by_player_id`). That covers the
+ *   "everyone left" report — an empty list cannot contain the caller — and a client that
+ *   stops listing the caller once they are only spectating (M0.3).
+ *
+ * An outsider posting an empty or foreign list matches neither and gets a 403.
+ */
+export async function mayReportLobby(
+  client: ServiceClient,
+  payload: CompanionLobbyPayload,
+  identity: CompanionIdentity,
+): Promise<boolean> {
+  if (isLobbyMember(payload.members, identity.puuid)) return true;
+
+  const existing = await selectLobby(client, payload.partyId);
+  return existing !== null && existing.reportedByPlayerId === identity.playerId;
 }
 
 export async function ingestLobby(
@@ -31,9 +87,28 @@ export async function ingestLobby(
   reportedByPlayerId: string,
 ): Promise<LobbyIngestResult> {
   const lobby = await upsertLobby(client, payload, reportedByPlayerId);
+
+  // Frozen (M2.9): the lobby is in a game or done, so the roster is a record of what
+  // happened. Report what is stored and write nothing to `lobby_members`.
+  if (isRosterFrozen(lobby.status)) {
+    return {
+      lobbyId: lobby.id,
+      status: lobby.status,
+      created: lobby.created,
+      memberCount: await countMembers(client, lobby.id),
+      rosterFrozen: true,
+    };
+  }
+
   const memberCount = await replaceMembers(client, lobby.id, payload);
 
-  return { lobbyId: lobby.id, status: lobby.status, created: lobby.created, memberCount };
+  return {
+    lobbyId: lobby.id,
+    status: lobby.status,
+    created: lobby.created,
+    memberCount,
+    rosterFrozen: false,
+  };
 }
 
 interface LobbyRowResult {
@@ -165,4 +240,13 @@ async function replaceMembers(
   }
 
   return keep.length;
+}
+
+async function countMembers(client: ServiceClient, lobbyId: string): Promise<number> {
+  const { count, error } = await client
+    .from('lobby_members')
+    .select('player_id', { count: 'exact', head: true })
+    .eq('lobby_id', lobbyId);
+  if (error) throw new Error(`ingestLobby: member count failed: ${error.message}`);
+  return count ?? 0;
 }

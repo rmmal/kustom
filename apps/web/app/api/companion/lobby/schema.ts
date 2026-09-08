@@ -15,6 +15,11 @@ export const companionLobbyResponseSchema = z.object({
   /** False when this party id was already known: the second identical post. */
   created: z.boolean(),
   memberCount: z.number().int().nonnegative(),
+  /**
+   * True when the lobby has left `open`/`balanced` and its roster is now history (M2.9):
+   * this post changed no `lobby_members` row and `memberCount` is what is stored.
+   */
+  rosterFrozen: z.boolean(),
 });
 
 export type CompanionLobbyResponse = z.infer<typeof companionLobbyResponseSchema>;

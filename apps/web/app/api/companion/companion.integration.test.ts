@@ -48,6 +48,13 @@ if (stack === null) {
 
   const partyId = `it-party-${runId}`;
   const otherPartyId = `it-party-${runId}-b`;
+  // One party per case that moves a roster around, so the ten-player lobby the game tests
+  // read stays as it was left.
+  const spectatorPartyId = `it-party-${runId}-spec`;
+  const emptyPartyId = `it-party-${runId}-empty`;
+  const frozenPartyId = `it-party-${runId}-frozen`;
+  const unknownPartyId = `it-party-${runId}-unknown`;
+  const allPartyIds = [partyId, otherPartyId, spectatorPartyId, emptyPartyId, frozenPartyId, unknownPartyId];
   const gameId = testGameId();
   const rejectedGameId = gameId + 1;
   const gameIds = [gameId, rejectedGameId];
@@ -55,6 +62,7 @@ if (stack === null) {
   let ownerToken = '';
   let outsiderToken = '';
   let revokedToken = '';
+  let spectatorToken = '';
 
   async function mintToken(puuid: string, label: string, revoked = false): Promise<string> {
     const ids = await ensurePlayers(db, [{ puuid }]);
@@ -114,6 +122,31 @@ if (stack === null) {
     return count ?? 0;
   }
 
+  async function memberRows(lobbyId: string): Promise<Record<string, unknown>[]> {
+    const { data, error } = await db
+      .from('lobby_members')
+      .select('*')
+      .eq('lobby_id', lobbyId)
+      .order('player_id');
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
+  async function lobbyRow(party: string): Promise<Record<string, unknown>> {
+    const { data, error } = await db.from('lobbies').select('*').eq('lcu_party_id', party).single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function setStatus(
+    party: string,
+    status: 'open' | 'balanced' | 'in_game' | 'finished',
+  ): Promise<void> {
+    // M2.5 owns the state machine; until it lands the test drives the status itself.
+    const { error } = await db.from('lobbies').update({ status }).eq('lcu_party_id', party);
+    if (error) throw new Error(error.message);
+  }
+
   async function countMembers(lobbyId: string): Promise<number> {
     const { count, error } = await db
       .from('lobby_members')
@@ -146,12 +179,13 @@ if (stack === null) {
     ownerToken = await mintToken(puuids[0] ?? '', `it-${runId}-owner`);
     outsiderToken = await mintToken(outsiderPuuid, `it-${runId}-outsider`);
     revokedToken = await mintToken(`${outsiderPuuid}-revoked`, `it-${runId}-revoked`, true);
+    spectatorToken = await mintToken(spectatorPuuid, `it-${runId}-spectator`);
     allPuuids.push(`${outsiderPuuid}-revoked`);
   });
 
   afterAll(async () => {
     await db.from('games').delete().in('lcu_game_id', gameIds);
-    await db.from('lobbies').delete().in('lcu_party_id', [partyId, otherPartyId]);
+    await db.from('lobbies').delete().in('lcu_party_id', allPartyIds);
     await db.from('players').delete().in('puuid', allPuuids);
   });
 
@@ -219,6 +253,106 @@ if (stack === null) {
       // Put the full roster back for the game tests below.
       await postLobby(post(lobbyBody(puuids, [spectatorPuuid]), ownerToken));
       expect(await countMembers(json.lobbyId as string)).toBe(11);
+    });
+
+    it('answers 403 and changes no row when the caller is not in the posted members', async () => {
+      const lobbyId = (await lobbyRow(partyId)).id as string;
+      const before = await lobbyRow(partyId);
+      const membersBefore = await memberRows(lobbyId);
+      expect(membersBefore).toHaveLength(11);
+
+      // The M1.8 failure verified on 2026-09-08: a token for a player in no lobby posted this
+      // party with one member and the roster dropped from eleven rows to one.
+      const response = await postLobby(post(lobbyBody(puuids.slice(0, 1)), outsiderToken));
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: 'a companion may only report a lobby it is in',
+      });
+      expect(await lobbyRow(partyId)).toEqual(before);
+      expect(await memberRows(lobbyId)).toEqual(membersBefore);
+    });
+
+    it('answers 403 for an empty member list from an outsider', async () => {
+      const lobbyId = (await lobbyRow(partyId)).id as string;
+      const membersBefore = await memberRows(lobbyId);
+
+      // An empty list cannot contain the caller, so "everyone left" from a stranger is a 403.
+      const response = await postLobby(post(lobbyBody([], [], partyId), outsiderToken));
+
+      expect(response.status).toBe(403);
+      expect(await memberRows(lobbyId)).toEqual(membersBefore);
+    });
+
+    it('does not create an unknown party for a caller who is not in the list', async () => {
+      const response = await postLobby(post(lobbyBody(puuids, [], unknownPartyId), outsiderToken));
+
+      expect(response.status).toBe(403);
+      expect(await countLobbies(unknownPartyId)).toBe(0);
+    });
+
+    it('accepts a caller listed as a spectator', async () => {
+      const response = await postLobby(
+        post(lobbyBody(puuids.slice(0, 4), [spectatorPuuid], spectatorPartyId), spectatorToken),
+      );
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json).toMatchObject({ ok: true, created: true, memberCount: 5, rosterFrozen: false });
+      expect(await countMembers(json.lobbyId as string)).toBe(5);
+    });
+
+    it('accepts an empty list from the companion that reported the lobby', async () => {
+      // The "everyone left" report: the caller is no longer in its own list, but it owns the
+      // lobby row, which is the fallback M1.8 keeps for a client that stops listing it.
+      const created = await postLobby(post(lobbyBody(puuids.slice(0, 3), [], emptyPartyId), ownerToken));
+      const lobbyId = (await created.json()).lobbyId as string;
+      expect(await countMembers(lobbyId)).toBe(3);
+
+      const response = await postLobby(post(lobbyBody([], [], emptyPartyId), ownerToken));
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, memberCount: 0, rosterFrozen: false });
+      expect(await countMembers(lobbyId)).toBe(0);
+    });
+
+    it('freezes the roster once the lobby leaves open, and thaws nothing on the way back', async () => {
+      const created = await postLobby(post(lobbyBody(puuids, [], frozenPartyId), ownerToken));
+      const lobbyId = (await created.json()).lobbyId as string;
+      const membersBefore = await memberRows(lobbyId);
+      expect(membersBefore).toHaveLength(10);
+
+      // M2.5 will do this; until then the test drives the status.
+      await setStatus(frozenPartyId, 'in_game');
+
+      // A companion that reconnects mid-game and posts a partial list changes nothing.
+      const partial = await postLobby(post(lobbyBody(puuids.slice(0, 3), [], frozenPartyId), ownerToken));
+      expect(partial.status).toBe(200);
+      expect(await partial.json()).toMatchObject({
+        ok: true,
+        status: 'in_game',
+        created: false,
+        memberCount: 10,
+        rosterFrozen: true,
+      });
+      expect(await memberRows(lobbyId)).toEqual(membersBefore);
+
+      // The last companion shutting down and reporting an empty lobby changes nothing either.
+      const emptied = await postLobby(post(lobbyBody([], [], frozenPartyId), ownerToken));
+      expect(emptied.status).toBe(200);
+      expect(await emptied.json()).toMatchObject({ memberCount: 10, rosterFrozen: true });
+      expect(await memberRows(lobbyId)).toEqual(membersBefore);
+
+      await setStatus(frozenPartyId, 'finished');
+      await postLobby(post(lobbyBody([], [], frozenPartyId), ownerToken));
+      expect(await memberRows(lobbyId)).toEqual(membersBefore);
+
+      // Still `open`, someone leaving is a real leave: the deletes apply as they did before.
+      await setStatus(frozenPartyId, 'open');
+      const reopened = await postLobby(post(lobbyBody(puuids.slice(0, 3), [], frozenPartyId), ownerToken));
+      expect(await reopened.json()).toMatchObject({ memberCount: 3, rosterFrozen: false });
+      expect(await memberRows(lobbyId)).toHaveLength(3);
     });
 
     it('answers 400 for a body that does not match the schema', async () => {
