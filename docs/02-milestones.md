@@ -8,8 +8,8 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | in progress | M0.1 done. M0.2 needs the user to run the client (see M0.1 OPEN steps in packages/lcu/README.md). Blocks M2. |
-| M1 Foundation | in progress | All six tasks done; awaiting product and designer acceptance pass. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | not started | Needs M0 and M1. |
+| M1 Foundation | in progress | M1.1 to M1.6 and M1.8 done; product acceptance met; M1.7 ingest half done (admin field open), M1.9 and M1.10 open. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
+| M2 Companion v1: roster and results | not started | M2.9 done early (roster freeze). Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -363,7 +363,7 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
     > **Out of scope.** Nicknames per season, Discord display names (the group's Discord name is not the
     > League name and linking them is M1.6's `discord_id`), and any change to how a player is matched.
 
-- [ ] **M1.8** `POST /api/companion/lobby` must check the caller is in the lobby it is reporting. There is no check at all today: any valid companion token can post any `lcu_party_id` with any member list, and because `replaceMembers` deletes every member not in the posted list, one stale or buggy companion rewrites another lobby's roster. Verified 2026-09-08 against the local stack: a token for a player who is in no lobby posted the ten-player party with one member and the stored roster dropped from ten rows to one, HTTP 200. Refuse with 403 when the token's player PUUID does not appear in the posted `members` (`isSpectator: true` counts, matching M2.8's widened game rule). Record the rule in `04-decisions.md` and add it to the "Security" bullet in `01-architecture.md`, which today only covers games.
+- [x] **M1.8** `POST /api/companion/lobby` must check the caller is in the lobby it is reporting. There is no check at all today: any valid companion token can post any `lcu_party_id` with any member list, and because `replaceMembers` deletes every member not in the posted list, one stale or buggy companion rewrites another lobby's roster. Verified 2026-09-08 against the local stack: a token for a player who is in no lobby posted the ten-player party with one member and the stored roster dropped from ten rows to one, HTTP 200. Refuse with 403 when the token's player PUUID does not appear in the posted `members` (`isSpectator: true` counts, matching M2.8's widened game rule). Record the rule in `04-decisions.md` and add it to the "Security" bullet in `01-architecture.md`, which today only covers games.
 
     > **Why (product).** M2.5 balances off `lobby_members` and M2.7 matches tonight's ten against history
     > from the same table. A roster any token can shrink is a roster the referee cannot trust, and the failure
@@ -467,7 +467,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > **Acceptance check (product).** Post an eog whose participants exclude the token's player but whose
     > lobby (same `lcu_party_id`) has that player as `isSpectator: true` — the game lands once with ten
     > `game_players` rows. A post from a token whose player is in neither list still 403s.
-- [ ] **M2.9** Freeze the lobby roster when the lobby leaves `open`. `replaceMembers` (M1.5) makes `lobby_members` mirror whatever the companion last posted, deletions included — verified 2026-09-08: posting the same party with an empty `members` array left the lobby row with zero members and HTTP 200. So the record of who was in a lobby is mutable right up to and past the game. M2.7 matches tonight's ten against "a lobby that had exactly the same ten puuids", and M5.5 lists lobbies that reached `in_game` and never finished; both read a list that a late or partial post can empty. Once the state machine (M2.5) moves a lobby to `in_game`, stop applying member deletes to it: later posts for that party may still refresh `side`, but no row is removed.
+- [x] **M2.9** Freeze the lobby roster when the lobby leaves `open`. `replaceMembers` (M1.5) makes `lobby_members` mirror whatever the companion last posted, deletions included — verified 2026-09-08: posting the same party with an empty `members` array left the lobby row with zero members and HTTP 200. So the record of who was in a lobby is mutable right up to and past the game. M2.7 matches tonight's ten against "a lobby that had exactly the same ten puuids", and M5.5 lists lobbies that reached `in_game` and never finished; both read a list that a late or partial post can empty. Once the state machine (M2.5) moves a lobby to `in_game`, stop applying member deletes to it: later posts for that party may still refresh `side`, but no row is removed.
 
     > **Why (product).** "Who was around tonight" is the input to the sit-out rotation (step 6 of the nightly
     > loop) and to the repeat-split penalty. If it can be erased by the last companion to shut down, the
