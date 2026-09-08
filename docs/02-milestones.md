@@ -7,7 +7,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 
 | Milestone | Status | Notes |
 |---|---|---|
-| M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Open for M4 only: switch-side path, invite body, spectator shape (see docs/03-lcu-reference.md). |
+| M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), spectator shape (M2.13, needs a friend to click the spectator slot), Windows run (M2.11). |
 | M1 Foundation | in progress | M1.1 to M1.6 and M1.8 done; product acceptance met; M1.7 ingest half done (admin field open), M1.9 and M1.10 open. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.9 done early (roster freeze); M2.1 in flight; M2.10 (payload alignment) next, before M2.2/M2.3. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
@@ -551,9 +551,50 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > (M5). No champion-name or icon lookup. No packaging.
 
 - [ ] **M2.1** `apps/companion` CLI: config file, first-run token prompt, connection state machine with reconnect and backoff, structured logs with rotation.
+
+    > **Note (product, 2026-09-08, after M0.3).** The companion subscribes to the firehose
+    > (`[5, "OnJsonApiEvent"]`) and filters by `uri`, because the per-URI topics have not been exercised yet.
+    > That means every event the client emits passes through this process on a friend's home PC, including
+    > their private chat and their live game credentials. Two consequences for this task: the logs never
+    > contain a raw event body — `packages/lcu/src/scrub.ts` already does this for `record-ws` and the same
+    > function guards the log path — and events on URIs the companion does not read are dropped at the edge,
+    > not carried into application state. Champion-select and matchmaking URIs are dropped and never acted
+    > on; that is the gameplay line in `03-lcu-reference.md`, and it is easier to hold when the events never
+    > get past the filter.
 - [ ] **M2.2** Lobby watcher: on every lobby WS event, POST the member list with sides and spectator flags. Debouncing lives on the server, not here. Needs M2.10: sides come from `gameConfig.customTeam100`/`customTeam200`, never `members[].teamId`, and bots are filtered before posting.
 - [ ] **M2.3** Game capture: on gameflow `InProgress` POST the game ID against the lobby; on `EndOfGame` fetch the eog block and POST it. Needs M2.10 for the payload shape (derived `startedAt`, `detectedTeamPosition` roles, real stat keys, `TerminatedInError` dropped). Handle the case where the client reaches `EndOfGame` while the companion was reconnecting: on connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post.
+
+    > **Note (product, 2026-09-08, after M0.3).** Two facts from the 16.17 capture change how this task is
+    > built, without changing what it does.
+    >
+    > 1. **The block arrives before the phase does.** The WS `Create` for
+    >    `/lol-end-of-game/v1/eog-stats-block` landed 0.3 s after `WaitingForStats` and about a second before
+    >    the phase reached `EndOfGame`. So the **primary path is the WebSocket event**: take the block from
+    >    the event payload and hold it. The `GET` on `EndOfGame` is the fallback for a companion that was not
+    >    listening, not the main road. Writing this phase-first inverts the reliable path.
+    > 2. **The fallback has a deadline.** The `GET` answered 200 for as long as the end-of-game screen was up
+    >    (checked at +33 s and +4 min) and 404'd once the client was back in the lobby (+10 min). So "on
+    >    connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post" only recovers a game while
+    >    somebody is still staring at the score screen. Once they click through, the block is gone from the
+    >    client for good and the game is backfill's problem (M5.1). Keep the recovery attempt; when the GET
+    >    404s, log one line naming the `gameId` and say it is left to backfill. Never poll for it afterwards.
+    >
+    > Holding the block in memory is not enough on its own — a failed POST or a companion restart drops it
+    > inside that same window. Durability is **M2.12**; M2.3 may land first with an in-memory hold and a
+    > retry, and M2.12 makes it survive a restart.
 - [ ] **M2.4** Rank sync: own rank on start and every 6 hours; rank for every unknown PUUID seen in a lobby, once, then weekly.
+
+    > **Note (product, 2026-09-08, after M0.3).** This sweep also fetches **names**, not just ranks. Lobby
+    > members carry no `gameName`/`tagLine` — `summonerName` is an empty string on 16.17 — so a roster posted
+    > straight from a lobby event has null names for everyone the database has not met before (M2.10, point
+    > 2). The only way to a name is a per-puuid lookup:
+    > `GET /lol-summoner/v2/summoners/puuid/{puuid}` returns `gameName` and `tagLine` for another player and
+    > is already verified. Do it in the same pass as the rank read, for the same PUUIDs, on the same schedule,
+    > and POST both together. Posting a lobby still never waits on it.
+    >
+    > Why it matters: without this, the first night a new friend plays, the teams embed has their rating and
+    > a blank where their name should be until their first game ends. `losses` from the client is `0` for
+    > anyone but yourself — do not read it, here or anywhere (M2.10, point 12).
 - [ ] **M2.5** Server: lobby state machine (open, balanced, in_game, finished, abandoned) with the 10-second stability rule; on eog, insert `games` and `game_players`, run `rateGame`, update `ratings`. Ignore eog blocks whose `gameType` is not `CUSTOM_GAME`.
 
     > **Note (product).** M1.5 already stores *every* `CUSTOM_GAME` eog block as a `games` row, remakes and
@@ -584,6 +625,13 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > **Acceptance check (product).** Post an eog whose participants exclude the token's player but whose
     > lobby (same `lcu_party_id`) has that player as `isSpectator: true` — the game lands once with ten
     > `game_players` rows. A post from a token whose player is in neither list still 403s.
+
+    > **Blocked-on note (product, 2026-09-08, after M0.3).** The acceptance check above assumes a spectator
+    > shows up in the lobby payload as a member with `isSpectator: true`. **Nobody has seen that happen.**
+    > The 16.17 capture has one solo lobby with bots: `customSpectators` was `[]` in all 30 lobby events and
+    > no member ever had `isSpectator: true`. If the client keeps spectators only in
+    > `gameConfig.customSpectators[]` and out of `members[]`, this task's lobby-membership path never
+    > matches and the spectator case is no better than it is today. Capture it first — **M2.13**.
 - [x] **M2.9** Freeze the lobby roster once the lobby reaches `in_game`. `replaceMembers` (M1.5) makes `lobby_members` mirror whatever the companion last posted, deletions included — verified 2026-09-08: posting the same party with an empty `members` array left the lobby row with zero members and HTTP 200. So the record of who was in a lobby is mutable right up to and past the game. M2.7 matches tonight's ten against "a lobby that had exactly the same ten puuids", and M5.5 lists lobbies that reached `in_game` and never finished; both read a list that a late or partial post can empty. Once the state machine (M2.5) moves a lobby to `in_game`, freeze `lobby_members` entirely, and keep it frozen through `finished`: a later post for that party is still accepted (200) and still idempotent, and the lobby's own fields (name, password) still refresh, but no member row is inserted, updated or deleted — `side` included, because once the game has started the side that counts is the one recorded on `game_players`. The response says `rosterFrozen: true` and returns the stored member count so the companion can see nothing moved. `open`, `balanced` and `abandoned` keep the replace semantics.
 
     > **Why (product).** "Who was around tonight" is the input to the sit-out rotation (step 6 of the nightly
@@ -600,6 +648,73 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > three members: `lobby_members` still has ten rows. Repost with an empty list: still ten. Do the same
     > against a lobby still in `open`: the deletes apply as they do today.
 
+
+- [ ] **M2.11** Run the M0 verification pass on Windows before anything is packaged. Every row in `03-lcu-reference.md` was verified on macOS (16.17, 2026-09-08) and the companion ships as a Windows exe, so today the shipped platform is the unverified one. With the client running on Windows: `pnpm --filter @customs/lcu smoke --diff` against the committed `16.17` fixtures, plus a lockfile read at the Windows default path and one exercise of the process-args fallback. Update the Connecting rows in `03-lcu-reference.md` with Windows evidence, and turn "Process args fallback" from `unverified (observed, no code)` into a verified row or a task to drop it.
+
+    > **Why (product).** The scene is ten friends in Discord; nine of them are on Windows. A shape difference
+    > between platforms — a lockfile path, a certificate mode, an empty `summonerName` that is populated on
+    > Windows — would be found on the first real night with everyone waiting, which is the worst possible
+    > place to find it. This is an afternoon on one PC.
+    >
+    > **Edge cases to cover while the client is up.** Client not running (exit 2). Client starting up, so the
+    > lockfile exists but the port is not listening yet — the probe must exit 3, not silently fall back to
+    > `insecure`. Client restarted while the companion watches (the reconnect path of M2.1). A non-default
+    > install directory, which is what the process-args fallback exists for: hide the lockfile, or point
+    > `LCU_LOCKFILE_CANDIDATES` at a path that does not exist, and confirm the fallback finds the same port
+    > and password.
+    >
+    > **Acceptance check.** `smoke --diff` exits 0 on Windows against the `16.17` fixtures, or every
+    > difference is written into the reference with a Windows note. The lockfile row and the process-args row
+    > carry a dated Windows line. `pnpm --filter lcu test` still passes.
+    >
+    > **Out of scope.** Packaging (M2.6). Any new endpoint. Re-verifying the M4 rows.
+
+- [ ] **M2.12** The companion keeps a captured end-of-game block until the API has confirmed it. The block lives in the client only while the end-of-game screen is up (M0.3): once the player clicks back to the lobby the `GET` 404s and the game is unrecoverable until backfill. So an in-memory hold plus a retry loop still loses the game to a crash, a `pnpm`-style restart, a laptop lid, or an API that is down for the two minutes that matter. Write the block to disk beside the config the moment it is captured, POST from there, and delete it only on a 2xx or a refusal that names a permanent reason (`TerminatedInError`, not `CUSTOM_GAME`).
+
+    > **What a player sees.** Nothing, on a good night. On a bad one: the game they just played shows up on
+    > the tonight page a minute late instead of never, and nobody has to say "the bot missed that one".
+    >
+    > **Behavior.** On capture (WS event, or the `EndOfGame` GET fallback), scrub `mucJwtDto` and
+    > `multiUserChatPassword` (M2.10, point 11), then write one file per `gameId` under the companion's data
+    > directory. Retry with the existing backoff, across restarts, indefinitely while the file is there. On a
+    > 2xx — including the idempotent "already have this game" answer — delete the file. On a 4xx that names a
+    > permanent reason, delete the file and log why. On any other error, keep it. Cap the queue at a sane
+    > number of files and drop the oldest with a log line rather than filling a friend's disk.
+    >
+    > **Edge cases.** Two companions in the same game each hold their own copy; the second POST is a no-op
+    > (`lcu_game_id` dedupe) and both delete their file. A companion that never comes back leaves a file that
+    > is posted whenever it next starts, days later — the server accepts it, because dedupe and the rating
+    > rebuild (M5.2) make late arrival safe. A block for a game the API has never heard of (no lobby) is
+    > still posted; that is M2.8's and backfill's problem, not this one. A file that no longer parses is
+    > logged once and deleted.
+    >
+    > **Acceptance check.** With the API returning 500: play or replay a custom, confirm the block is on
+    > disk, click past the end-of-game screen so the client's `GET` 404s, kill the companion, bring the API
+    > back, start the companion — the game lands exactly once with ten `game_players` rows. Repeat with the
+    > companion killed *before* it ever POSTs. A `TerminatedInError` block leaves no file. Two runs of the
+    > same recovery produce one `games` row.
+    >
+    > **Out of scope.** Backfill (M5.1). Any change to the ingest contract. A UI for the queue; a log line is
+    > enough until M6.1.
+
+- [ ] **M2.13** Capture a real lobby: ten humans, and one spectator. Every lobby fact in `03-lcu-reference.md` comes from a solo lobby with bots — one member, `customTeam200: []`, `customSpectators: []` in all 30 recorded lobby events, and no member ever carrying `isSpectator: true`. Two things nothing has answered: whether a spectator appears in `members[]` at all or only in `gameConfig.customSpectators[]`, and whether a ten-human lobby differs in any field from the one-human one (`summonerName`, position preferences, `maxTeamSize`, member ordering). Save `lobby-10.json` and `lobby-spectator.json` into `packages/lcu/fixtures/16.17/`, parse both in `schemas.test.ts`, and write the answers into the lobby row and into question 3's answer.
+
+    > **Why (product).** Two shipped or planned rules rest on the unobserved answer. M1.8 (done) refuses a
+    > lobby post unless the caller's PUUID is in `members`, "`isSpectator: true` counts". M2.8 accepts a
+    > spectator's end-of-game post if that player is a lobby member with `isSpectator: true`. If the client
+    > does not put spectators in `members[]`, both rules are dead letters: the friend who sits out tonight
+    > and is the only one running the companion gets a 403 on every lobby post, and the group's teams never
+    > appear. That is the whole scene failing on an ordinary eleven-person night.
+    >
+    > **Acceptance check.** Both fixtures committed and parsed by `schemas.test.ts`. The lobby row and
+    > "Behaviors to confirm" question 3 state, with a date and patch, where a spectator appears. If
+    > spectators are absent from `members[]`, this task also files the follow-up: widen the M1.8 caller check
+    > and the M2.8 lobby check to accept a PUUID found in `gameConfig.customSpectators[]`, add the decision
+    > row, and correct M1.8's wording — do not leave a shipped rule describing a payload the client does not
+    > send.
+    >
+    > **Out of scope.** Any code change to the ingest rules; this task captures and records, and names the
+    > follow-up. M4's lobby creation.
 
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
 
@@ -805,6 +920,29 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > Nothing about `start_season` (migration 0002) or the one-active-season index changes.
 
 
+- [ ] **M3.10** Decide what a player with no name looks like. The League lobby carries no `gameName`/`tagLine` (M0.3), so a friend the database has never met appears with `display_name` null until the M2.4 sweep or their first end-of-game block fills it in — which can be minutes after teams are posted. Every surface that prints a name needs one agreed fallback: the teams embed, the result embed, the tonight page, the leaderboard, `/p/[puuid]`.
+
+    > **Copy (product).** The fallback is the word **`Someone`**, nothing else — no PUUID fragment, no
+    > "Unknown Player", no "Player 7". A PUUID is 36 characters of noise that helps nobody read a team, and
+    > "Unknown" reads like an error when the truth is just that the client has not told us yet. Ten friends
+    > looking at the embed know who the tenth is; they are standing in the same voice channel. On the tonight
+    > page, a row showing `Someone` gets a quiet one-line hint underneath the team block, once, not per row:
+    > "Names fill in after someone's first game." That sentence is the whole explanation and it does not
+    > need a link.
+    >
+    > **Behavior.** The fallback is applied at render, never stored: `display_name` stays null in the
+    > database so the next sweep or eog block fills it in without a migration or a cleanup. Two players with
+    > no name both render `Someone`; that is acceptable and rare, and it resolves itself within one game.
+    > A name that arrives while the page is open replaces it live (the tonight page is already Realtime).
+    >
+    > **Acceptance check.** With one `players` row holding a null `game_name` and null `display_name`: the
+    > teams embed, the result embed and the tonight page all print `Someone` for that player and everything
+    > else about the row (rating, role, rating change) is correct and unaffected. The leaderboard and
+    > `/p/[puuid]` print the same. Nothing anywhere prints a PUUID, a null, or an empty cell. Set the name
+    > and every surface shows it with no other change.
+    >
+    > **Out of scope.** Fetching the name (M2.4). Discord display names (M4). Any change to `players`.
+
 Acceptance: a full night with real players, teams posted within 15 seconds of the tenth join, results within 60 seconds of end of game, no human action beyond joining the lobby.
 
 ## M4 Lobby automation, voice split, presence (3 to 4 days, needs M3)
@@ -813,7 +951,29 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
 
 - [ ] **M4.1** `companion_commands` queue: the companion polls, executes, acks. Kinds: `create_lobby`, `invite`, `switch_side`.
 - [ ] **M4.2** "Start a lobby" button on the tonight page and an admin route: creates a `create_lobby` command for a chosen companion user, with a generated name and password, followed by `invite` commands for everyone linked and "around".
+
+    > **Note (product, 2026-09-08, after M0.3).** The invite body is still unverified and M0 could not
+    > answer it: the smoke tooling is GET-only by design, so nothing was ever POSTed to a live client. This
+    > task verifies it as its first step, per `03-lcu-reference.md` question 6: `POST
+    > /lol-lobby/v2/lobby/invitations` with `[{ "toSummonerId": <id> }]` using a `summonerId` from
+    > `GET /lol-summoner/v2/summoners/puuid/{puuid}`; if that 4xx's, retry with `[{ "toPuuid": "<puuid>" }]`.
+    > `invitations[]` in the lobby event shows which worked. Update the reference row and its status before
+    > building the queue handler on it — that is the "verify before you claim" rule. `create_lobby`'s body
+    > and its `mutators.id` values are unverified for the same reason and get the same treatment here.
 - [ ] **M4.3** Auto side switch: after balancing, for each lobby member who runs a companion, queue `switch_side` if they are on the wrong side. Verify the endpoint in M0 first; if it does not exist, this task is dropped and the embed says "switch to your side".
+
+    > **Correction (product, 2026-09-08, after M0.3).** "Verify the endpoint in M0 first" did not happen and
+    > cannot: M0's tooling is read-only and a switch-side path can only be confirmed by POSTing to a live
+    > client. The verification moves into this task, as `03-lcu-reference.md` question 5 already says. First
+    > step, before any queue work: with a custom lobby open, `POST /lol-lobby/v1/lobby/custom/switch-teams`
+    > with an empty body, then the v2 path if v1 404s, and watch `gameConfig.customTeam100`/`customTeam200`
+    > in the lobby event to see whether the local player moved. Then fill the target side with bots and retry
+    > to learn what a full side does. Write the answer into the reference and flip its status.
+    >
+    > The escape hatch stands: if no path works, drop the task and the teams embed says which side to move
+    > to. Moving yourself in a lobby is one click, and this milestone's acceptance ("everyone on the right
+    > side") is met by people clicking it. Do not invent a champion-select or in-game path to get around a
+    > 404 — that is the line in `CLAUDE.md`.
 - [ ] **M4.4** `apps/discord` bot: Realtime subscription; on `balanced` move linked members into blue and red voice; on `finished` move everyone back. Handles missing permissions gracefully with a log line, never a crash.
 - [ ] **M4.5** Presence: when lobby voice membership changes and no lobby is open, post or edit a single "N around: names" message. Count feeds the sit-out logic as "around".
 - [ ] **M4.6** Deploy the bot to Fly.io or Railway with a health check and auto-restart.
@@ -823,10 +983,41 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
 ## M5 Backfill, seasons, stats (2 to 3 days, needs M3; skip backfill if M0.4 said no)
 
 - [ ] **M5.1** Backfill: on companion start and daily, walk the local player's match history, filter `CUSTOM_GAME`, fetch details for unknown game IDs, POST as `source: backfill`. Server verifies the reporting player is a participant.
+
+    > **Note (product, 2026-09-08, after M0.3).** M0.4 is resolved yes — customs are in match history (17 of
+    > 21 games in the 16.17 capture, queue 3100/3110/3270). Three facts from that capture pin this task down.
+    >
+    > 1. **The detail fetch is mandatory, not an optimisation.** The list endpoint returns `participants` and
+    >    `participantIdentities` of **length 1** even for a completed 5v5 — only the local player. `teams[]`
+    >    is complete, so the list can tell you a game happened and who won, but never who played. One
+    >    `GET /lol-match-history/v1/games/{gameId}` per unknown custom game is the only way to the ten
+    >    rosters. Budget for it: a first run on a fresh install is one request per custom in the window, so
+    >    rate-limit and run it in the background, never on the path of a lobby post.
+    > 2. **Stat keys differ from the eog block.** Match detail is camelCase
+    >    (`kills`, `deaths`, `goldEarned`, `totalMinionsKilled`) and `teams[].win` is the string
+    >    `"Win"`/`"Fail"`; the eog block is uppercase (`CHAMPIONS_KILLED`) with `WIN` as `0 | 1`. Backfill
+    >    needs its own mapper into the same payload, not a reuse of M2.10's eog mapper.
+    > 3. **Aborted games look like real ones in the list.** `endOfGameResult: "Abort_TooFewPlayers"` came back
+    >    with one participant and one team. Drop anything that is not `GameComplete` with ten participants;
+    >    the M2.5 rating gate catches the rest.
+    >
+    > How far back the window reaches is unknown — **M5.6**. Until that is answered, the honest claim is
+    > "every custom still in the history of someone who runs the companion", which is what
+    > `00-product.md` now says.
 - [ ] **M5.2** Rating rebuild: `pnpm --filter web rebuild-ratings` folds every game in `started_at` order from seeds. Run after any backfill batch. Idempotent.
 - [ ] **M5.3** Seasons: admin starts a new season; ratings copy `mu` and reset `sigma`; leaderboard and pages are season-aware.
 - [ ] **M5.4** Stats pages: win rate by role, by side, by duo pairing (min five games together), average game length, longest streaks. Awards at season end: most improved, best off-role, cursed duo.
 - [ ] **M5.5** Missed-game report: a page listing lobbies that reached `in_game` but never `finished`, so someone knows the companion rule was broken that night.
+- [ ] **M5.6** Find out how far back match history goes. M0 only ever read the default window (`begIndex=0&endIndex=20`, which returned 21 games, inclusive) and never paged past it, so the reach of backfill is a guess. Walk `begIndex` back in pages of 20 on a real client until the client stops returning games or starts erroring, and write the answer into `03-lcu-reference.md`: how many games deep it goes, whether `gameCount` is the true total or just the window, and what an over-the-end request does (empty `games[]`, 400, or a repeat of the last page).
+
+    > **Why (product).** The product doc promises backfill "recovers it" when the companion misses a game.
+    > If the window is 21 games, that promise holds for about two nights, not for the season, and the
+    > sentence has to change. This is a two-hour read against a live client that decides whether a
+    > paragraph of the product doc is true.
+    >
+    > **Acceptance check.** `03-lcu-reference.md`'s match-history row states the observed depth with a date
+    > and patch, and the over-the-end behaviour. If the depth is shallower than a season, add a note to
+    > M5.1 capping the walk and open a product task to rewrite the backfill paragraph in `00-product.md`.
 
 Acceptance: after a backfill of one player's history, games appear once each, ratings rebuild deterministically (same output on two runs), and the stats pages render with real numbers.
 
