@@ -36,6 +36,8 @@ import {
   LobbySchema,
   type LockfileCredentials,
   patchFromVersion,
+  type RankedStats,
+  RankedStatsSchema,
   type Summoner,
   SummonerSchema,
   type TlsMode,
@@ -65,6 +67,12 @@ export const GAMEFLOW_PHASE_PATH = '/lol-gameflow/v1/gameflow-phase';
 export const LOBBY_URI = '/lol-lobby/v2/lobby';
 export const GAMEFLOW_PHASE_URI = '/lol-gameflow/v1/gameflow-phase';
 export const EOG_BLOCK_URI = '/lol-end-of-game/v1/eog-stats-block';
+/**
+ * `/lol-ranked/v1/cached-ranked-stats/{puuid}`: the client pushes another player's ranked stats unasked, for
+ * lobby members and for the whole friends list (reference, question 10). Routed to `onRankedStats` with the
+ * puuid from the URI; the rank sync (M2.4) uses it only for a puuid the server asked about.
+ */
+export const RANKED_STATS_URI_PREFIX = '/lol-ranked/v1/cached-ranked-stats/';
 
 /** What a hook gets to work with while the client is up. Valid until the next `disconnected`. */
 export interface ConnectedContext {
@@ -91,11 +99,18 @@ export interface EogHookEvent {
   readonly block: EogStatsBlock | null;
 }
 
+export interface RankedStatsHookEvent {
+  /** From the event URI; the body carries no puuid. */
+  readonly puuid: string;
+  readonly stats: RankedStats;
+}
+
 export interface CompanionHooks {
   onConnected?(context: ConnectedContext): Promise<void> | void;
   onLobbyEvent?(event: LobbyHookEvent, context: ConnectedContext): Promise<void> | void;
   onGameflowPhase?(phase: string, context: ConnectedContext): Promise<void> | void;
   onEogBlock?(event: EogHookEvent, context: ConnectedContext): Promise<void> | void;
+  onRankedStats?(event: RankedStatsHookEvent, context: ConnectedContext): Promise<void> | void;
   onDisconnected?(reason: ConnectionEvent): Promise<void> | void;
 }
 
@@ -438,6 +453,21 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
   }
 
   private dispatch(event: LcuEvent, context: ConnectedContext): void {
+    if (event.uri.startsWith(RANKED_STATS_URI_PREFIX)) {
+      const puuid = event.uri.slice(RANKED_STATS_URI_PREFIX.length);
+      if (event.eventType === 'Delete' || event.data === null || puuid.length === 0) {
+        this.logger.debug('lcu event ignored', { uri: event.uri, eventType: event.eventType });
+        return;
+      }
+      const parsed = RankedStatsSchema.safeParse(event.data);
+      if (!parsed.success) {
+        this.dropEvent(event, parsed.error.issues);
+        return;
+      }
+      const stats = parsed.data;
+      this.runHook('onRankedStats', () => this.hooks.onRankedStats?.({ puuid, stats }, context));
+      return;
+    }
     switch (event.uri) {
       case LOBBY_URI: {
         if (event.eventType === 'Delete' || event.data === null) {

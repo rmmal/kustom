@@ -33,6 +33,7 @@ export function composeHooks(logger: CompanionLogger, ...parts: readonly Compani
     onGameflowPhase: (phase, context) =>
       each('onGameflowPhase', (part) => part.onGameflowPhase?.(phase, context)),
     onEogBlock: (event, context) => each('onEogBlock', (part) => part.onEogBlock?.(event, context)),
+    onRankedStats: (event, context) => each('onRankedStats', (part) => part.onRankedStats?.(event, context)),
     onDisconnected: (reason) => each('onDisconnected', (part) => part.onDisconnected?.(reason)),
   };
 }
@@ -80,6 +81,10 @@ export function loggingHooks(logger: CompanionLogger): CompanionHooks {
         winningTeam: block.teams.find((team) => team.isWinningTeam)?.teamId ?? null,
         players: block.teams.reduce((count, team) => count + team.players.length, 0),
       });
+    },
+    onRankedStats(event) {
+      // Puuid only. The body is another player's ladder record and is not ours unless the server asked.
+      log.debug('ranked stats pushed by the client', { puuid: event.puuid });
     },
     onDisconnected(reason) {
       log.info('disconnected from the League client', { reason });
