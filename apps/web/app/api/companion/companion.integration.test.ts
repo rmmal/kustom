@@ -57,6 +57,7 @@ if (stack === null) {
   const unknownPartyId = `it-party-${runId}-unknown`;
   const botPartyId = `it-party-${runId}-bots`;
   const ranksPartyId = `it-party-${runId}-ranks`;
+  const cyclePartyId = `it-party-${runId}-cycle`;
   const allPartyIds = [
     partyId,
     otherPartyId,
@@ -66,12 +67,14 @@ if (stack === null) {
     unknownPartyId,
     botPartyId,
     ranksPartyId,
+    cyclePartyId,
   ];
   const gameId = testGameId();
   const rejectedGameId = gameId + 1;
   const scrubGameId = gameId + 2;
   const namedGameId = gameId + 3;
-  const gameIds = [gameId, rejectedGameId, scrubGameId, namedGameId];
+  const cycleGameId = gameId + 4;
+  const gameIds = [gameId, rejectedGameId, scrubGameId, namedGameId, cycleGameId];
 
   let ownerToken = '';
   let outsiderToken = '';
@@ -160,12 +163,23 @@ if (stack === null) {
   }
 
   async function setStatus(
-    party: string,
-    status: 'open' | 'balanced' | 'in_game' | 'finished',
+    lobbyId: string,
+    status: 'open' | 'balanced' | 'in_game' | 'finished' | 'abandoned',
   ): Promise<void> {
-    // M2.5 owns the state machine; until it lands the test drives the status itself.
-    const { error } = await db.from('lobbies').update({ status }).eq('lcu_party_id', party);
+    // Drives one row, by id: a party can hold several rows over a night (M2.14) and only one
+    // of them may be live at a time.
+    const { error } = await db.from('lobbies').update({ status }).eq('id', lobbyId);
     if (error) throw new Error(error.message);
+  }
+
+  async function lobbyRowsForParty(party: string): Promise<Record<string, unknown>[]> {
+    const { data, error } = await db
+      .from('lobbies')
+      .select('*')
+      .eq('lcu_party_id', party)
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
   }
 
   async function countMembers(lobbyId: string): Promise<number> {
@@ -345,7 +359,7 @@ if (stack === null) {
       expect(membersBefore).toHaveLength(10);
 
       // M2.5 will do this; until then the test drives the status.
-      await setStatus(frozenPartyId, 'in_game');
+      await setStatus(lobbyId, 'in_game');
 
       // A companion that reconnects mid-game and posts a partial list changes nothing.
       const partial = await postLobby(post(lobbyBody(puuids.slice(0, 3), [], frozenPartyId), ownerToken));
@@ -365,15 +379,21 @@ if (stack === null) {
       expect(await emptied.json()).toMatchObject({ memberCount: 10, rosterFrozen: true });
       expect(await memberRows(lobbyId)).toEqual(membersBefore);
 
-      await setStatus(frozenPartyId, 'finished');
-      await postLobby(post(lobbyBody([], [], frozenPartyId), ownerToken));
+      // `finished` is terminal for this row: the next post opens the night's next cycle
+      // (M2.14) and these ten stay exactly where they are.
+      await setStatus(lobbyId, 'finished');
+      const nextCycle = await postLobby(post(lobbyBody(puuids, [], frozenPartyId), ownerToken));
+      const nextCycleJson = await nextCycle.json();
+      expect(nextCycleJson).toMatchObject({ ok: true, created: true, status: 'open', memberCount: 10 });
+      expect(nextCycleJson.lobbyId).not.toBe(lobbyId);
       expect(await memberRows(lobbyId)).toEqual(membersBefore);
 
-      // Still `open`, someone leaving is a real leave: the deletes apply as they did before.
-      await setStatus(frozenPartyId, 'open');
+      // That new row is `open`, so someone leaving is a real leave: the deletes apply as they
+      // did before, and they apply to the new row only.
       const reopened = await postLobby(post(lobbyBody(puuids.slice(0, 3), [], frozenPartyId), ownerToken));
       expect(await reopened.json()).toMatchObject({ memberCount: 3, rosterFrozen: false });
-      expect(await memberRows(lobbyId)).toHaveLength(3);
+      expect(await memberRows(nextCycleJson.lobbyId as string)).toHaveLength(3);
+      expect(await memberRows(lobbyId)).toEqual(membersBefore);
     });
 
     it("stores the client's numeric summonerId as text (M2.10, no migration)", async () => {
@@ -463,6 +483,66 @@ if (stack === null) {
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ ok: false, error: 'companion token has been revoked' });
       expect(await countLobbies(otherPartyId)).toBe(0);
+    });
+  });
+
+  describe('POST /api/companion/lobby: a lobby row is one game cycle (M2.14)', () => {
+    // The client keeps one party id all night - fixture evidence: party `e3c69392` played at
+    // 16:37 and was still emitting lobby events at 17:39 with no new id. So the second game
+    // of the night has to get its own row, or it never gets teams.
+    it("starts a new row for the night's next game and leaves the first one alone", async () => {
+      const first = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      const firstJson = await first.json();
+      const firstLobbyId = firstJson.lobbyId as string;
+      expect(firstJson).toMatchObject({ created: true, status: 'open', memberCount: 10 });
+
+      // Game one: it lands on the first row and closes it.
+      const eog = await postGame(
+        post(eogBody({ gameId: cycleGameId, puuids, partyId: cyclePartyId }), ownerToken),
+      );
+      expect(eog.status).toBe(200);
+      expect((await eog.json()).lobbyId).toBe(firstLobbyId);
+      await setStatus(firstLobbyId, 'finished');
+
+      const membersOfFirst = await memberRows(firstLobbyId);
+      const rowOfFirst = (await lobbyRowsForParty(cyclePartyId))[0];
+
+      // Game two, same party id, same ten.
+      const second = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      const secondJson = await second.json();
+      expect(second.status).toBe(200);
+      expect(secondJson).toMatchObject({ created: true, status: 'open', memberCount: 10 });
+      expect(secondJson.lobbyId).not.toBe(firstLobbyId);
+
+      const rowsNow = await lobbyRowsForParty(cyclePartyId);
+      expect(rowsNow).toHaveLength(2);
+      expect(rowsNow[0]).toEqual(rowOfFirst);
+      expect(rowsNow[1]?.status).toBe('open');
+      expect(await memberRows(firstLobbyId)).toEqual(membersOfFirst);
+
+      // A late repost of game one's block still lands on the row it was played from, once.
+      const late = await postGame(
+        post(eogBody({ gameId: cycleGameId, puuids, partyId: cyclePartyId }), ownerToken),
+      );
+      expect(late.status).toBe(200);
+      expect(await late.json()).toMatchObject({ created: false, lobbyId: firstLobbyId });
+      expect(await countGames(cycleGameId)).toBe(1);
+
+      // And a third cycle behaves the same.
+      await setStatus(secondJson.lobbyId as string, 'abandoned');
+      const third = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      const thirdJson = await third.json();
+      expect(thirdJson).toMatchObject({ created: true, status: 'open' });
+      expect(thirdJson.lobbyId).not.toBe(secondJson.lobbyId);
+      expect(await lobbyRowsForParty(cyclePartyId)).toHaveLength(3);
+    });
+
+    it('keeps posting to the live row while the cycle is open', async () => {
+      // Idempotency is unchanged: only a closed cycle starts a row, never a repeat post.
+      const before = await lobbyRowsForParty(cyclePartyId);
+      const repeat = await postLobby(post(lobbyBody(puuids, [], cyclePartyId), ownerToken));
+      expect(await repeat.json()).toMatchObject({ created: false });
+      expect(await lobbyRowsForParty(cyclePartyId)).toHaveLength(before.length);
     });
   });
 

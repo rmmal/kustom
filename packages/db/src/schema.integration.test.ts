@@ -164,7 +164,7 @@ if (stack === null) {
   });
 
   describe('idempotency keys', () => {
-    it('rejects a second lobby with the same lcu_party_id and changes no rows', async () => {
+    it('rejects a second live lobby for the same lcu_party_id and changes no rows', async () => {
       const before = await rest('service', `lobbies?lcu_party_id=eq.${partyId}&select=id`);
       const duplicate = await insert('lobbies', { lcu_party_id: partyId });
       expect(duplicate.status).toBe(409);
@@ -174,6 +174,46 @@ if (stack === null) {
       expect(rows(after.body)).toHaveLength(rows(before.body).length);
       expect(rows(after.body)).toHaveLength(1);
     });
+
+    it.each([['balanced'], ['in_game']])(
+      'rejects a second live lobby while the first is %s',
+      async (status) => {
+        const party = `${runId}-cycle-${status}`;
+        const first = await insert('lobbies', { lcu_party_id: party, status });
+        expect(first.status).toBe(201);
+
+        const second = await insert('lobbies', { lcu_party_id: party });
+        expect(second.status).toBe(409);
+        expect((second.body as { code?: string }).code).toBe('23505');
+      },
+    );
+
+    it.each([['finished'], ['abandoned']])(
+      "allows the night's next cycle once the previous row is %s (M2.14)",
+      async (status) => {
+        // The client keeps one party id all night. `lobbies_active_party_idx` is partial, so a
+        // closed row does not block the next game: `0003_lobby_cycles.sql`.
+        const party = `${runId}-cycle-next-${status}`;
+        const first = await insert('lobbies', { lcu_party_id: party, status });
+        expect(first.status).toBe(201);
+        const firstId = String(rows(first.body)[0]?.id ?? '');
+
+        const second = await insert('lobbies', { lcu_party_id: party });
+        expect(second.status).toBe(201);
+        const secondId = String(rows(second.body)[0]?.id ?? '');
+        expect(secondId).not.toBe(firstId);
+
+        // Two rows, one live and one closed, and nothing was rewritten.
+        const all = await rest('service', `lobbies?lcu_party_id=eq.${party}&select=id,status`);
+        expect(rows(all.body)).toHaveLength(2);
+        expect(rows(all.body).filter((row) => row.status === 'open')).toHaveLength(1);
+        expect(rows(all.body).find((row) => row.id === firstId)?.status).toBe(status);
+
+        // And a third live row is still refused while that second one is open.
+        const third = await insert('lobbies', { lcu_party_id: party });
+        expect(third.status).toBe(409);
+      },
+    );
 
     it('rejects a second game with the same lcu_game_id and changes no rows', async () => {
       const before = await rest('service', `games?lcu_game_id=eq.${gameId}&select=id`);

@@ -55,8 +55,8 @@ players        (id, puuid unique, summoner_id, game_name, tag_line, display_name
                 rank_tier, rank_division, rank_lp, rank_updated_at, created_at)
 ratings        (player_id, season_id, mu, sigma, ordinal generated (mu - 2 * sigma) stored,
                 games, wins, updated_at)  pk (player_id, season_id), index (season_id, ordinal desc)
-lobbies        (id, lcu_party_id unique, status, reported_by_player_id, lobby_name, lobby_password,
-                created_at, updated_at)
+lobbies        (id, lcu_party_id, status, reported_by_player_id, lobby_name, lobby_password,
+                created_at, updated_at)  unique (lcu_party_id) where status in (open, balanced, in_game)
 lobby_members  (lobby_id, player_id, side null, role null, role_override null, is_spectator, created_at)
 splits         (id, lobby_id, rank, blue jsonb, red jsonb, gap, blue_win_prob, score, off_role_count,
                 is_chosen, explanation, roster_key, created_at)
@@ -91,6 +91,11 @@ Also in the schema:
 Rules:
 
 - `players.puuid` is the identity. Riot IDs are display data refreshed from the client.
+- **A `lobbies` row is one game cycle, not one party** (M2.14, `0003_lobby_cycles.sql`). The client keeps the
+  same `partyId` all night, so `lcu_party_id` is unique only among `open`, `balanced` and `in_game` rows:
+  a lobby post lands on the party's live row and starts a new one once the last cycle is `finished` or
+  `abandoned`. A game post resolves to the newest row that already existed when the game started, so a late
+  end-of-game block stays on the lobby it was played from. Closed rows are never rewritten or reused.
 - A player row is created lazily the first time a PUUID appears in a lobby or a game. Discord linking is optional
   and done by an admin (`/admin/players`) or self-service via Discord OAuth.
 - `ratings` is per season. A new season copies `mu` and resets `sigma` to the starting value. `ordinal` is a

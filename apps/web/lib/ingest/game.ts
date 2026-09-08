@@ -7,6 +7,7 @@ import {
   scrubRawEogBlock,
 } from '@customs/db';
 import type { ServiceClient } from '../supabase';
+import { selectLatestLobby } from './lobby';
 import { ensurePlayers } from './players';
 
 /**
@@ -63,7 +64,7 @@ export async function ingestEogGame(
   client: ServiceClient,
   payload: CompanionGameEogPayloadWithWinner,
 ): Promise<GameIngestResult> {
-  const lobbyId = await findLobbyId(client, payload.partyId ?? null);
+  const lobbyId = await findLobbyId(client, payload.partyId ?? null, payload.startedAt);
 
   const insert: GameInsert = {
     lcu_game_id: payload.gameId,
@@ -113,13 +114,22 @@ async function selectGame(
   return data;
 }
 
-async function findLobbyId(client: ServiceClient, partyId: string | null): Promise<string | null> {
+/**
+ * The lobby this game was played from (M2.14): the party's live row, or the newest row it
+ * has once that cycle closed. An end-of-game block can arrive minutes late — after the group
+ * has already opened the night's next lobby with the same party id — and it still belongs to
+ * the cycle it was played in.
+ */
+export async function findLobbyId(
+  client: ServiceClient,
+  partyId: string | null,
+  startedAt?: string | null,
+): Promise<string | null> {
   if (partyId === null) return null;
 
-  const { data, error } = await client.from('lobbies').select('id').eq('lcu_party_id', partyId).maybeSingle();
-  if (error) throw new Error(`ingestGame: lobby lookup failed: ${error.message}`);
   // An unknown party id is not an error: the companion may have missed the lobby events.
-  return data?.id ?? null;
+  const lobby = await selectLatestLobby(client, partyId, startedAt);
+  return lobby?.id ?? null;
 }
 
 /**
