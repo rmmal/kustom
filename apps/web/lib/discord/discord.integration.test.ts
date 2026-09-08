@@ -52,13 +52,17 @@ if (stack === null) {
   const puuids = Array.from({ length: 10 }, (_, index) => `it-${runId}-dc${String(index).padStart(2, '0')}`);
   /** Eleven of their own, so no other case's rotation or ratings can order this one. */
   const eleven = Array.from({ length: 11 }, (_, index) => `it-${runId}-el${String(index).padStart(2, '0')}`);
-  const allPuuids = [...puuids, ...eleven];
+  /** Ten more, one of whom the client has never named (M3.15). */
+  const nameless = Array.from({ length: 10 }, (_, index) => `it-${runId}-nn${String(index).padStart(2, '0')}`);
+  const allPuuids = [...puuids, ...eleven, ...nameless];
   const partyIds = new Set<string>();
   const gameIds = new Set<number>();
 
   let token = '';
   /** A token owned by one of the eleven: a companion may only report a lobby it is in (M1.8). */
   let elevenToken = '';
+  /** The same rule again, for the lobby with a nameless player in it. */
+  let namelessToken = '';
   let webhookUrl = '';
   let server: Server | null = null;
   let posts: { body: Record<string, unknown> }[] = [];
@@ -79,6 +83,8 @@ if (stack === null) {
   interface MemberSpec {
     puuid: string;
     isSpectator?: boolean;
+    /** The lobby carries no Riot ID for this one: `players` keeps both name columns null. */
+    unnamed?: boolean;
   }
 
   function lobbyBody(partyId: string, members: readonly (string | MemberSpec)[]): Record<string, unknown> {
@@ -89,8 +95,8 @@ if (stack === null) {
         const spec = typeof member === 'string' ? { puuid: member } : member;
         return {
           puuid: spec.puuid,
-          gameName: `Player${index}`,
-          tagLine: 'EUW',
+          gameName: spec.unnamed ? null : `Player${index}`,
+          tagLine: spec.unnamed ? null : 'EUW',
           summonerId: 3_000 + index,
           side: spec.isSpectator ? null : index < 5 ? 100 : 200,
           isSpectator: spec.isSpectator ?? false,
@@ -182,6 +188,7 @@ if (stack === null) {
 
     token = await mintFor(puuids[0] ?? '');
     elevenToken = await mintFor(eleven[5] ?? '');
+    namelessToken = await mintFor(nameless[0] ?? '');
 
     server = createServer((incoming, response) => {
       const chunks: Buffer[] = [];
@@ -431,6 +438,47 @@ if (stack === null) {
       expect(lines).toHaveLength(10);
       expect(lines.some((line) => line.includes('Player0 ·'))).toBe(false);
       expect(lines.some((line) => line.includes('Player10 ·'))).toBe(true);
+    });
+  });
+
+  describe('a player the client has not named yet', () => {
+    it('writes Someone into the stored explanation, prints it, and names nobody in players', async () => {
+      const id = party('nameless');
+      // The lobby carries no `gameName` for the fifth of them, which is the ordinary case for
+      // a friend the database has never met: the League lobby has no Riot ID in it at all
+      // (M0.3), so the name arrives minutes later with the sweep or the first eog block.
+      const members = nameless.map((puuid, index) => ({ puuid, unnamed: index === 4 }));
+      const balanced = await driveToBalanced(id, members, namelessToken);
+      const payload = (await balanced.json()) as { lobbyId: string; status: string };
+      expect(payload.status).toBe('balanced');
+      expect(posts).toHaveLength(1);
+
+      // Everyone is unrated and flexible, so every split is gap 0 and the next-best clause
+      // names the two the enumeration swaps: the nameless one and the one after them.
+      const { data: split } = await db
+        .from('splits')
+        .select('explanation')
+        .eq('lobby_id', payload.lobbyId)
+        .eq('is_chosen', true)
+        .single();
+      expect(split?.explanation).toBe(
+        'Even 50%. Everyone on a main role. Gap 0. Next best: swap Someone and Player5, gap 0.',
+      );
+      expect(split?.explanation).not.toContain('Unknown');
+
+      // The stored sentence is quoted, not recomposed, and the line above it says the same
+      // word: one message cannot call one player two things (M3.15).
+      const embed = ((posts[0]?.body.embeds ?? []) as Record<string, unknown>[])[0];
+      expect(embed?.description).toBe(split?.explanation);
+      expect(teamLines(0).filter((line) => line.includes('Someone ·'))).toHaveLength(1);
+
+      // `Someone` is a word we print, never a row we write.
+      const { data: player } = await db
+        .from('players')
+        .select('display_name, game_name')
+        .eq('puuid', nameless[4] ?? '')
+        .single();
+      expect(player).toEqual({ display_name: null, game_name: null });
     });
   });
 }

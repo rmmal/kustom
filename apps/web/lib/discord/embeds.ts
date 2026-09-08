@@ -27,7 +27,13 @@ const LANE_ORDER: readonly Role[] = ['top', 'jungle', 'mid', 'adc', 'support'];
  */
 export type PlayerName = string | null;
 
-/** M3.10's fallback. One word, at the display boundary, on every surface. */
+/**
+ * M3.10's fallback. One word, at the display boundary, on every surface.
+ *
+ * `lib/ingest/balance.ts` borrows the same constant for the name it hands core, because core
+ * writes that name into `splits.explanation` and three surfaces quote that sentence verbatim
+ * (M3.15). One word, spelled in one place, whether it is rendered or stored.
+ */
 export const NAMELESS_PLAYER = 'Someone';
 
 /** `05-design.md`: truncate a display name at 32 characters with an ellipsis. */

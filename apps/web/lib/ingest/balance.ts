@@ -1,5 +1,6 @@
 import { type BalancePlayer, balance, type Split, seedFromRank } from '@customs/core';
 import { type Json, rosterKey, type SplitInsert } from '@customs/db';
+import { NAMELESS_PLAYER } from '../discord/embeds';
 import { nightStart } from '../night';
 import type { ServiceClient } from '../supabase';
 import type { LobbyBalancedEvent } from './hooks';
@@ -16,9 +17,6 @@ import { type PoolMember, planSeats, selectTen } from './selection';
 
 /** How far back the sit-out lookup reads. A player who has not sat out in this many games. */
 const SIT_OUT_HISTORY_GAMES = 400;
-
-/** M3.10 will decide what a player with no name looks like; until then, one word. */
-const UNKNOWN_PLAYER_NAME = 'Unknown';
 
 export interface BalanceOutcome extends LobbyBalancedEvent {
   /** All three splits, best first, as core returned them. `splits.rank` is the index plus one. */
@@ -135,7 +133,11 @@ export async function loadPool(
     return {
       playerId: row.player_id,
       puuid: player.puuid,
-      name: player.display_name ?? player.game_name ?? UNKNOWN_PLAYER_NAME,
+      // M3.10's one word, and it is the same word here as on every screen (M3.15): core
+      // writes this name into `splits.explanation`, which the embed and the tonight page
+      // print verbatim and may never recompose. A stored sentence saying `Unknown` beside a
+      // rendered line saying `Someone` is one message contradicting itself about one player.
+      name: player.display_name ?? player.game_name ?? NAMELESS_PLAYER,
       side: row.side === 100 || row.side === 200 ? row.side : null,
       isSpectator: row.is_spectator,
       mainRole: player.main_role,
