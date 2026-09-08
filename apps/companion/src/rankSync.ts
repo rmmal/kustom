@@ -90,6 +90,8 @@ export class RankSync {
   private readonly queue: string[] = [];
   private draining = false;
   private lastCallAt = 0;
+  /** One gate for every client call, own rank and the drain alike, so two callers cannot both pass at once. */
+  private paceChain: Promise<void> = Promise.resolve();
 
   constructor(options: RankSyncOptions) {
     this.api = options.api;
@@ -338,12 +340,16 @@ export class RankSync {
     });
   }
 
-  /** Keeps client calls at most one per `callIntervalMs`. */
-  private async pace(): Promise<void> {
-    const elapsed = Date.now() - this.lastCallAt;
-    if (elapsed < this.callIntervalMs) {
-      await sleep(this.callIntervalMs - elapsed, this.stopController.signal);
-    }
-    this.lastCallAt = Date.now();
+  /** Keeps client calls at most one per `callIntervalMs`, serialised across the own-rank read and the drain. */
+  private pace(): Promise<void> {
+    const turn = this.paceChain.then(async () => {
+      const elapsed = Date.now() - this.lastCallAt;
+      if (elapsed < this.callIntervalMs) {
+        await sleep(this.callIntervalMs - elapsed, this.stopController.signal);
+      }
+      this.lastCallAt = Date.now();
+    });
+    this.paceChain = turn.catch(() => undefined);
+    return turn;
   }
 }

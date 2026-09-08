@@ -188,7 +188,7 @@ export class GameWatcher {
 
   private onLobbyEvent(event: LobbyHookEvent): void {
     // `Delete` fires 30-100 ms after `GameStart`; the id captured at `GameStart` is kept through the game.
-    if (event.lobby !== null && event.lobby.gameConfig.isCustom) {
+    if (event.lobby?.gameConfig.isCustom) {
       this.lastPartyId = event.lobby.partyId;
     }
   }

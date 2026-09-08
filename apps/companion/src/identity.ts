@@ -19,16 +19,19 @@ export type IdentityOutcome =
       readonly playerId: string;
       readonly displayName: string | null;
     }
-  /** The API answered and said no (401, or any other 4xx). */
+  /** The API answered and said no to this token: 401 or 403. */
   | { readonly status: 'refused'; readonly httpStatus: number; readonly error: string }
-  /** No usable answer: network, 5xx, a body we could not read. */
+  /** No usable answer: network, 5xx, any other status (a 404 is a wrong `apiBase` or an old deploy, not a bad token), a body we could not read. */
   | { readonly status: 'unavailable'; readonly reason: string };
 
 export const TOKEN_REFUSED_SENTENCE =
   'The API refused this companion token; mint a new one on the admin page, paste it into config.json and start the companion again.';
 
 export async function checkIdentity(api: ApiClient): Promise<IdentityOutcome> {
-  const result = await api.request('GET', ME_API_PATH, undefined, companionMeResponseSchema, 1);
+  // Quiet: this function prints the one sentence itself, so the client's own 401 line would be a second one.
+  const result = await api.request('GET', ME_API_PATH, undefined, companionMeResponseSchema, 1, {
+    quiet: true,
+  });
   if (result.ok) {
     return {
       status: 'ok',
@@ -37,7 +40,7 @@ export async function checkIdentity(api: ApiClient): Promise<IdentityOutcome> {
       displayName: result.data.displayName,
     };
   }
-  if (result.reason === 'http' && result.status >= 400 && result.status < 500) {
+  if (result.reason === 'http' && (result.status === 401 || result.status === 403)) {
     return { status: 'refused', httpStatus: result.status, error: result.error };
   }
   return { status: 'unavailable', reason: describeFailure(result) };

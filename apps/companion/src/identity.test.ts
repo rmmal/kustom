@@ -57,9 +57,22 @@ describe('checkIdentity', () => {
     expect(h.fake.requests).toHaveLength(1);
     const sentence = h.logger.lines.filter((line) => line.message === TOKEN_REFUSED_SENTENCE);
     expect(sentence).toHaveLength(1);
-    expect(sentence[0]?.message).toContain('admin page');
     expect(sentence[0]?.fields.stack).toBeUndefined();
     expect(JSON.stringify(h.logger.lines)).not.toContain('stack');
+    // Exactly one admin-page sentence across every logger, the API client's own 401 line included.
+    expect(h.logger.lines.filter((line) => line.message.includes('admin page'))).toHaveLength(1);
+  });
+
+  it('a 404 on /api/companion/me (wrong apiBase or an old deploy) is "not answering", never "mint a new token"', async () => {
+    const h = await setup([{ status: 404, body: { ok: false, error: 'not found' } }]);
+    const outcome = await checkIdentity(h.api);
+    announceIdentity(outcome, h.logger);
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'HTTP 404 not found' });
+    expect(h.logger.lines.filter((line) => line.message.includes('admin page'))).toHaveLength(0);
+    expect(h.logger.lines.at(-1)?.message).toContain('HTTP 404');
+    expect(
+      (await checkIdentity((await setup([{ status: 403, body: { ok: false, error: 'no' } }])).api)).status,
+    ).toBe('refused');
   });
 
   it('says the API is not answering on a 5xx or a dropped connection, in one attempt', async () => {

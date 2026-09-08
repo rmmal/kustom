@@ -87,12 +87,13 @@ async function main(): Promise<number> {
     logger.warn('api not reachable now; calls will retry', { apiBase: config.apiBase, reason: health });
   }
 
-  // Who this token is, on every start and right after the first-run prompt. One attempt; never blocks.
-  announceIdentity(await checkIdentity(api), logger);
-
-  // The queue needs the API, not League: replay it before waiting for the client.
+  // The queue needs the API, not League: replay it before anything else, so an API that is slow to answer
+  // the identity check below never delays a queued game.
   const gameWatcher = new GameWatcher({ api, logger, configDir: dir });
   gameWatcher.start();
+
+  // Who this token is, on every start and right after the first-run prompt. One attempt; never blocks.
+  announceIdentity(await checkIdentity(api), logger);
 
   const lobbyWatcher = new LobbyWatcher({
     api,
