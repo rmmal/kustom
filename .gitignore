@@ -12,3 +12,4 @@ apps/companion/build/
 coverage/
 *.tsbuildinfo
 next-env.d.ts
+.claude/worktrees/
