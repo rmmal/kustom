@@ -304,6 +304,12 @@ and the group say them in lower case).
 
 ## Discord embeds
 
+Checked against the shipped JSON on 2026-09-09 (`apps/web/lib/discord/__snapshots__/embeds.test.ts.snap`,
+M3.1 and M3.3). Both worked examples below — every field name, every line, both colours, both footers, the
+`Red wins · 34:12` title and all ten result deltas — match the snapshot character for character. Where this
+section changed on that date it is called out in place, and the field order of the teams embed is the one
+place the code has to move to meet it.
+
 Constraints this layout is built against, and none of them are negotiable: no custom fonts, no CSS, one accent
 colour per embed (a 4px bar down the left edge), field **name** ≤ 256 and field **value** ≤ 1024 characters,
 25 fields max, 6000 characters total. Inline fields pack up to three per row on desktop and re-wrap on mobile,
@@ -334,16 +340,26 @@ Structure:
 ```
 color        accent (14721854)
 title        Teams are set
-url          https://<tonight page>
+url          https://<tonight page>          [dropped when the only honest origin is localhost]
 description  <splits.explanation, verbatim>
-field 1      name "Blue · 7695"   inline  value: five lines, lane order
-field 2      name "Red · 7595"    inline  value: five lines, lane order
-field 3      name "Sitting out"   block   value: one sentence           [only if somebody sits]
-field 4      name "Seats"         block   value: one line per move      [only if somebody moves]
+field 1      name "Sitting out"   block   value: one sentence           [only if somebody sits]
+field 2      name "Seats"         block   value: one line per move      [only if somebody moves]
+field 3      name "Blue · 7695"   inline  value: five lines, lane order
+field 4      name "Red · 7595"    inline  value: five lines, lane order
 field 5      name "Lobby"         block   value: name and password      [only if known]
 footer       Customs Night · more on the tonight page
 timestamp    now
 ```
+
+**The rotation goes above the teams** (revised 2026-09-09, reading the shipped M3.1 JSON; M3.1 shipped these
+two fields *after* `Blue` and `Red`, which is the one place the code and this file disagree). The web puts the
+sit-out strip above the team cards on a stated rule: *if you are sitting out, everything under it is not about
+you, and you should learn that before you scan for your name.* That rule is stronger in Discord, not weaker.
+Ten rating lines plus a wrapped explanation is about one phone screen, so `Swap: Omar out, Nadia in.` — the one
+line in the message that has to happen before anybody can play — was landing below the fold. On a ten-person
+night neither field exists and the embed is byte-identical to what shipped; on an eleven-person night everyone
+else pays two short lines to put the instruction above the fold. Discord groups *consecutive* inline fields, so
+a block field in front of `Blue` and `Red` does not break their pairing.
 
 Line format inside a side field, one per role in lane order:
 
@@ -379,15 +395,15 @@ The exact strings the API builds:
 title        Teams are set
 description  Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and Omar, gap 170.
 
-field 1 name   Blue · 7695
-field 1 value  `top` Hana · 1434
+field 3 name   Blue · 7695
+field 3 value  `top` Hana · 1434
                `jungle` Iris · 1578
                `mid` Karim · 1551
                `adc` Bilal · 1713
                `support` Theo · 1419
 
-field 2 name   Red · 7595
-field 2 value  `top` Omar · 1469
+field 4 name   Red · 7595
+field 4 value  `top` Omar · 1469
                `jungle` Rami · 1638
                `mid` Nadia · 1266
                `adc` Lena · 2088
@@ -402,25 +418,83 @@ footer         Customs Night · more on the tonight page
 Budget: a side field is ~110 characters against a 1024 limit, so a name would have to be ~180 characters to
 threaten it. Truncate a display name at 32 characters with `…` at the source anyway; do not truncate the field.
 
+**Names, in every line of both embeds.** One renderer (`renderName`): the newest display name we have,
+trimmed; `Someone` when we have none (M3.10); 31 characters and `…` when it is longer than 32. A blank-looking
+line in a five-line field reads as a bug, which is why the fallback is a word and not an empty string.
+`Someone` is a rendering rule and is never written to a row.
+
+A name is printed as **text, not markup**. Riot IDs carry underscores and asterisks, and a single stray
+backtick closes the role's code span and swallows the rest of the field. Escape `` ` ``, `*`, `_`, `~` and `|`
+with a backslash inside `renderName` — **last**, on the already-truncated string, so a backslash can never be
+sliced away from the character it escapes and the 32 characters stay 32 characters as read. There is no name
+we want rendered as italics.
+
+**The `Lobby` field has three shapes**, and the third one is the code's, recorded here because it was missing:
+
+```
+`customs-night` · password `4471`     both known
+`customs-night`                       no password (every lobby before M4.1)
+Password `4471`                       a password with no name
+(no field at all)                     neither
+```
+
+Never `password: —`, never the word `unknown`, never an empty field. The capital `P` in the third shape is
+correct: there it starts the sentence, where in the first shape it is mid-line after the name.
+
+**When there is no `url`** — a dev machine, or any origin that resolves to localhost, which `tonightPageUrl`
+drops rather than post a link that works for one person — the title is not a link, so the footer must not
+promise one. The footer is then `Customs Night` alone. A footer that says "more on the tonight page" over an
+unlinked title is the message telling a friend to tap something that is not there.
+
 Sit-out fields, when they exist — copy (product, **M2.15**, 2026-09-08; shipped verbatim by M3.1). Two
 independent fields: `Sitting out` answers "who is not playing", `Seats` answers "who has to move", and those
 are not the same question. Each appears only when it has something to say.
 
 ```
-field 3 name   Sitting out
-field 3 value  Sitting out: Omar — most games tonight.
+field 1 name   Sitting out
+field 1 value  Sitting out: Omar — most games tonight.
                (…and when everyone around has played the same number tonight, the clause is
                 `— longest since they last sat out.` Always "they".)
 
-field 4 name   Seats
-field 4 value  Swap: Omar out, Nadia in.
+field 2 name   Seats
+field 2 value  Swap: Omar out, Nadia in.
                Yuki is playing — take the open slot.      [a mover with nobody to swap with]
 ```
 
-This supersedes the earlier single-sentence version of field 3 (`Sara and Deniz` / "Each game goes to whoever
-has played least tonight…"), which stays as it is on the **web** sit-out strip above: the strip is a paragraph
-a friend reads on a page, the embed field is two short lines in a channel. M2.15 is the source of the embed
-copy and `lib/discord/embeds.ts` is the only place it is composed.
+The value repeats the field name (`Sitting out` / `Sitting out: Omar …`) and that repetition stays. Inline
+fields re-wrap and a field can be read alone, quoted alone, or screenshotted alone, so the sentence carries its
+own subject. A field whose value only makes sense under its bold heading is a field that breaks the first time
+Discord re-flows it.
+
+This supersedes the earlier single-sentence version of the sit-out field (`Sara and Deniz` / "Each game goes to
+whoever has played least tonight…"), which stays as it is on the **web** sit-out strip above: the strip is a
+paragraph a friend reads on a page, the embed field is two short lines in a channel. M2.15 is the source of the
+embed copy and `lib/discord/embeds.ts` is the only place it is composed.
+
+Filled in, eleven around, all tied at zero games tonight (this is the case
+`discord.integration.test.ts` pins, with the group's placeholder names):
+
+> **Teams are set**
+>
+> Even 50%. Everyone on a main role. Gap 0. Next best: swap Player4 and Player5, gap 0.
+>
+> **Sitting out**
+> Sitting out: Player0 — longest since they last sat out.
+>
+> **Seats**
+> Swap: Player0 out, Player10 in.
+>
+> | **Blue · 6000** | **Red · 6000** |
+> |---|---|
+> | *the ten who are playing, five a side, lane order — Player10 among them and Player0 not* | |
+>
+> **Lobby**
+> `customs-night`
+>
+> Customs Night · more on the tonight page
+
+Two fields, not one line: the sitter reads the first and stops, the mover reads the second and acts, and
+neither has to work out which half of a compound sentence is about them.
 
 **Sums are not the gap.** `7695` and `7595` are the sums of five display ratings. Their difference equals the
 `Gap 100` in the explanation only because nobody here is off-role; the gap is computed on effective
@@ -432,13 +506,18 @@ the two numbers are the same thing, and the explanation line is the only place t
 ```
 color        winner's side colour
 title        Red wins · 34:12
-url          https://<tonight page>
-description  Blue was favored 54%. Top damage: Lena, 47.3k.
+url          https://<tonight page>                          [same localhost rule as the teams embed]
+description  Blue was favored 54%. Top damage: Lena, 47.3k.  [absent when it would be empty]
 field 1      name "Blue"   inline   five lines: new rating and delta
 field 2      name "Red"    inline   five lines: new rating and delta
-footer       Season 1 · game 47
+footer       Season 1 · game 47                              ["Season 1" alone if the game cannot be counted]
 timestamp    game end
 ```
+
+The embed exists only for a game the rating fold actually rated. A remake, a four-minute surrender, a
+scoreboard that is not five a side, the second companion's re-post: no message. There is no "no ratings this
+game" variant, because the whole message is what the game did to ten ratings and an embed that says nothing is
+worse than silence.
 
 Line format, deliberately the same shape as the teams embed so the two messages read as one scoreboard:
 
@@ -475,7 +554,37 @@ sides' σ² sums are not equal, so the cancellation here is arithmetic luck, not
 unchanged and it is a rule about the embed, not about the numbers: **the result embed prints no team totals.**
 
 Losers keep their side's field first-or-second position by side number, never reordered to put the winner
-first: the two embeds must line up so that "my column" is in the same place both times.
+first: the two embeds must line up so that "my column" is in the same place both times. That includes the
+vertical order inside a column: lane order, top to support, the same five positions as the teams embed. A
+player whose role neither the scoreboard nor the stored split knows is printed without a role — the name
+starts the line — and sorts after the five who have one, so the known rows never move to make room.
+
+**The four number formats, so no surface invents a fifth.**
+
+| | rule | reads |
+|---|---|---|
+| duration | `m:ss`, and `h:mm:ss` once past the hour. No zero padding on the leading unit, no `min`, no `34m 12s`. | `34:12`, `1:02:03`, `0:59` |
+| delta | signed always, ASCII `+` / `-`, `+0` and `-0` for a change too small to round to a point | `(+43)`, `(-45)`, `(-0)` |
+| damage | one decimal and `k` from a thousand up, the plain integer below it | `47.3k`, `1.0k`, `940` |
+| odds | past tense, the favourite named, whole percent | `Blue was favored 54%.` `Red was favored 58%.` `Even 50%.` |
+
+`Even 50%.` is core's phrasing from the explanation line, kept word for word so the two messages of one night
+do not describe the same coin flip in two ways. It is the one odds clause with no tense, which is right: an
+even game was never a prediction about anybody.
+
+**`-0` is a real value and it does not survive JSON.** `displayDelta` returns negative zero for a rating that
+fell by less than half a point, and `formatDelta` asks `Object.is` before it looks at the sign. Anything that
+carries a delta through `JSON.stringify` — an API response, a cached payload — turns `-0` into `0` and prints
+`(+0)` on a row that went down. So a delta is computed where it is rendered and never transported. This is the
+rule the tonight page and `/p/[puuid]` inherit (M3.4, M3.8), not just the embed.
+
+**If the two columns wrap on a phone, drop `inline`.** `` `support` Theo · 1372 (-47) `` is 27 characters, and
+a Discord mobile inline field is about half the message width. If that wraps to two lines, a five-line column
+becomes ten ragged ones and the column stops being a column. The fix in that case is to make both result
+fields full-width block fields — `Blue` above `Red`, five clean lines each — and **not** to shorten the line:
+the role, the name, the new rating and the delta are the entire content. The teams embed's lines are six to
+eight characters shorter and are expected to survive; if they do not, they take the same treatment. Decide this
+by looking at one real post on one real phone, not from the JSON.
 
 ### Nightly leaderboard embed (M3.5)
 
