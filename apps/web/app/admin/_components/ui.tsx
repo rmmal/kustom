@@ -77,8 +77,3 @@ export function formatTimestamp(value: string | null): string {
   if (Number.isNaN(parsed.getTime())) return value;
   return `${parsed.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
-
-/** The first eight characters of a PUUID: enough to recognise a row, short enough to read. */
-export function shortPuuid(puuid: string): string {
-  return puuid.length <= 12 ? puuid : `${puuid.slice(0, 8)}…`;
-}

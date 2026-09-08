@@ -1,5 +1,10 @@
 import type { NextResponse } from 'next/server';
-import { setPlayerAdmin, setPlayerDiscordId, setPlayerRoles } from '@/lib/admin/players';
+import {
+  setPlayerAdmin,
+  setPlayerDiscordId,
+  setPlayerDisplayName,
+  setPlayerRoles,
+} from '@/lib/admin/players';
 import type { AdminWriteResult } from '@/lib/admin/result';
 import type { AdminContext } from '@/lib/adminRoute';
 import { type AdminPlayersRequest, adminPlayersResponseSchema } from './schema';
@@ -31,6 +36,11 @@ function runAction(input: AdminPlayersRequest, context: AdminContext): Promise<A
         mainRole: input.mainRole,
         secondaryRole: input.secondaryRole,
       });
+    case 'set-name':
+      return setPlayerDisplayName(context.client, {
+        playerId: input.playerId,
+        displayName: input.displayName,
+      });
     case 'set-discord':
       return setPlayerDiscordId(context.client, {
         playerId: input.playerId,
@@ -51,6 +61,12 @@ function noticeFor(input: AdminPlayersRequest): string {
   switch (input.action) {
     case 'set-roles':
       return `roles saved: ${input.mainRole ?? 'flexible'} / ${input.secondaryRole ?? 'none'}`;
+    case 'set-name':
+      // Both halves matter to the admin: what the name is now, and whether the client may
+      // still move it. "back on automatic" is the only way to tell a cleared field worked.
+      return input.displayName === null
+        ? 'name cleared: it follows the Riot ID again'
+        : `name saved: ${input.displayName}`;
     case 'set-discord':
       return input.discordId === null ? 'Discord id cleared' : 'Discord id linked';
     case 'set-admin':

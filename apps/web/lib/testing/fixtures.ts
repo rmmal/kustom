@@ -7,6 +7,49 @@ import { type CompanionGameEogPayload, companionGamePayloadSchema } from '@custo
 
 export const ROLES_IN_ORDER = ['top', 'jungle', 'mid', 'adc', 'support'] as const;
 
+export interface LobbyMemberOptions {
+  puuid: string;
+  gameName?: string | null;
+  tagLine?: string | null;
+  summonerId?: string | null;
+  side?: 100 | 200 | null;
+  isSpectator?: boolean;
+}
+
+export interface LobbyBodyOptions {
+  partyId: string;
+  members: readonly LobbyMemberOptions[];
+  lobbyName?: string;
+  lobbyPassword?: string;
+}
+
+/**
+ * A `POST /api/companion/lobby` body.
+ *
+ * Members are written out one by one rather than generated, because the tests that use this
+ * care about *which* name is attached to which PUUID: M1.7's rule is that `display_name`
+ * follows `gameName` only while nobody has overridden it, and the only honest way to prove
+ * that is to post a renamed member the way the companion would.
+ *
+ * Remember the M1.8 rule when using this: the token's own player has to be in `members`, or
+ * the route answers 403 before it writes anything.
+ */
+export function lobbyBody(options: LobbyBodyOptions): Record<string, unknown> {
+  return {
+    partyId: options.partyId,
+    lobbyName: options.lobbyName ?? 'customs night',
+    lobbyPassword: options.lobbyPassword ?? '1234',
+    members: options.members.map((member, index) => ({
+      puuid: member.puuid,
+      gameName: member.gameName ?? null,
+      tagLine: member.tagLine ?? null,
+      summonerId: member.summonerId ?? null,
+      side: member.side === undefined ? (index < 5 ? 100 : 200) : member.side,
+      isSpectator: member.isSpectator ?? false,
+    })),
+  };
+}
+
 export interface EogBodyOptions {
   gameId: number;
   puuids: readonly string[];

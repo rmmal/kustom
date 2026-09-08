@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import { playerLabel } from '@/lib/admin/playerName';
 import { listAdminPlayers } from '@/lib/admin/players';
 import { listAdminTokens } from '@/lib/admin/tokens';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
-import { Empty, formatTimestamp, Notices, type SearchParams, shortPuuid } from '../../_components/ui';
+import { Empty, formatTimestamp, Notices, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,7 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
             <select name="playerId" aria-label="Player" defaultValue={players[0]?.id ?? ''}>
               {players.map((player) => (
                 <option key={player.id} value={player.id}>
-                  {player.displayName ?? player.gameName ?? shortPuuid(player.puuid)}
+                  {playerLabel(player)}
                 </option>
               ))}
             </select>
@@ -62,7 +63,10 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
 
       <h2>Tokens</h2>
       {tokens.length === 0 ? (
-        <Empty>No tokens yet. Mint one above and paste it into the companion's first-run prompt.</Empty>
+        <Empty>
+          No tokens yet. Mint one above and send it to whoever runs the companion — they paste it in when the
+          companion asks.
+        </Empty>
       ) : (
         <div className="admin-scroll">
           <table>
@@ -79,7 +83,9 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
             <tbody>
               {tokens.map((token) => (
                 <tr key={token.id}>
-                  <td title={token.puuid}>{token.displayName ?? shortPuuid(token.puuid)}</td>
+                  {/* The name, the Riot ID, then a PUUID fragment: minting for the wrong
+                      person is a live credential handed to the wrong friend (M1.7). */}
+                  <td title={token.puuid}>{playerLabel(token)}</td>
                   <td>{token.label ?? '—'}</td>
                   <td>{formatTimestamp(token.createdAt)}</td>
                   <td>{formatTimestamp(token.lastSeenAt)}</td>

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { listSeasons } from '@/lib/admin/seasons';
+import { getActiveSeason, listSeasons } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../../_components/ui';
@@ -15,10 +15,15 @@ export const metadata: Metadata = {
  * Seasons. Starting one closes the current one and activates the new one in a single
  * transaction (`public.start_season`), because exactly one season may be active and a gap
  * would break every game insert.
+ *
+ * It is also the only button here that cannot be undone, so it takes a typed confirmation
+ * (M3.9): the name of the season being ended, spelled out next to the field because an admin
+ * on a phone should not have to go and find it.
  */
 export default async function AdminSeasonsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [params] = await Promise.all([searchParams, requireAdmin()]);
-  const seasons = await listSeasons(getServiceClient());
+  const client = getServiceClient();
+  const [seasons, active] = await Promise.all([listSeasons(client), getActiveSeason(client)]);
 
   return (
     <main>
@@ -33,11 +38,35 @@ export default async function AdminSeasonsPage({ searchParams }: { searchParams:
       <Notices params={params} />
 
       <h2>Start a season</h2>
-      <form method="post" action="/api/admin/seasons">
-        <label>
-          <span className="admin-muted">name </span>
-          <input type="text" name="name" required placeholder="Season 2" aria-label="Season name" />
+      {active === null ? (
+        <Empty>
+          No season is active, so there is nothing to end. Starting one here will make it the active season
+          straight away.
+        </Empty>
+      ) : null}
+      <form method="post" action="/api/admin/seasons" className="admin-stacked">
+        <label className="admin-field">
+          <span>Name of the new season</span>
+          <input type="text" name="name" required placeholder="Season 2" size={24} />
         </label>
+
+        {active === null ? null : (
+          <label className="admin-field">
+            {/* The name to type is spelled out here, not left in a placeholder: the point of
+                the field is that the admin reads which season they are about to end. */}
+            <span>
+              To confirm, type the name of the season you are ending: <strong>{active.name}</strong>
+            </span>
+            <input
+              type="text"
+              name="confirmSeasonName"
+              required
+              size={24}
+              aria-label={`Type ${active.name} to confirm`}
+            />
+          </label>
+        )}
+
         <button type="submit">Start</button>
       </form>
 
