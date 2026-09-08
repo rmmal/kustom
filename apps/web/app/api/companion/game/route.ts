@@ -21,6 +21,7 @@ import { emitGameFinished } from '@/lib/ingest/hooks';
 import { isLobbyMemberOfGame, selectActiveLobby } from '@/lib/ingest/lobby';
 import { rateStoredGame } from '@/lib/ingest/rating';
 import { moveLobbyLogged, sweepIdleLobbies } from '@/lib/lobbyState';
+import { hasActiveSeason, NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { siteOrigin } from '@/lib/siteUrl';
 
 // node:crypto hashes the bearer token, so this route is not edge-compatible.
@@ -45,7 +46,10 @@ export const dynamic = 'force-dynamic';
  *   sweep covers `open` and `balanced` only (M2.5) — and M5.5 lists it;
  * - 422 when the same PUUID appears twice on the scoreboard;
  * - 403 when the token's player is neither on the scoreboard nor a member of the lobby this
- *   game was played from, spectators included (M2.8).
+ *   game was played from, spectators included (M2.8);
+ * - 503, naming the missing active season, when there is none: `games.season_id` defaults to
+ *   `active_season_id()`, so the insert would fail anyway, and a retryable status keeps the
+ *   companion's queue file so the night lands once a season is started (M2.18).
  *
  * The raw block is scrubbed of its chat credentials before it goes anywhere near the database:
  * `games.raw` is public-read under RLS (M2.10, point 11).
@@ -98,6 +102,16 @@ export const POST = withCompanionAuth(
       !(await isLobbyMemberOfGame(client, payload.partyId ?? null, identity.playerId, payload.startedAt))
     ) {
       return jsonError(403, 'a companion may only report a game its own player was in');
+    }
+
+    // M2.18. `games.season_id` defaults to `active_season_id()`, so with no active season the
+    // insert below fails on a not-null column and the night is lost to a message about a
+    // constraint. Checked here, before any write: the answer names the thing to do, and 503
+    // keeps the companion's queue file (400/403/404/422 are its permanent refusals), so
+    // starting a season drains the night rather than replaying it from backfill.
+    if (!(await hasActiveSeason(client))) {
+      console.error(`game ${payload.gameId}: no active season; refused before the insert (M2.18)`);
+      return jsonError(503, NO_ACTIVE_SEASON_MESSAGE);
     }
 
     const result = await ingestEogGame(client, { ...payload, raw: scrubRawEogBlock(payload.raw) });

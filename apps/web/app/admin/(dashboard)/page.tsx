@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
+import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { getServiceClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,15 @@ export default async function AdminIndexPage() {
       </dl>
 
       <h2>Active season</h2>
-      <p>{season === null ? 'No season is active. Start one on the seasons page.' : season.name}</p>
+      {season === null ? (
+        // The same sentence the companion API answers with when it refuses a game (M2.18).
+        // Whoever opens this page after a failed night should read the words they were sent.
+        <p className="admin-error" role="alert">
+          {NO_ACTIVE_SEASON_MESSAGE}
+        </p>
+      ) : (
+        <p>{season.name}</p>
+      )}
 
       <h2>Pages</h2>
       <ul>

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getActiveSeason, listSeasons } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
+import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { getServiceClient } from '@/lib/supabase';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../../_components/ui';
 
@@ -39,10 +40,12 @@ export default async function AdminSeasonsPage({ searchParams }: { searchParams:
 
       <h2>Start a season</h2>
       {active === null ? (
-        <Empty>
-          No season is active, so there is nothing to end. Starting one here will make it the active season
-          straight away.
-        </Empty>
+        // Verbatim the sentence the companion API answers a game post with while this is true
+        // (M2.18), then what it means here: there is nothing to end, so the form is one field.
+        <p className="admin-error" role="alert">
+          {NO_ACTIVE_SEASON_MESSAGE} There is nothing to end, so starting one here makes it active straight
+          away.
+        </p>
       ) : null}
       <form method="post" action="/api/admin/seasons" className="admin-stacked">
         <label className="admin-field">
