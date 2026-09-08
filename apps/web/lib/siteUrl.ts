@@ -24,6 +24,29 @@ export function siteOrigin(request: Request): string {
   return new URL(request.url).origin;
 }
 
+/** Hosts that are real to the machine running the server and to nobody in the Discord channel. */
+const LOCAL_HOSTS: readonly string[] = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'];
+
+/**
+ * The link a Discord embed may carry, or `undefined` (M3.1, "Tonight page URL").
+ *
+ * `NEXT_PUBLIC_SITE_URL` is what {@link siteOrigin} already prefers, so this takes the origin
+ * of the request that triggered the transition and applies the one extra rule the channel
+ * needs: **never post a localhost link**. No domain exists yet, and an embed with no `url` is
+ * better than one that goes nowhere for everybody but the person who ran the server.
+ */
+export function tonightPageUrl(origin: string | null | undefined): string | undefined {
+  if (!origin) return undefined;
+  try {
+    const url = new URL(origin);
+    if (LOCAL_HOSTS.includes(url.hostname)) return undefined;
+    // The tonight page is `/`, so the origin is the whole link.
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 function firstHeaderValue(value: string | null): string | null {
   if (value === null) return null;
   const first = value.split(',')[0]?.trim();

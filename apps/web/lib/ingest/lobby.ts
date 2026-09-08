@@ -178,6 +178,11 @@ export interface LobbyIngestOptions {
   now?: Date;
   /** IANA name for "tonight" (M2.5). `CUSTOMS_NIGHT_TZ` in the route. */
   timeZone?: string;
+  /**
+   * The posting request's origin, carried to the `balanced` hook for the Discord embed's
+   * `url` (M3.1). Ingest neither reads it nor writes it anywhere; it is passed through.
+   */
+  requestOrigin?: string | null;
 }
 
 export async function ingestLobby(
@@ -232,6 +237,7 @@ export async function ingestLobby(
     elapsedMs,
     now,
     timeZone,
+    requestOrigin: options.requestOrigin ?? null,
   });
   const balanced = attempt.kind === 'balanced' ? attempt.outcome : null;
   // A request that lost the race writes nothing and answers with the status the winner left
@@ -305,6 +311,8 @@ interface MaybeBalanceInput {
   elapsedMs: number;
   now: Date;
   timeZone: string;
+  /** Passed straight to the `balanced` hook for the embed's `url` (M3.1). */
+  requestOrigin: string | null;
 }
 
 /**
@@ -347,7 +355,7 @@ async function maybeBalance(client: ServiceClient, input: MaybeBalanceInput): Pr
     const outcome = await balanceLobby(client, lobby, input.now, input.timeZone);
     // Discord is M3.1 and hears about it here. Every acceptance check passes with no listener
     // registered at all, which is the point of the seam.
-    await emitLobbyBalanced(outcome);
+    await emitLobbyBalanced({ ...outcome, requestOrigin: input.requestOrigin });
     return { kind: 'balanced', outcome };
   } catch (error) {
     // A balance that cannot happen must never reach the companion: one line, the lobby back

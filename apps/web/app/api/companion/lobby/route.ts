@@ -2,8 +2,12 @@ import { companionLobbyPayloadSchema, companionLobbyResponseSchema } from '@cust
 import { withCompanionAuth } from '@/lib/companionRoute';
 import { readServerEnv } from '@/lib/env';
 import { jsonError, jsonOk } from '@/lib/http';
+// Registers the Discord listeners on `hooks.ts` at module load (M3.1, M3.3). Import for the
+// side effect: with this line removed, everything below behaves identically and nothing posts.
+import '@/lib/ingest/discord';
 import { ingestLobby, mayReportLobby } from '@/lib/ingest/lobby';
 import { sweepIdleLobbies } from '@/lib/lobbyState';
+import { siteOrigin } from '@/lib/siteUrl';
 
 // node:crypto hashes the bearer token, so this route is not edge-compatible.
 export const runtime = 'nodejs';
@@ -36,42 +40,47 @@ export const dynamic = 'force-dynamic';
  * M1.8 caller check below therefore runs on the filtered list, which is the order the brief
  * asks for.
  */
-export const POST = withCompanionAuth(companionLobbyPayloadSchema, async (payload, { client, identity }) => {
-  if (payload.droppedMembers > 0) {
-    console.warn(
-      `companion lobby ${payload.partyId}: dropped ${payload.droppedMembers} bot or placeholder member(s)`,
-    );
-  }
+export const POST = withCompanionAuth(
+  companionLobbyPayloadSchema,
+  async (payload, { client, identity, request }) => {
+    if (payload.droppedMembers > 0) {
+      console.warn(
+        `companion lobby ${payload.partyId}: dropped ${payload.droppedMembers} bot or placeholder member(s)`,
+      );
+    }
 
-  // One statement at the start of every companion post: a lobby nobody has mentioned for two
-  // hours is given up on (M2.5). `in_game` is never swept.
-  const now = new Date();
-  await sweepIdleLobbies(client, now);
+    // One statement at the start of every companion post: a lobby nobody has mentioned for two
+    // hours is given up on (M2.5). `in_game` is never swept.
+    const now = new Date();
+    await sweepIdleLobbies(client, now);
 
-  if (!(await mayReportLobby(client, payload, identity))) {
-    return jsonError(403, 'a companion may only report a lobby it is in');
-  }
+    if (!(await mayReportLobby(client, payload, identity))) {
+      return jsonError(403, 'a companion may only report a lobby it is in');
+    }
 
-  const { CUSTOMS_NIGHT_TZ } = readServerEnv();
-  const result = await ingestLobby(client, payload, identity.playerId, {
-    now,
-    timeZone: CUSTOMS_NIGHT_TZ,
-  });
+    const { CUSTOMS_NIGHT_TZ } = readServerEnv();
+    const result = await ingestLobby(client, payload, identity.playerId, {
+      now,
+      timeZone: CUSTOMS_NIGHT_TZ,
+      // Only used for the teams embed's `url` (M3.1). Nothing is written from it.
+      requestOrigin: siteOrigin(request),
+    });
 
-  if (result.balanced !== null) {
-    console.info(
-      `lobby ${result.lobbyId} balanced: ${result.balanced.explanation} (${result.balanced.sitters.length} sitting out)`,
-    );
-  }
+    if (result.balanced !== null) {
+      console.info(
+        `lobby ${result.lobbyId} balanced: ${result.balanced.explanation} (${result.balanced.sitters.length} sitting out)`,
+      );
+    }
 
-  return jsonOk(companionLobbyResponseSchema, {
-    ok: true,
-    lobbyId: result.lobbyId,
-    status: result.status,
-    created: result.created,
-    memberCount: result.memberCount,
-    rosterFrozen: result.rosterFrozen,
-    recheckInMs: result.recheckInMs,
-    ranksNeeded: result.ranksNeeded,
-  });
-});
+    return jsonOk(companionLobbyResponseSchema, {
+      ok: true,
+      lobbyId: result.lobbyId,
+      status: result.status,
+      created: result.created,
+      memberCount: result.memberCount,
+      rosterFrozen: result.rosterFrozen,
+      recheckInMs: result.recheckInMs,
+      ranksNeeded: result.ranksNeeded,
+    });
+  },
+);

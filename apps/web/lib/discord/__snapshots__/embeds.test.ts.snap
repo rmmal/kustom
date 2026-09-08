@@ -1,0 +1,42 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`teamsEmbed, the worked example > matches the layout in 05-design.md 1`] = `
+{
+  "embeds": [
+    {
+      "color": 14721854,
+      "description": "Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and Omar, gap 170.",
+      "fields": [
+        {
+          "inline": true,
+          "name": "Blue · 7695",
+          "value": "\`top\` Hana · 1434
+\`jungle\` Iris · 1578
+\`mid\` Karim · 1551
+\`adc\` Bilal · 1713
+\`support\` Theo · 1419",
+        },
+        {
+          "inline": true,
+          "name": "Red · 7595",
+          "value": "\`top\` Omar · 1469
+\`jungle\` Rami · 1638
+\`mid\` Nadia · 1266
+\`adc\` Lena · 2088
+\`support\` Yuki · 1134",
+        },
+        {
+          "name": "Lobby",
+          "value": "\`customs-night\` · password \`4471\`",
+        },
+      ],
+      "footer": {
+        "text": "Customs Night · more on the tonight page",
+      },
+      "timestamp": "2026-09-08T20:15:00.000Z",
+      "title": "Teams are set",
+      "url": "https://customs.example",
+    },
+  ],
+}
+`;

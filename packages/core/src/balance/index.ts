@@ -15,6 +15,11 @@ import { roleTier } from './roles';
 import type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split } from './types';
 
 export { explain } from './explain';
+/**
+ * Re-exported for the display surfaces (M3.1's teams embed marks an off-role line). One rule
+ * for "off-role" in the product: the scorer, the explanation and every embed ask this.
+ */
+export { isOffRole } from './roles';
 export type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split } from './types';
 
 /** Thrown for every input the balancer refuses. The message is written for a Discord line. */

@@ -65,8 +65,8 @@ so two companions posting the same lobby produce one transition. An illegal move
 - **The rating fold** is `lib/ingest/rating.ts`: ten `game_players`, five a side, over 300
   seconds, or the game is stored and left unrated. It runs exactly once per game, claimed by
   the `mu_after is null` guard on the first row it writes.
-- **Discord** is not here. `lib/ingest/hooks.ts` is the seam M3.1 and M3.3 fill; with no hook
-  registered, everything above behaves identically.
+- **Discord** is not here. `lib/ingest/hooks.ts` is the seam; `lib/discord` (below) is what
+  listens on it. With that one import removed, everything above behaves identically.
 - **The sweep.** An `open` or `balanced` lobby nobody has posted about for two hours becomes
   `abandoned`. It runs at the start of every companion lobby and game post, and on demand:
 
@@ -81,6 +81,33 @@ so two companions posting the same lobby produce one transition. An illegal move
   `console.warn` naming the lobby and the move.
 - **`CUSTOMS_NIGHT_TZ`** (default `Africa/Cairo`) is the timezone "tonight" is measured in: a
   night runs 06:00 to 06:00 there, so a session that ends at 01:30 is one night.
+
+## Discord (M3.1)
+
+The teams embed, posted by the API to the webhook URL in `discord_config`. There is no bot here — that is
+`apps/discord` in M4 — and nobody types anything to make the message happen. M3.3 adds the result embed.
+
+```
+lib/discord/embeds.ts    pure: teamsEmbed(input) -> the webhook JSON. No I/O, no clock.
+lib/discord/assemble.ts  rows and hook events -> those inputs. Names are read fresh; `Someone` is the fallback.
+lib/discord/webhook.ts   the only I/O: one POST, 5 s, one retry, never throws.
+lib/discord/post.ts      postTeamsForEvent / postTeamsForSplit, and the hook object.
+lib/ingest/discord.ts    registers the hooks at module load. The companion routes import it for the side effect.
+```
+
+- **On `balanced`**: the teams embed — two inline fields with role, name and display rating in lane order, the
+  stored explanation verbatim as the description, `Sitting out` and `Seats` when somebody sits or has to move
+  (M2.15's copy), and `Lobby` when the client reported a name. Layout and every string are `docs/05-design.md`,
+  "Discord embeds"; the sit-out wording is product's and is not edited here.
+- **When Discord is down or unconfigured**, nothing else changes: the splits are stored, the fold runs, the
+  route answers 200. The post is one POST with a five-second budget, one retry on a 5xx or a network error and
+  one wait on a 429; then a log line. `lib/ingest/hooks.ts` is the seam and a hook that throws is caught there.
+- **The embed `url`** is the tonight page. It comes from the origin of the request that triggered the
+  transition — `NEXT_PUBLIC_SITE_URL` when it is set — and is dropped when that is a localhost host, because a
+  link only the person running the server can open is worse than no link.
+- **Configuring it**: `/admin/discord`, one row per guild. The webhook URL is a secret and `discord_config` has
+  no read policy at all; the API reads it with the service role and never logs it.
+- **Reroll (M3.2)** re-posts with one call: `postTeamsForSplit(client, splitId)` after promoting the split.
 
 ## The admin area
 

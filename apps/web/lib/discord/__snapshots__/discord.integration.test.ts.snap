@@ -1,0 +1,41 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a night, from the tenth join > posts one teams embed on balanced, and nothing more when the companion posts again 1`] = `
+{
+  "embeds": [
+    {
+      "color": 14721854,
+      "description": "Even 50%. Everyone on a main role. Gap 0. Next best: swap Player4 and Player5, gap 0.",
+      "fields": [
+        {
+          "inline": true,
+          "name": "Blue · 6000",
+          "value": "\`top\` Player0 · 1200
+\`jungle\` Player1 · 1200
+\`mid\` Player2 · 1200
+\`adc\` Player3 · 1200
+\`support\` Player4 · 1200",
+        },
+        {
+          "inline": true,
+          "name": "Red · 6000",
+          "value": "\`top\` Player5 · 1200
+\`jungle\` Player6 · 1200
+\`mid\` Player7 · 1200
+\`adc\` Player8 · 1200
+\`support\` Player9 · 1200",
+        },
+        {
+          "name": "Lobby",
+          "value": "\`customs-night\`",
+        },
+      ],
+      "footer": {
+        "text": "Customs Night · more on the tonight page",
+      },
+      "timestamp": "<timestamp>",
+      "title": "Teams are set",
+    },
+  ],
+}
+`;

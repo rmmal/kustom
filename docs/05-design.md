@@ -338,8 +338,9 @@ url          https://<tonight page>
 description  <splits.explanation, verbatim>
 field 1      name "Blue · 7695"   inline  value: five lines, lane order
 field 2      name "Red · 7595"    inline  value: five lines, lane order
-field 3      name "Sitting out"   block   value: names + one sentence   [only if > 10 around]
-field 4      name "Lobby"         block   value: name and password      [only if known]
+field 3      name "Sitting out"   block   value: one sentence           [only if somebody sits]
+field 4      name "Seats"         block   value: one line per move      [only if somebody moves]
+field 5      name "Lobby"         block   value: name and password      [only if known]
 footer       Customs Night · more on the tonight page
 timestamp    now
 ```
@@ -392,8 +393,8 @@ field 2 value  `top` Omar · 1469
                `adc` Lena · 2088
                `support` Yuki · 1134
 
-field 4 name   Lobby
-field 4 value  `customs-night` · password `4471`
+field 5 name   Lobby
+field 5 value  `customs-night` · password `4471`
 
 footer         Customs Night · more on the tonight page
 ```
@@ -401,13 +402,25 @@ footer         Customs Night · more on the tonight page
 Budget: a side field is ~110 characters against a 1024 limit, so a name would have to be ~180 characters to
 threaten it. Truncate a display name at 32 characters with `…` at the source anyway; do not truncate the field.
 
-Sit-out field, when it exists — copy (product, 2026-09-08 — final, same sentence as the web strip):
+Sit-out fields, when they exist — copy (product, **M2.15**, 2026-09-08; shipped verbatim by M3.1). Two
+independent fields: `Sitting out` answers "who is not playing", `Seats` answers "who has to move", and those
+are not the same question. Each appears only when it has something to say.
 
 ```
 field 3 name   Sitting out
-field 3 value  Sara and Deniz
-               Each game goes to whoever has played least tonight, so they are first in line for the next one.
+field 3 value  Sitting out: Omar — most games tonight.
+               (…and when everyone around has played the same number tonight, the clause is
+                `— longest since they last sat out.` Always "they".)
+
+field 4 name   Seats
+field 4 value  Swap: Omar out, Nadia in.
+               Yuki is playing — take the open slot.      [a mover with nobody to swap with]
 ```
+
+This supersedes the earlier single-sentence version of field 3 (`Sara and Deniz` / "Each game goes to whoever
+has played least tonight…"), which stays as it is on the **web** sit-out strip above: the strip is a paragraph
+a friend reads on a page, the embed field is two short lines in a channel. M2.15 is the source of the embed
+copy and `lib/discord/embeds.ts` is the only place it is composed.
 
 **Sums are not the gap.** `7695` and `7595` are the sums of five display ratings. Their difference equals the
 `Gap 100` in the explanation only because nobody here is off-role; the gap is computed on effective

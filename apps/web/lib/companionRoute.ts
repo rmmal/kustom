@@ -25,6 +25,12 @@ export interface CompanionContext {
   client: ServiceClient;
   /** Who the token says this is. Never who the payload claims to be. */
   identity: CompanionIdentity;
+  /**
+   * The request itself, for the handlers that need its origin (M3.1: the tonight-page link in
+   * a Discord embed, when `NEXT_PUBLIC_SITE_URL` is unset). Nothing about identity is ever
+   * read from it — the token decides that, above.
+   */
+  request: Request;
 }
 
 export type CompanionHandler<T> = (input: T, context: CompanionContext) => Promise<NextResponse>;
@@ -83,7 +89,7 @@ export function withCompanionIdentity(
         return jsonError(auth.status, auth.error);
       }
 
-      return await handle(request, { client, identity: auth.identity });
+      return await handle(request, { client, identity: auth.identity, request });
     } catch (error) {
       // A thrown error here is our bug or the database being down. Never leak the message.
       console.error('companion route failed', error);
