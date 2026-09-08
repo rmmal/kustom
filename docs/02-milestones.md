@@ -837,6 +837,16 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > capped at 50 files; over that the oldest is deleted with a log line rather than filling a friend's disk. A
     > file days old is still posted: `lcu_game_id` dedupe and the M5.2 rating rebuild make late arrival safe.
     >
+    > ### Saying who you are, on every start
+    >
+    > On every start, and immediately after the first-run prompt, `GET /api/companion/me` once before anything
+    > else. On 200, print one line: `signed in as <displayName>`. On 401, print one plain sentence — the token
+    > was refused, mint a new one on the admin page — and no stack trace; the process keeps running (the token
+    > may be revoked mid-season and the queue still has work). On a network error or a 5xx, say the API is not
+    > answering yet and carry on: this call never blocks the watcher or the queue. The route exists for exactly
+    > this and nothing calls it today (`main.ts` only pings `/api/health`, which uses no token and so says
+    > nothing about it), which is how a mistyped token currently becomes a silent night.
+    >
     > ### The one time the GET is used
     >
     > `onConnected` carries the phase read at connect. If it is `EndOfGame` or `WaitingForStats` and the process
@@ -901,7 +911,15 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >     one log line, and no second GET across 60 s of injected time.
     > 11. A block with `gameType: "MATCHED_GAME"` produces no file and no POST.
     > 12. 51 queued files: the oldest is deleted with a log line and the remaining 50 are posted.
-    > 13. `pnpm -r typecheck` and `pnpm -r test` pass.
+    > 13. A right token prints `signed in as <displayName>` exactly once on start; a wrong one prints one plain
+    >     sentence naming the admin page, no stack trace, and the process is still running a minute later with
+    >     the queue replayed.
+    > 14. `pnpm -r typecheck` and `pnpm -r test` pass.
+    >
+    > **Sequencing (lead, 2026-09-08).** **M2.8 must land before the test night.** Until the game route accepts
+    > a poster who is in the lobby rather than only on the scoreboard, a spectating friend's companion gets a
+    > permanent 403 for every block it holds — and this task deletes a queue file on a permanent 403, so their
+    > queue drains silently. M2.8 is being implemented alongside M2.5 if it stays small.
     >
     > ### Out of scope
     >
@@ -1273,6 +1291,13 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > before this task starts. Either way M2.5 adds no reuse logic of its own: `finished` is terminal for a row,
     > and resolving a party id to its live row is M2.14's change to `selectLobby` and `findLobbyId`.
 
+    > **Addendum (lead, 2026-09-08).** The 2-hour abandon sweep keeps running opportunistically at the start of
+    > every companion post, as the brief describes, **and** M2.5 also exposes it as `GET /api/cron/sweep`,
+    > guarded by a bearer `CRON_SECRET` (added to `.env.example` and `readServerEnv`). Same statement, same
+    > rules, no second copy of the logic; the route exists so a scheduler can close out a night on which nobody
+    > posted again. It writes nothing else and answers `{ ok: true, abandoned: <n> }`. A missing or wrong
+    > secret is a 401. Recorded in `04-decisions.md`.
+
 - [ ] **M2.6** Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
 
     > **Brief (product, 2026-09-08)**
@@ -1282,10 +1307,19 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > costs them a second evening they will not run it, and a night with nobody running it is a night the bot
     > does not exist.
     >
-    > **What ships.** One file, `CustomsNight.exe`, and the README below. Where the file is hosted is the
-    > engineer's call (a release asset on the repo is the obvious one); record it in `04-decisions.md` and put
-    > that link into step 1 of the README as the group chat will see it. No installer, no sidecar DLLs, and no
-    > `.zip` a friend has to unpack — an unpack step is a step.
+    > **What ships, and where it lives.** One file, `CustomsNight.exe`, and the README below. It is uploaded to
+    > a **public Supabase Storage bucket named `releases`** on the hosted project (lead, 2026-09-08): one object
+    > per version plus a `latest` copy, so the link in the group chat is
+    > `https://<project>.supabase.co/storage/v1/object/public/releases/latest/CustomsNight.exe` and the
+    > versioned one is `.../releases/v<version>/CustomsNight.exe`. `/admin` links to it (the tonight page later),
+    > so a friend needs no GitHub login and the repo stays private. The upload is part of the build step, not a
+    > manual drag: `pnpm --filter companion build:exe` produces the file and the command that publishes it is
+    > written down beside it. No installer, no sidecar DLLs, and no `.zip` a friend has to unpack — an unpack
+    > step is a step.
+    >
+    > **Which origin gets baked in.** The deployed Vercel URL, once it exists. If it is not ready when this task
+    > starts, build with a placeholder origin, finish everything else, and rebuild the exe against the real URL
+    > before the file is uploaded to `releases` — no friend ever downloads the placeholder build.
     >
     > **How it is built.** The companion runs on `tsx` today, with `.js` relative imports and two workspace
     > dependencies, so a bundle comes first: one esbuild pass (`--bundle --platform=node --target=node22`) over
@@ -1572,10 +1606,9 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 > **Precondition (product, 2026-09-08).** The API has to be deployed on Vercel before the test night: ten
 > friends' companions cannot reach a laptop on someone's desk, so the deployment is not an M3 nicety but the
 > thing that makes this acceptance runnable at all, and it is the origin M2.6 bakes into the exe. The Vercel
-> project needs every variable in `.env.example` plus the two M2.5 introduces — `CUSTOMS_NIGHT_TZ` (an IANA
-> name, `Africa/Cairo`) and `CRON_SECRET`, which as the M2.5 brief stands has no reader in the repo (the
-> 2-hour sweep runs on companion posts, and there is no cron route); settle that with M2.5 rather than
-> setting a secret nothing reads.
+> project needs every variable in `.env.example` plus the two M2.5 introduces: `CUSTOMS_NIGHT_TZ` (an IANA
+> name, `Africa/Cairo`) and `CRON_SECRET`, the bearer of `GET /api/cron/sweep` — M2.5 sweeps opportunistically
+> on companion posts **and** exposes that route for a scheduler, so the secret has a reader.
 
 > **Note (product, 2026-09-08).** Capture `lobby-10.json` on the first M2 test night. Every lobby fact in
 > `03-lcu-reference.md` comes from a one-human lobby with bots, so nothing has confirmed that a full lobby

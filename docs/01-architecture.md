@@ -176,7 +176,7 @@ Long-running process. State machine:
 disconnected --(lockfile found)--> connected --(ws open)--> watching
 watching: on lobby event -> POST /api/companion/lobby
           on gameflow InProgress -> mark lobby in_game
-          on gameflow EndOfGame -> GET eog-stats-block -> POST /api/companion/game
+          on eog WS event -> POST /api/companion/game (GET eog-stats-block only as the connect-time fallback)
           every 6h -> POST /api/companion/rank for self; on lobby roster, for each unknown puuid
           every 5s -> GET /api/companion/commands -> execute (create lobby, invite, switch side) -> ack
 ```
@@ -185,7 +185,9 @@ watching: on lobby event -> POST /api/companion/lobby
   minted on the web admin page.
 - Reconnects forever with backoff. The client restarts between patches; the companion must not.
 - Every LCU response is parsed with zod. Unknown shapes are logged with the endpoint and dropped.
-- Logs to `%APPDATA%/customs-night/logs/` with daily rotation. Nothing else is written to disk.
+- Logs to `%APPDATA%/customs-night/logs/` with daily rotation, and queues captured end-of-game payloads in
+  `%APPDATA%/customs-night/queue/` until the API has them (M2.3: written before the first POST, replayed on
+  start, deleted on a 2xx or a permanent 4xx). Nothing else is written to disk.
 
 ## Web (`apps/web`)
 
