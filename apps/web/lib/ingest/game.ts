@@ -1,0 +1,168 @@
+import type { CompanionGameEogPayload, GameInsert, GamePlayerInsert, Json } from '@customs/db';
+import type { ServiceClient } from '../supabase';
+import { ensurePlayers } from './players';
+
+/**
+ * Game ingest from an end-of-game block.
+ *
+ * Deliberately not here (M2.5): `rateGame`, the `ratings` update, and moving the lobby to
+ * `finished`. This writes `games` and `game_players` and keeps the whole block in `games.raw`,
+ * which is what every later column can be recomputed from.
+ *
+ * Idempotency is on `lcu_game_id`: two companions in the same game both post, and the second
+ * post changes no rows.
+ */
+
+/** The only `gameType` we ingest. Anything else is not our night (`M2.5`). */
+export const CUSTOM_GAME_TYPE = 'CUSTOM_GAME';
+
+export function isCustomGame(payload: CompanionGameEogPayload): boolean {
+  return payload.gameType === CUSTOM_GAME_TYPE;
+}
+
+/**
+ * A companion may only report a game it played in (`docs/01-architecture.md` "Security").
+ * The token says who the caller is; this asks whether that player is on the scoreboard.
+ */
+export function isParticipant(payload: CompanionGameEogPayload, puuid: string): boolean {
+  return payload.participants.some((participant) => participant.puuid === puuid);
+}
+
+/** The first PUUID that appears twice on the scoreboard, or null. */
+export function findDuplicateParticipant(payload: CompanionGameEogPayload): string | null {
+  const seen = new Set<string>();
+  for (const participant of payload.participants) {
+    if (seen.has(participant.puuid)) return participant.puuid;
+    seen.add(participant.puuid);
+  }
+  return null;
+}
+
+export interface GameIngestResult {
+  gameId: string;
+  lobbyId: string | null;
+  /** False when this `lcu_game_id` was already stored — the idempotent case. */
+  created: boolean;
+  /** Rows in `game_players` for this game after the write. */
+  participants: number;
+}
+
+export async function ingestEogGame(
+  client: ServiceClient,
+  payload: CompanionGameEogPayload,
+): Promise<GameIngestResult> {
+  const lobbyId = await findLobbyId(client, payload.partyId ?? null);
+
+  const insert: GameInsert = {
+    lcu_game_id: payload.gameId,
+    lobby_id: lobbyId,
+    started_at: payload.startedAt,
+    duration_s: payload.durationS,
+    winning_side: payload.winningSide,
+    source: payload.source,
+    raw: asJson(payload.raw),
+    // season_id is left out: the column defaults to public.active_season_id().
+  };
+
+  const { data: inserted, error: insertError } = await client
+    .from('games')
+    .upsert(insert, { onConflict: 'lcu_game_id', ignoreDuplicates: true })
+    .select('id, lobby_id')
+    .maybeSingle();
+  if (insertError) throw new Error(`ingestGame: insert failed: ${insertError.message}`);
+
+  const game = inserted ?? (await selectGame(client, payload.gameId));
+  const created = inserted !== null;
+
+  await upsertGamePlayers(client, game.id, payload);
+
+  return {
+    gameId: game.id,
+    lobbyId: game.lobby_id,
+    created,
+    participants: await countGamePlayers(client, game.id),
+  };
+}
+
+async function selectGame(
+  client: ServiceClient,
+  lcuGameId: number,
+): Promise<{ id: string; lobby_id: string | null }> {
+  const { data, error } = await client
+    .from('games')
+    .select('id, lobby_id')
+    .eq('lcu_game_id', lcuGameId)
+    .maybeSingle();
+  if (error) throw new Error(`ingestGame: select failed: ${error.message}`);
+  if (!data) throw new Error(`ingestGame: game ${lcuGameId} vanished after a conflicting insert`);
+  return data;
+}
+
+async function findLobbyId(client: ServiceClient, partyId: string | null): Promise<string | null> {
+  if (partyId === null) return null;
+
+  const { data, error } = await client.from('lobbies').select('id').eq('lcu_party_id', partyId).maybeSingle();
+  if (error) throw new Error(`ingestGame: lobby lookup failed: ${error.message}`);
+  // An unknown party id is not an error: the companion may have missed the lobby events.
+  return data?.id ?? null;
+}
+
+/**
+ * `on conflict do nothing` on `(game_id, player_id)`, so a repeat post writes nothing and a
+ * post that follows a half-finished one fills in the rows that are missing.
+ *
+ * The `mu_*`/`sigma_*` columns are left null on purpose: rating happens a step later (M2.5)
+ * and a rebuild (M5.2) rewrites them.
+ */
+async function upsertGamePlayers(
+  client: ServiceClient,
+  gameId: string,
+  payload: CompanionGameEogPayload,
+): Promise<void> {
+  const playerIds = await ensurePlayers(
+    client,
+    payload.participants.map((participant) => ({ puuid: participant.puuid })),
+  );
+
+  const rows: GamePlayerInsert[] = [];
+  for (const participant of payload.participants) {
+    const playerId = playerIds.get(participant.puuid);
+    if (playerId === undefined) continue;
+    rows.push({
+      game_id: gameId,
+      player_id: playerId,
+      side: participant.side,
+      role: participant.role,
+      champion_id: participant.championId,
+      kills: participant.kills,
+      deaths: participant.deaths,
+      assists: participant.assists,
+      gold: participant.gold,
+      damage_to_champs: participant.damageToChamps,
+      cs: participant.cs,
+    });
+  }
+  if (rows.length === 0) return;
+
+  const { error } = await client
+    .from('game_players')
+    .upsert(rows, { onConflict: 'game_id,player_id', ignoreDuplicates: true });
+  if (error) throw new Error(`ingestGame: game_players insert failed: ${error.message}`);
+}
+
+async function countGamePlayers(client: ServiceClient, gameId: string): Promise<number> {
+  const { count, error } = await client
+    .from('game_players')
+    .select('player_id', { count: 'exact', head: true })
+    .eq('game_id', gameId);
+  if (error) throw new Error(`ingestGame: game_players count failed: ${error.message}`);
+  return count ?? 0;
+}
+
+/**
+ * The raw block is already known to be a JSON object (zod parsed it out of the request body),
+ * so its values are JSON by construction; `Record<string, unknown>` just cannot say so.
+ */
+function asJson(raw: Record<string, unknown>): Json {
+  return raw as Json;
+}

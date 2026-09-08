@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { config, displayRating, ordinal, predictWin, type Rating, rateGame, seedFromRank } from '../index.js';
+import { config, displayRating, ordinal, predictWin, type Rating, rateGame, seedFromRank } from '../index';
 
 const RANKED_SIGMA = 8.33;
 

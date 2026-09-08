@@ -37,6 +37,10 @@ pnpm -r test                 # vitest, run mode
 pnpm lint                    # biome check .
 pnpm format                  # biome format --write .
 pnpm --filter web dev        # http://localhost:3000
+pnpm --filter web build      # next build (also typechecks the app)
+pnpm --filter web mint-token <puuid> [label]
+                             # mints a companion token for a PUUID and prints it once.
+                             # Reads apps/web/.env.local. Replaced by /admin in M1.6.
 pnpm --filter companion dev  # needs the League client running on this machine (M2.1)
 pnpm db:start                # supabase start: local stack, needs Docker (see packages/db/README.md)
 pnpm db:stop                 # supabase stop

@@ -6,6 +6,6 @@
  * here. `rating/` landed in M1.3, `balance/` lands in M1.4.
  */
 
-export { type Config, config, type RankDivision, type RankTier } from './config.js';
-export { displayRating, ordinal, predictWin, rateGame, seedFromRank } from './rating/index.js';
-export { type LobbyStatus, type Rating, ROLES, type Role, type Side } from './types.js';
+export { type Config, config, type RankDivision, type RankTier } from './config';
+export { displayRating, ordinal, predictWin, rateGame, seedFromRank } from './rating/index';
+export { type LobbyStatus, type Rating, ROLES, type Role, type Side } from './types';

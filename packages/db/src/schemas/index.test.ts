@@ -8,7 +8,7 @@ import {
   puuidSchema,
   roleSchema,
   sideSchema,
-} from './index.js';
+} from './index';
 
 const PUUID_A = 'f1a2b3c4-d5e6-7890-abcd-ef1234567890';
 const PUUID_B = '0f0e0d0c-0b0a-0908-0706-050403020100';

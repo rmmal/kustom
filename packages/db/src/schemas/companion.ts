@@ -6,7 +6,7 @@ import {
   puuidSchema,
   roleSchema,
   sideSchema,
-} from './common.js';
+} from './common';
 
 /**
  * The three bodies the companion POSTs to `/api/companion/*` (M1.5, filled by M2.2 to

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import * as core from './index.js';
-import { ROLES, type Side } from './index.js';
+import * as core from './index';
+import { ROLES, type Side } from './index';
 
 describe('core skeleton', () => {
   it('exposes the five roles in lane order', () => {

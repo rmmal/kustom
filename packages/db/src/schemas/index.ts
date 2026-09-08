@@ -3,5 +3,5 @@
  * bot all import the schema from here so there is exactly one definition per payload.
  */
 
-export * from './common.js';
-export * from './companion.js';
+export * from './common';
+export * from './companion';
