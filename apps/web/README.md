@@ -30,6 +30,7 @@ body. The token decides who the caller is; nothing in a payload does.
 ```
 GET  /api/companion/me      who this token is: { ok, puuid, playerId, displayName }. Writes nothing.
 POST /api/companion/lobby   the whole member list, every time it changes. Idempotent on partyId.
+                            answers ranksNeeded[] (M2.4) and recheckInMs (null until M2.5).
 POST /api/companion/game    phase in_progress | eog. Idempotent on gameId.
 POST /api/companion/rank    one queue's rank reading for one puuid.
 ```

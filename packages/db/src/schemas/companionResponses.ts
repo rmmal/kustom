@@ -51,6 +51,34 @@ export const companionLobbyResponseSchema = z.object({
    * this post changed no `lobby_members` row and `memberCount` is what is stored.
    */
   rosterFrozen: z.boolean(),
+  /**
+   * **Knock again in this many milliseconds** (M2.5). Vercel gives the API no timer, so
+   * "the roster has not changed for ten seconds" is measured on the posts we already get:
+   * when the lobby is still `open` and holds ten or more non-spectators, the server answers
+   * with the milliseconds left on the stability clock (at least 1000, the full window when
+   * the roster just changed) and the companion re-posts the *identical* payload after that
+   * delay unless a real lobby event has produced a newer one first (M2.2).
+   *
+   * `null` means do nothing: fewer than ten, already `balanced`, or any other state.
+   *
+   * M2.10 ships the field; M2.5 is what puts a number in it. Until then it is always `null`,
+   * so a companion built against this contract needs no change when the rule lands.
+   */
+  recheckInMs: z.number().int().nonnegative().nullable(),
+  /**
+   * **PUUIDs the server would like a rank for** (M2.4), drawn from the members just posted:
+   * those whose `players` row has no `rank_updated_at`, or one older than seven days, or no
+   * row at all yet. Spectators are included — they play the next round, and a name is worth
+   * having either way.
+   *
+   * This is the whole of "once, then weekly": the staleness rule is about our data, so it
+   * lives where our data is, and a puuid drops off the list the moment its rank POST lands.
+   * The companion holds no schedule, only an in-process de-duplicator so a burst of lobby
+   * posts cannot ask the client for the same puuid twice.
+   *
+   * Order is the posted member order. An empty array means everyone is fresh.
+   */
+  ranksNeeded: z.array(z.string().min(1)),
 });
 
 /**

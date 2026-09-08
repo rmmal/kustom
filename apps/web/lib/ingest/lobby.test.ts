@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLobbyMember, isRosterFrozen } from './lobby';
+import { isLobbyMember, isRosterFrozen, RANK_STALE_MS } from './lobby';
 import { isDisplayNameAutomatic } from './players';
 
 /**
@@ -67,5 +67,16 @@ describe('isDisplayNameAutomatic', () => {
   it('is false once someone has overridden it', () => {
     expect(isDisplayNameAutomatic({ game_name: 'Alice', display_name: 'Bob' })).toBe(false);
     expect(isDisplayNameAutomatic({ game_name: null, display_name: 'Bob' })).toBe(false);
+  });
+});
+
+describe('RANK_STALE_MS', () => {
+  it('is exactly seven days, which is the whole of "once, then weekly" (M2.4)', () => {
+    // The companion holds no staleness rule: it asks about the puuids `ranksNeeded` names,
+    // and this number is the only schedule there is. The database half — a fresh rank is
+    // absent from the list, an 8-day-old one is present — is in
+    // `companion.integration.test.ts`.
+    expect(RANK_STALE_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(RANK_STALE_MS).toBe(604_800_000);
   });
 });

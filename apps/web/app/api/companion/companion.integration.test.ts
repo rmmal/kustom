@@ -56,6 +56,7 @@ if (stack === null) {
   const frozenPartyId = `it-party-${runId}-frozen`;
   const unknownPartyId = `it-party-${runId}-unknown`;
   const botPartyId = `it-party-${runId}-bots`;
+  const ranksPartyId = `it-party-${runId}-ranks`;
   const allPartyIds = [
     partyId,
     otherPartyId,
@@ -64,6 +65,7 @@ if (stack === null) {
     frozenPartyId,
     unknownPartyId,
     botPartyId,
+    ranksPartyId,
   ];
   const gameId = testGameId();
   const rejectedGameId = gameId + 1;
@@ -464,6 +466,84 @@ if (stack === null) {
     });
   });
 
+  describe('POST /api/companion/lobby: ranksNeeded (M2.4)', () => {
+    // "Once, then weekly" is a rule about our data, so the server owns it and the companion
+    // just asks about the puuids it is handed (decision row, 2026-09-08).
+    const freshPuuid = `it-${runId}-rank-fresh`;
+    const stalePuuid = `it-${runId}-rank-stale`;
+    const newPuuid = `it-${runId}-rank-new`;
+    const day = 24 * 60 * 60 * 1000;
+
+    function ranksBody(members: readonly string[]): unknown {
+      return {
+        partyId: ranksPartyId,
+        members: members.map((puuid, index) => ({
+          puuid,
+          summonerId: 5000 + index,
+          side: 100,
+          isSpectator: false,
+        })),
+      };
+    }
+
+    beforeAll(async () => {
+      allPuuids.push(freshPuuid, stalePuuid, newPuuid);
+      await ensurePlayers(db, [{ puuid: freshPuuid }, { puuid: stalePuuid }]);
+      // Six days old is inside the window; eight days is outside it. The boundary is the
+      // whole schedule, so it is asserted from both sides.
+      await db
+        .from('players')
+        .update({ rank_updated_at: new Date(Date.now() - 6 * day).toISOString() })
+        .eq('puuid', freshPuuid);
+      await db
+        .from('players')
+        .update({ rank_updated_at: new Date(Date.now() - 8 * day).toISOString() })
+        .eq('puuid', stalePuuid);
+    });
+
+    it('names the members whose rank is missing or over a week old, in posted order', async () => {
+      const caller = puuids[0] ?? '';
+      const response = await postLobby(
+        post(ranksBody([caller, freshPuuid, stalePuuid, newPuuid]), ownerToken),
+      );
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      // The caller has never had a rank reported either, so they are on the list too. The
+      // six-day-old one is not, and a puuid with no `players` row at all is.
+      expect(json.ranksNeeded).toEqual([caller, stalePuuid, newPuuid]);
+      // M2.5 fills this in; until then there is never anything to knock about.
+      expect(json.recheckInMs).toBeNull();
+    });
+
+    it('drops a puuid off the list the moment its rank POST lands', async () => {
+      await postRank(post({ puuid: stalePuuid, tier: 'SILVER', division: 'IV', lp: 12 }, ownerToken));
+
+      const response = await postLobby(
+        post(ranksBody([puuids[0] ?? '', freshPuuid, stalePuuid, newPuuid]), ownerToken),
+      );
+
+      const json = await response.json();
+      expect(json.ranksNeeded).not.toContain(stalePuuid);
+      expect(json.ranksNeeded).toContain(newPuuid);
+    });
+
+    it('still answers it for a frozen roster, because those people still need a rank', async () => {
+      // M2.9 freezes `lobby_members`, not the question of whose rank we are missing.
+      const body = ranksBody([puuids[0] ?? '', newPuuid]);
+      const lobbyId = (await postLobby(post(body, ownerToken)).then((r) => r.json())).lobbyId as string;
+      await db.from('lobbies').update({ status: 'in_game' }).eq('id', lobbyId);
+
+      const response = await postLobby(post(body, ownerToken));
+      const json = await response.json();
+
+      expect(json).toMatchObject({ rosterFrozen: true });
+      expect(json.ranksNeeded).toContain(newPuuid);
+
+      await db.from('lobbies').update({ status: 'open' }).eq('id', lobbyId);
+    });
+  });
+
   describe('POST /api/companion/game', () => {
     it('stores the game once, with ten players, however many companions post it', async () => {
       const body = eogBody({ gameId, puuids, partyId });
@@ -705,6 +785,53 @@ if (stack === null) {
         .eq('puuid', unrankedPuuid)
         .single();
       expect(data).toEqual({ rank_tier: null, rank_division: null, rank_lp: null });
+    });
+
+    it('takes the name the sweep looked up and applies the M1.7 display-name rule', async () => {
+      // Lobby members carry no Riot ID on 16.17, so the rank sweep is where a first-time
+      // player's name arrives (M2.4). One POST, both facts.
+      const namedPuuid = `it-${runId}-rank-named`;
+      allPuuids.push(namedPuuid);
+
+      const response = await postRank(
+        post(
+          { puuid: namedPuuid, tier: 'SILVER', division: 'II', lp: 1, gameName: 'XETA', tagLine: 'EUNE' },
+          ownerToken,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const { data } = await db
+        .from('players')
+        .select('game_name, tag_line, display_name, rank_tier, rank_updated_at')
+        .eq('puuid', namedPuuid)
+        .single();
+      expect(data).toMatchObject({
+        game_name: 'XETA',
+        tag_line: 'EUNE',
+        display_name: 'XETA',
+        rank_tier: 'SILVER',
+      });
+      expect(data?.rank_updated_at).not.toBeNull();
+    });
+
+    it("renames the Riot ID without touching an admin's display name", async () => {
+      const overriddenPuuid = `it-${runId}-rank-override`;
+      allPuuids.push(overriddenPuuid);
+      await ensurePlayers(db, [{ puuid: overriddenPuuid, gameName: 'OldName' }]);
+      await db.from('players').update({ display_name: 'Boss' }).eq('puuid', overriddenPuuid);
+
+      await postRank(
+        post({ puuid: overriddenPuuid, tier: 'GOLD', division: 'IV', gameName: 'NewName' }, ownerToken),
+      );
+
+      const { data } = await db
+        .from('players')
+        .select('game_name, display_name')
+        .eq('puuid', overriddenPuuid)
+        .single();
+      // The Riot ID moved; the name the group chose did not (M1.7).
+      expect(data).toMatchObject({ game_name: 'NewName', display_name: 'Boss' });
     });
 
     it('leaves the rank alone for a queue we do not seed from', async () => {

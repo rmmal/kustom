@@ -109,6 +109,11 @@ function dropNonPlayerMembers(value: unknown): unknown {
  *
  * `partyId` is `lobby.partyId`, which is stable across invites, joins and someone moving to
  * the spectator slot (16.17, three captures), so it is a sound dedupe key for `lcu_party_id`.
+ *
+ * The answer (`companionLobbyResponseSchema`) carries `ranksNeeded` — whose rank to fetch next
+ * (M2.4) — and `recheckInMs`, the knock that measures the ten-second stability window on the
+ * posts themselves (M2.2/M2.5). A companion that ignores either one still works today and
+ * stops working the night M2.5 lands, so read both.
  */
 export const companionLobbyPayloadSchema = z.preprocess(
   dropNonPlayerMembers,
@@ -324,6 +329,12 @@ const NON_DIVISIONS = new Set(['', 'NA', 'NONE']);
  *   tier forces a null division and a null `lp` (M2.10, point 12).
  * - **`losses` is not in this payload and must not be added.** It reads `0` for everyone but
  *   yourself, so it is not truth. Wins and losses come from our own `games` rows.
+ * - `gameName` / `tagLine` are optional and ride along from
+ *   `GET /lol-summoner/v2/summoners/puuid/{puuid}` (M2.4): the rank sweep visits exactly the
+ *   PUUIDs whose name we are missing, because lobby members carry no Riot ID at all, so one
+ *   POST carries both. Absent means "I did not look it up", never "they have no name": the
+ *   server only ever writes a name it was given, and never overwrites an admin's
+ *   `display_name` override (M1.7).
  */
 export const companionRankPayloadSchema = z
   .object({
@@ -332,6 +343,9 @@ export const companionRankPayloadSchema = z
     division: optionalText,
     lp: z.number().int().nonnegative().nullish().default(null),
     queue: z.string().min(1).default('RANKED_SOLO_5x5'),
+    /** From the summoner lookup the sweep did for this puuid, or null when it did none. */
+    gameName: optionalText,
+    tagLine: optionalText,
   })
   .transform((payload) => {
     const tier =
@@ -354,6 +368,10 @@ export interface CompanionRankPayloadInput {
   lp?: number | null;
   /** The `queueMap` key. Only `RANKED_SOLO_5x5` seeds a rating. */
   queue?: string;
+  /** `summoners/puuid/{puuid}.gameName`, when the sweep looked it up (M2.4). */
+  gameName?: string | null;
+  /** `summoners/puuid/{puuid}.tagLine`, likewise. */
+  tagLine?: string | null;
 }
 
 export type CompanionLobbyMember = z.infer<typeof companionLobbyMemberSchema>;

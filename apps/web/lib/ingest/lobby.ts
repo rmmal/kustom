@@ -26,7 +26,17 @@ export interface LobbyIngestResult {
   memberCount: number;
   /** True when the roster was frozen and this post changed no `lobby_members` row (M2.9). */
   rosterFrozen: boolean;
+  /** PUUIDs among the posted members whose rank is missing or over a week old (M2.4). */
+  ranksNeeded: string[];
 }
+
+/**
+ * "Once, then weekly" (M2.4), as a single number on the server. A player is worth asking the
+ * client about when we have never had a rank for them or when the one we have is older than
+ * this. The companion holds no staleness rule of its own: it asks about exactly the PUUIDs
+ * this returns, and a puuid drops off the list the moment its rank POST lands.
+ */
+export const RANK_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Statuses in which `lobby_members` is history rather than live state (M2.9). From `in_game`
@@ -85,6 +95,7 @@ export async function ingestLobby(
   client: ServiceClient,
   payload: CompanionLobbyPayload,
   reportedByPlayerId: string,
+  now: Date = new Date(),
 ): Promise<LobbyIngestResult> {
   const lobby = await upsertLobby(client, payload, reportedByPlayerId);
 
@@ -97,6 +108,9 @@ export async function ingestLobby(
       created: lobby.created,
       memberCount: await countMembers(client, lobby.id),
       rosterFrozen: true,
+      // Still answered while frozen: whoever is on the posted list and has no fresh rank is
+      // worth asking about, and the game that froze the roster does not change that.
+      ranksNeeded: await selectRanksNeeded(client, payload, now),
     };
   }
 
@@ -108,7 +122,43 @@ export async function ingestLobby(
     created: lobby.created,
     memberCount,
     rosterFrozen: false,
+    ranksNeeded: await selectRanksNeeded(client, payload, now),
   };
+}
+
+/**
+ * The puuids among the members just posted whose `players` row has no `rank_updated_at`, one
+ * older than `RANK_STALE_MS`, or no row at all (M2.4). One select over at most twenty rows.
+ *
+ * Spectators are included: they play the next round, and the same POST is how a name arrives
+ * for someone the lobby response could not name (M2.10, point 2).
+ *
+ * The order is the posted member order, so two companions in the same lobby get the same
+ * list in the same order and the companion's own de-duplicator sees a stable sequence.
+ */
+async function selectRanksNeeded(
+  client: ServiceClient,
+  payload: CompanionLobbyPayload,
+  now: Date,
+): Promise<string[]> {
+  const puuids = [...new Set(payload.members.map((member) => member.puuid))];
+  if (puuids.length === 0) return [];
+
+  const { data, error } = await client.from('players').select('puuid, rank_updated_at').in('puuid', puuids);
+  if (error) throw new Error(`ingestLobby: rank staleness select failed: ${error.message}`);
+
+  const freshAfter = now.getTime() - RANK_STALE_MS;
+  const fresh = new Set<string>();
+  for (const row of data ?? []) {
+    const updatedAt = row.rank_updated_at === null ? null : Date.parse(row.rank_updated_at);
+    // An unparseable timestamp is treated as stale rather than throwing: asking once more is
+    // cheap, and a rank we cannot date is a rank we cannot trust to be recent.
+    if (updatedAt !== null && !Number.isNaN(updatedAt) && updatedAt >= freshAfter) fresh.add(row.puuid);
+  }
+
+  // A puuid with no row at all is not in `fresh`, so it is asked about — that is the
+  // first-night case, and the rank POST creates the row.
+  return puuids.filter((puuid) => !fresh.has(puuid));
 }
 
 interface LobbyRowResult {

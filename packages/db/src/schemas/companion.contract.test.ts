@@ -126,6 +126,11 @@ interface LcuLobby {
  * 7. **`lobbyPassword` is not in this response.** `gameConfig` has no password field and
  *    `gameflow-session.gameData.password` is empty, so the mapper sends the password only
  *    when it created the lobby itself (M4) and `null` otherwise.
+ * 8. **The answer is not just an acknowledgement.** `ranksNeeded` lists the puuids on this
+ *    roster whose rank is missing or over a week old — hand it to the rank sweep (M2.4) and
+ *    post a rank *only* for those and for the companion's own puuid. `recheckInMs`, when it
+ *    is a number, means re-post this identical payload after that delay unless a real lobby
+ *    event supersedes it first (M2.2/M2.5); it is `null` until M2.5 lands.
  */
 function mapLobby(
   lobby: LcuLobby,
@@ -655,8 +660,16 @@ interface LcuRankedStats {
   >;
 }
 
+/** What `GET /lol-summoner/v2/summoners/puuid/{puuid}` gives us, and nothing else from it. */
+interface LcuSummoner {
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+}
+
 /**
- * ranked-stats-by-puuid--other.json -> the body of `POST /api/companion/rank`.
+ * ranked-stats-by-puuid--other.json (+ summoner-by-puuid--other.json) -> the body of
+ * `POST /api/companion/rank`.
  *
  * 1. **The response carries no puuid**, so the mapper supplies the one it asked about — for
  *    `current-ranked-stats`, the local player's.
@@ -664,8 +677,19 @@ interface LcuRankedStats {
  *    and `"NA"` to null, and a null tier forces a null division and a null lp.
  * 3. **`losses` is never sent.** It reads `0` for every player but yourself, so it is not
  *    truth. `wins` is not sent either: our own `games` rows are the record.
+ * 4. **The name rides along** (M2.4): the sweep already visits exactly the PUUIDs whose Riot
+ *    ID we are missing — a lobby member carries none — so the same POST carries `gameName`
+ *    and `tagLine` from `summoners/puuid/{puuid}`. Omit them when no lookup was done; the
+ *    server writes only names it was given and never touches an admin's `display_name`.
+ * 5. **Only `RANKED_SOLO_5x5`.** Flex is not our ladder and the TFT queues are noise. The
+ *    server ignores any other queue's tier, and the name still lands.
  */
-function mapRank(stats: LcuRankedStats, puuid: string, queue = 'RANKED_SOLO_5x5'): CompanionRankPayloadInput {
+function mapRank(
+  stats: LcuRankedStats,
+  puuid: string,
+  queue = 'RANKED_SOLO_5x5',
+  summoner: LcuSummoner | null = null,
+): CompanionRankPayloadInput {
   const entry = stats.queueMap[queue];
   return {
     puuid,
@@ -673,6 +697,8 @@ function mapRank(stats: LcuRankedStats, puuid: string, queue = 'RANKED_SOLO_5x5'
     division: entry?.division ?? null,
     lp: entry?.leaguePoints ?? null,
     queue,
+    gameName: summoner?.gameName ?? null,
+    tagLine: summoner?.tagLine ?? null,
   };
 }
 
@@ -689,6 +715,8 @@ describe('rank payload, mapped from fixtures/16.17/ranked-stats-by-puuid--other.
       division: 'II',
       lp: 1,
       queue: 'RANKED_SOLO_5x5',
+      gameName: null,
+      tagLine: null,
     });
     expect('losses' in parsed).toBe(false);
     expect('wins' in parsed).toBe(false);
@@ -715,6 +743,8 @@ describe('rank payload, mapped from fixtures/16.17/ranked-stats-by-puuid--other.
       division: null,
       lp: null,
       queue: 'RANKED_PREMADE_5x5',
+      gameName: null,
+      tagLine: null,
     });
   });
 
@@ -729,6 +759,17 @@ describe('rank payload, mapped from fixtures/16.17/ranked-stats-by-puuid--other.
       tier: 'GOLD',
       division: null,
     });
+  });
+
+  it('carries the name from the same sweep, for the same puuid', () => {
+    // M2.4 posts one body per puuid: the rank from ranked-stats and the Riot ID from
+    // summoners/puuid, because the lobby response has no name in it at all.
+    const summoner = fixture<LcuSummoner>('summoner-by-puuid--other.json');
+    expect(summoner.puuid).toBe(puuid);
+
+    const parsed = companionRankPayloadSchema.parse(mapRank(stats, puuid, 'RANKED_SOLO_5x5', summoner));
+
+    expect(parsed).toMatchObject({ tier: 'SILVER', gameName: 'XETA', tagLine: 'EUNE' });
   });
 
   it('reads the local player the same way, from current-ranked-stats', () => {

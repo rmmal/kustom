@@ -158,7 +158,16 @@ Bots never reach `members[]` on 16.17 (they sit in the team arrays with `isBot: 
 `puuid: ""`); the mapper filters them anyway, and the payload schema **drops** any member with a
 placeholder puuid rather than refusing the roster, counting them in `droppedMembers` for the
 route to log. `invitations[]` is not a roster: a `Pending` invitee is not a member and is not
-posted.
+posted. `lobbyPassword` has no source in the client and stays null until M4.1 creates lobbies
+itself.
+
+The **answer** carries two fields the companion acts on, besides `lobbyId`, `status`, `created`,
+`memberCount` and `rosterFrozen` (M2.9):
+
+| field | meaning |
+|---|---|
+| `recheckInMs: number \| null` | Knock again after this many milliseconds with the *identical* payload, unless a real lobby event produced a newer one first. This is how "the roster has not changed for ten seconds" is measured on a server with no timers (M2.5); `null` means do nothing. **M2.10 ships the field, M2.5 fills it — it is always `null` today.** |
+| `ranksNeeded: string[]` | PUUIDs among the members just posted whose `players` row has no `rank_updated_at`, one older than `RANK_STALE_MS` (7 days), or no row at all. Spectators included; posted member order. Hand it to the rank sweep (M2.4). This is the whole of "once, then weekly": the companion keeps no schedule, only an in-process de-duplicator. |
 
 ### `POST /api/companion/game`
 
@@ -191,10 +200,16 @@ live chat credentials, so this is a leak fix, not hygiene; it runs in the route 
 
 ### `POST /api/companion/rank`
 
-`{ puuid, tier, division, lp, queue }`. Unranked is `tier: ""` with `division: "NA"` on 16.17;
-both normalise to `null`, and a null tier forces a null division and a null `lp`. **`wins` and
-`losses` are not in this payload and must not be added** — `losses` reads `0` for every player but
-the local one. Wins and losses come from our own `games` rows.
+`{ puuid, tier, division, lp, queue, gameName?, tagLine? }`. Unranked is `tier: ""` with
+`division: "NA"` on 16.17; both normalise to `null`, and a null tier forces a null division and a
+null `lp`. **`wins` and `losses` are not in this payload and must not be added** — `losses` reads
+`0` for every player but the local one. Wins and losses come from our own `games` rows.
+
+`gameName`/`tagLine` come from `GET /lol-summoner/v2/summoners/puuid/{puuid}` and ride along
+because the sweep visits exactly the PUUIDs whose name we are missing (M2.4) — a lobby member
+carries no Riot ID at all. `ingestRank` hands them to `ensurePlayers`, so `display_name` follows
+the Riot ID while it is automatic and an admin's override is never touched (M1.7). They are
+applied even for a queue we do not seed a rating from: a name is a name.
 
 ### `GET /api/companion/me`
 
