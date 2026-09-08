@@ -202,8 +202,16 @@ function resultLine(player: ResultPlayer): string {
   return `${role}${renderName(player.name)} · ${player.rating} (${formatDelta(player.delta)})`;
 }
 
-/** `+43`, `-46`, `+0`. Signed always: a delta with no sign reads as a rating. */
+/**
+ * `+43`, `-46`, and `+0` / `-0` for a change too small to round to a point.
+ *
+ * Signed always: `(0)` never appears, because one unsigned entry in a column of ten signed
+ * ones reads as a bug (`05-design.md`, "Rating delta"). ASCII `-`, not U+2212 — Discord has no
+ * font control and these lines get copy-pasted. `-0 >= 0` is true in JavaScript, so the
+ * negative zero has to be asked about by identity before anything else looks at the sign.
+ */
 export function formatDelta(delta: number): string {
+  if (Object.is(delta, -0)) return '-0';
   return delta >= 0 ? `+${delta}` : String(delta);
 }
 

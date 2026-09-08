@@ -34,6 +34,7 @@ export interface WebhookOutcome {
   httpStatus: number | null;
   /** Why it did not land. Never contains the URL. */
   reason: string | null;
+  /** How many requests were actually made. One for a 404; two for a retried 5xx. */
   attempts: number;
 }
 
@@ -64,8 +65,12 @@ export async function postWebhookPayload(
 
   let lastStatus: number | null = null;
   let lastReason = 'no attempt was made';
+  // What actually happened, not the budget: a 404 is tried once and the log line has to say
+  // "after 1", or the next person reading it goes looking for a retry that never ran.
+  let attempts = 0;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    attempts = attempt;
     let response: Response;
     try {
       response = await doFetch(url, {
@@ -107,7 +112,7 @@ export async function postWebhookPayload(
     await sleep(RETRY_DELAY_MS);
   }
 
-  return { status: 'failed', httpStatus: lastStatus, reason: lastReason, attempts: MAX_ATTEMPTS };
+  return { status: 'failed', httpStatus: lastStatus, reason: lastReason, attempts };
 }
 
 /**
@@ -185,7 +190,8 @@ export async function postToWebhook(
 
   const outcome = await postWebhookPayload(url, payload, options);
   if (outcome.status === 'failed') {
-    console.error(`discord: posting the ${label} failed after ${outcome.attempts}: ${outcome.reason}`);
+    const tries = outcome.attempts === 1 ? '1 attempt' : `${outcome.attempts} attempts`;
+    console.error(`discord: posting the ${label} failed after ${tries}: ${outcome.reason}`);
   }
   return outcome;
 }

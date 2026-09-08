@@ -112,7 +112,7 @@ describe('postWebhookPayload', () => {
 
     const outcome = await postWebhookPayload(url, PAYLOAD, { sleep });
 
-    expect(outcome).toMatchObject({ status: 'failed', httpStatus: 500, reason: 'HTTP 500', attempts: 2 });
+    expect(outcome).toEqual({ status: 'failed', httpStatus: 500, reason: 'HTTP 500', attempts: 2 });
     expect(discord.requests).toHaveLength(2);
     expect(slept).toEqual([500]);
   });
@@ -159,7 +159,8 @@ describe('postWebhookPayload', () => {
 
     const outcome = await postWebhookPayload(url, PAYLOAD, { sleep });
 
-    expect(outcome).toMatchObject({ status: 'failed', httpStatus: 404, reason: 'HTTP 404' });
+    // `attempts` is what happened, not the budget: the log line says "after 1 attempt".
+    expect(outcome).toEqual({ status: 'failed', httpStatus: 404, reason: 'HTTP 404', attempts: 1 });
     expect(discord.requests).toHaveLength(1);
   });
 

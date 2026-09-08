@@ -109,7 +109,9 @@ lib/ingest/discord.ts    registers the hooks at module load. The companion route
   one wait on a 429; then a log line. `lib/ingest/hooks.ts` is the seam and a hook that throws is caught there.
 - **The embed `url`** is the tonight page. It comes from the origin of the request that triggered the
   transition — `NEXT_PUBLIC_SITE_URL` when it is set — and is dropped when that is a localhost host, because a
-  link only the person running the server can open is worse than no link.
+  link only the person running the server can open is worse than no link. With the variable unset the
+  request's own host is trusted, so **pin `NEXT_PUBLIC_SITE_URL` on any deployment you care about**; the link
+  is cosmetic, but a companion could otherwise choose what it points at.
 - **Configuring it**: `/admin/discord`, one row per guild. The webhook URL is a secret and `discord_config` has
   no read policy at all; the API reads it with the service role and never logs it.
 - **Reroll (M3.2)** re-posts with one call: `postTeamsForSplit(client, splitId)` after promoting the split.

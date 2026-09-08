@@ -15,7 +15,14 @@ import { displayRating } from '@customs/core';
  *
  * The row on the screen has to add up — `1469 (+43)` next to a new rating of `1512` — and it
  * only does under this rule. Recorded in `04-decisions.md`.
+ *
+ * **A change too small to round to a point keeps its direction**, as `-0` when the rating went
+ * down. `05-design.md`, "Rating delta": `(0)` never appears, because a column of ten signed
+ * numbers with one unsigned entry reads as a bug. `-0` is the honest carrier for that — it is
+ * a real number a caller can print, compare with `Object.is`, or ignore — and it costs no
+ * extra field on every row that will never need one.
  */
 export function displayDelta(muBefore: number, muAfter: number): number {
-  return displayRating(muAfter) - displayRating(muBefore);
+  const delta = displayRating(muAfter) - displayRating(muBefore);
+  return delta === 0 && muAfter < muBefore ? -0 : delta;
 }

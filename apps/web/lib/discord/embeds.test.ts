@@ -320,10 +320,15 @@ describe('the small formatters', () => {
     expect(formatDuration(0)).toBe('0:00');
   });
 
-  it('signs every delta, zero included', () => {
+  it('signs every delta, and keeps the direction of one that rounds to zero', () => {
     expect(formatDelta(43)).toBe('+43');
     expect(formatDelta(-46)).toBe('-46');
     expect(formatDelta(0)).toBe('+0');
+    // `(0)` never appears (`05-design.md`, "Rating delta"). A rating that moved down by less
+    // than half a point is `-0`, which `>= 0` would otherwise call positive.
+    expect(formatDelta(-0)).toBe('-0');
+    expect(formatDelta(displayDelta(25.0, 24.999))).toBe('-0');
+    expect(formatDelta(displayDelta(25.0, 25.001))).toBe('+0');
   });
 
   it('abbreviates damage over a thousand only', () => {
