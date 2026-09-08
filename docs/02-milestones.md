@@ -579,9 +579,34 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >    client for good and the game is backfill's problem (M5.1). Keep the recovery attempt; when the GET
     >    404s, log one line naming the `gameId` and say it is left to backfill. Never poll for it afterwards.
     >
-    > Holding the block in memory is not enough on its own — a failed POST or a companion restart drops it
-    > inside that same window. Durability is **M2.12**; M2.3 may land first with an in-memory hold and a
-    > retry, and M2.12 makes it survive a restart.
+    > 3. **The block goes to disk, not just to memory.** An in-memory hold plus a retry still loses the game
+    >    to a crash, a laptop lid, or an API that is down for the two minutes that matter — and by the time
+    >    the companion is back, the client has dropped the block. So: on capture (WS event, or the
+    >    `EndOfGame` GET fallback), scrub `mucJwtDto` and `multiUserChatPassword` (M2.10, point 11), then
+    >    write one file per `gameId` under the companion's data directory and POST from there. Retry with
+    >    the existing backoff, across restarts, indefinitely while the file is there. Delete it on a 2xx —
+    >    including the idempotent "already have this game" answer — and on a 4xx that names a permanent
+    >    reason (`TerminatedInError`, not `CUSTOM_GAME`), logging why. Keep it on anything else. Cap the
+    >    queue at a sane number of files and drop the oldest with a log line rather than filling a friend's
+    >    disk. A file that no longer parses is logged once and deleted.
+    >
+    > **What a player sees.** Nothing, on a good night. On a bad one: the game they just played shows up on
+    > the tonight page a minute late instead of never, and nobody has to say "the bot missed that one".
+    >
+    > **Edge cases.** Two companions in the same game each hold their own copy; the second POST is a no-op
+    > (`lcu_game_id` dedupe) and both delete their file. A companion that never comes back leaves a file
+    > that is posted whenever it next starts, days later — the server accepts it, because dedupe and the
+    > rating rebuild (M5.2) make late arrival safe. A block for a game the API has never heard of (no
+    > lobby) is still posted; that is M2.8's and backfill's problem, not this one.
+    >
+    > **Acceptance check for the durable path.** With the API returning 500: play a custom, confirm the
+    > block is on disk, click past the end-of-game screen so the client's `GET` 404s, kill the companion,
+    > bring the API back, start the companion — the game lands exactly once with ten `game_players` rows.
+    > Repeat with the companion killed *before* it ever POSTs. A `TerminatedInError` block leaves no file.
+    > Two runs of the same recovery produce one `games` row.
+    >
+    > **Out of scope.** Backfill (M5.1). Any change to the ingest contract. A UI for the queue; a log line
+    > is enough until M6.1.
 - [ ] **M2.4** Rank sync: own rank on start and every 6 hours; rank for every unknown PUUID seen in a lobby, once, then weekly.
 
     > **Note (product, 2026-09-08, after M0.3).** This sweep also fetches **names**, not just ranks. Lobby
@@ -649,7 +674,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > against a lobby still in `open`: the deletes apply as they do today.
 
 
-- [ ] **M2.11** Run the M0 verification pass on Windows before anything is packaged. Every row in `03-lcu-reference.md` was verified on macOS (16.17, 2026-09-08) and the companion ships as a Windows exe, so today the shipped platform is the unverified one. With the client running on Windows: `pnpm --filter @customs/lcu smoke --diff` against the committed `16.17` fixtures, plus a lockfile read at the Windows default path and one exercise of the process-args fallback. Update the Connecting rows in `03-lcu-reference.md` with Windows evidence, and turn "Process args fallback" from `unverified (observed, no code)` into a verified row or a task to drop it.
+- [ ] **M2.11** Run the M0 verification pass on Windows before anything is packaged. Every row in `03-lcu-reference.md` was verified on macOS (16.17, 2026-09-08) and the companion ships as a Windows exe, so today the shipped platform is the unverified one. With the client running on Windows: `pnpm --filter @customs/lcu smoke --diff` against the committed `16.17` fixtures, plus a lockfile read at the Windows default path and one exercise of the process-args fallback. Update the Connecting rows in `03-lcu-reference.md` with Windows evidence, and turn "Process args fallback" from `unverified (observed, no code)` into a verified row or a task to drop it. If no Windows PC is available in the group, M2 ships macOS-verified and is corrected on the first Windows install — say so in the reference rather than leaving the rows looking platform-neutral.
 
     > **Why (product).** The scene is ten friends in Discord; nine of them are on Windows. A shape difference
     > between platforms — a lockfile path, a certificate mode, an empty `summonerName` that is populated on
@@ -669,54 +694,38 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > **Out of scope.** Packaging (M2.6). Any new endpoint. Re-verifying the M4 rows.
 
-- [ ] **M2.12** The companion keeps a captured end-of-game block until the API has confirmed it. The block lives in the client only while the end-of-game screen is up (M0.3): once the player clicks back to the lobby the `GET` 404s and the game is unrecoverable until backfill. So an in-memory hold plus a retry loop still loses the game to a crash, a `pnpm`-style restart, a laptop lid, or an API that is down for the two minutes that matter. Write the block to disk beside the config the moment it is captured, POST from there, and delete it only on a 2xx or a refusal that names a permanent reason (`TerminatedInError`, not `CUSTOM_GAME`).
+- [ ] **M2.13** Find out where a spectator appears in the lobby payload. Two people and ten minutes: one runs `pnpm --filter @customs/lcu record-ws` in a custom lobby, the other clicks the spectator slot and back out. The whole question is whether that person shows up in `members[]` with `isSpectator: true`, or only in `gameConfig.customSpectators[]`, or in both. Nothing in the 16.17 capture answers it — `customSpectators` was `[]` in all 30 lobby events and no member ever carried `isSpectator: true`, because it was a solo lobby with bots. Deliverable: `packages/lcu/fixtures/16.17/lobby-spectator.json`, parsed in `schemas.test.ts`, and the answer written into the lobby row and into question 3 of "Behaviors to confirm" with a date and patch.
 
-    > **What a player sees.** Nothing, on a good night. On a bad one: the game they just played shows up on
-    > the tonight page a minute late instead of never, and nobody has to say "the bot missed that one".
-    >
-    > **Behavior.** On capture (WS event, or the `EndOfGame` GET fallback), scrub `mucJwtDto` and
-    > `multiUserChatPassword` (M2.10, point 11), then write one file per `gameId` under the companion's data
-    > directory. Retry with the existing backoff, across restarts, indefinitely while the file is there. On a
-    > 2xx — including the idempotent "already have this game" answer — delete the file. On a 4xx that names a
-    > permanent reason, delete the file and log why. On any other error, keep it. Cap the queue at a sane
-    > number of files and drop the oldest with a log line rather than filling a friend's disk.
-    >
-    > **Edge cases.** Two companions in the same game each hold their own copy; the second POST is a no-op
-    > (`lcu_game_id` dedupe) and both delete their file. A companion that never comes back leaves a file that
-    > is posted whenever it next starts, days later — the server accepts it, because dedupe and the rating
-    > rebuild (M5.2) make late arrival safe. A block for a game the API has never heard of (no lobby) is
-    > still posted; that is M2.8's and backfill's problem, not this one. A file that no longer parses is
-    > logged once and deleted.
-    >
-    > **Acceptance check.** With the API returning 500: play or replay a custom, confirm the block is on
-    > disk, click past the end-of-game screen so the client's `GET` 404s, kill the companion, bring the API
-    > back, start the companion — the game lands exactly once with ten `game_players` rows. Repeat with the
-    > companion killed *before* it ever POSTs. A `TerminatedInError` block leaves no file. Two runs of the
-    > same recovery produce one `games` row.
-    >
-    > **Out of scope.** Backfill (M5.1). Any change to the ingest contract. A UI for the queue; a log line is
-    > enough until M6.1.
-
-- [ ] **M2.13** Capture a real lobby: ten humans, and one spectator. Every lobby fact in `03-lcu-reference.md` comes from a solo lobby with bots — one member, `customTeam200: []`, `customSpectators: []` in all 30 recorded lobby events, and no member ever carrying `isSpectator: true`. Two things nothing has answered: whether a spectator appears in `members[]` at all or only in `gameConfig.customSpectators[]`, and whether a ten-human lobby differs in any field from the one-human one (`summonerName`, position preferences, `maxTeamSize`, member ordering). Save `lobby-10.json` and `lobby-spectator.json` into `packages/lcu/fixtures/16.17/`, parse both in `schemas.test.ts`, and write the answers into the lobby row and into question 3's answer.
-
-    > **Why (product).** Two shipped or planned rules rest on the unobserved answer. M1.8 (done) refuses a
-    > lobby post unless the caller's PUUID is in `members`, "`isSpectator: true` counts". M2.8 accepts a
+    > **Why (product).** Two rules rest on the unobserved answer. M1.8 (done, shipped) refuses a lobby post
+    > unless the caller's PUUID is in the posted `members`, "`isSpectator: true` counts". M2.8 accepts a
     > spectator's end-of-game post if that player is a lobby member with `isSpectator: true`. If the client
-    > does not put spectators in `members[]`, both rules are dead letters: the friend who sits out tonight
-    > and is the only one running the companion gets a 403 on every lobby post, and the group's teams never
-    > appear. That is the whole scene failing on an ordinary eleven-person night.
+    > does not put spectators in `members[]`, both are dead letters: the friend who sits out tonight — often
+    > the same person who runs the companion, because they have nothing else to do — gets a 403 on every
+    > lobby post, and the group's teams never appear. That is the whole scene failing on an ordinary
+    > eleven-person night.
     >
-    > **Acceptance check.** Both fixtures committed and parsed by `schemas.test.ts`. The lobby row and
-    > "Behaviors to confirm" question 3 state, with a date and patch, where a spectator appears. If
-    > spectators are absent from `members[]`, this task also files the follow-up: widen the M1.8 caller check
-    > and the M2.8 lobby check to accept a PUUID found in `gameConfig.customSpectators[]`, add the decision
-    > row, and correct M1.8's wording — do not leave a shipped rule describing a payload the client does not
-    > send.
+    > **Consequence, to be carried out by this task.** If a spectator is absent from `members[]`: widen the
+    > M1.8 caller check and the M2.8 lobby check to also accept a PUUID found in
+    > `gameConfig.customSpectators[]`, add the decision row to `04-decisions.md`, and correct M1.8's
+    > wording — a shipped rule must not describe a payload the client does not send. If a spectator *is* in
+    > `members[]` with the flag, both rules are already right; say so in the reference and change no code.
     >
-    > **Out of scope.** Any code change to the ingest rules; this task captures and records, and names the
-    > follow-up. M4's lobby creation.
+    > **Acceptance check.** `lobby-spectator.json` committed and parsed by `schemas.test.ts`. The lobby row
+    > and question 3 state where a spectator appears, dated and patch-tagged. Either a code change plus a
+    > decision row, or one line in the reference confirming the existing rules were correct.
+    >
+    > **Out of scope.** The ten-human lobby fixture (see the note under this milestone's acceptance line).
+    > M4's lobby creation. Any spectator-facing UI.
 
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
+
+> **Note (product, 2026-09-08).** Capture `lobby-10.json` on the first M2 test night. Every lobby fact in
+> `03-lcu-reference.md` comes from a one-human lobby with bots, so nothing has confirmed that a full lobby
+> looks the same: `summonerName` still empty with ten real people in it, member ordering, `maxTeamSize`,
+> the position-preference fields, and five puuids in each of `customTeam100`/`customTeam200` rather than
+> one and none. The night already puts ten people in a lobby; someone runs `record-ws` alongside, the
+> fixture lands in `packages/lcu/fixtures/16.17/`, and `schemas.test.ts` parses it. This is a byproduct of
+> the acceptance run, not a task that blocks it.
 
 ## M3 Teams in Discord and on the web (2 to 3 days, needs M2)
 
@@ -922,7 +931,8 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
 
 - [ ] **M3.10** Decide what a player with no name looks like. The League lobby carries no `gameName`/`tagLine` (M0.3), so a friend the database has never met appears with `display_name` null until the M2.4 sweep or their first end-of-game block fills it in — which can be minutes after teams are posted. Every surface that prints a name needs one agreed fallback: the teams embed, the result embed, the tonight page, the leaderboard, `/p/[puuid]`.
 
-    > **Copy (product).** The fallback is the word **`Someone`**, nothing else — no PUUID fragment, no
+    > **Copy (product, confirmed with the designer 2026-09-08: `05-design.md` has no placeholder convention
+    > for a nameless player, so this sets it).** The fallback is the word **`Someone`**, nothing else — no PUUID fragment, no
     > "Unknown Player", no "Player 7". A PUUID is 36 characters of noise that helps nobody read a team, and
     > "Unknown" reads like an error when the truth is just that the client has not told us yet. Ten friends
     > looking at the embed know who the tenth is; they are standing in the same voice channel. On the tonight
