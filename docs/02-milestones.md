@@ -8,9 +8,9 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | in progress | M0.1 done. M0.2 needs the user to run the client (see M0.1 OPEN steps in packages/lcu/README.md). Blocks M2. |
-| M1 Foundation | in progress | All six tasks done; awaiting product and designer acceptance pass. Hosted Supabase project and Discord OAuth app not yet created. Can run in parallel with M0. |
+| M1 Foundation | in progress | All six tasks done; awaiting product and designer acceptance pass. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | Needs M0 and M1. |
-| M3 Teams in Discord and on the web | not started | Needs M2. First night of real use. |
+| M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
@@ -334,6 +334,77 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
 
 - [x] **M1.5** `apps/web` API skeleton: companion token auth middleware, `POST /api/companion/lobby`, `POST /api/companion/game`, `POST /api/companion/rank`, all zod-validated, writing to Supabase with idempotency on `lcu_party_id` and `lcu_game_id`. Lazy player creation by PUUID.
 - [x] **M1.6** `/admin`: Discord OAuth via Supabase Auth, `is_admin` gate. Pages to list players, set roles, link a Discord ID, mint and revoke companion tokens, edit `discord_config`, create a season. Seed the first admin by PUUID in a migration or env var. The role editor must be able to clear a main or secondary role back to null, not only change it — a null main means flexible (M1.4), and there has to be a way back to it.
+- [ ] **M1.7** Give every player a name a friend recognises. `players.display_name` is written nowhere today: `ensurePlayers` only fills `summoner_id`, `game_name` and `tag_line`, and `/admin/players` has no field for it, so every row lands with `display_name` null and stays that way. `/admin/players` shows `—` for every name, `/admin/tokens` shows an 8-character PUUID fragment, and M1.4's explanation string is built from `display_name` (M1.4 brief, "Input"), so the first Discord embed would read `Next best: swap  and , gap 170`. Fill `display_name` from the Riot `gameName` when a `players` row is created and when the client reports a changed `gameName`, and add a display-name field to the `/admin/players` row form so an admin can override it with what the group actually calls someone. An admin-set name is never overwritten by the client.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **What a player sees.** Their name, the one the group uses, in the teams post, on the tonight page and
+    > on the leaderboard. Never a PUUID fragment, never a blank.
+    >
+    > **Behaviour.** On row creation `display_name` = the reported `gameName`, or null when the client
+    > reported none (a PUUID first seen in an eog block has no name attached). On a later report, refresh
+    > `display_name` only while it still equals the previously stored `gameName` — that is the "nobody has
+    > overridden it" test — so a Riot ID change follows through but an admin's override survives it. Clearing
+    > the admin field posts `""` and stores null, which puts the row back on automatic.
+    >
+    > **Edge cases.** A PUUID first seen in an eog block (no `gameName` in `companionGameParticipantSchema`)
+    > keeps a null `display_name` until a lobby or rank post names them; every surface must still render
+    > something, so keep the existing `displayName ?? gameName ?? shortPuuid` fallback chain and add
+    > `gameName` to the `/admin/tokens` table, which skips it today. Two friends with the same `gameName` are
+    > two rows with the same name; core does not deduplicate (M1.4) and neither does this — the admin field
+    > is how the group breaks the tie. Renaming does not touch identity: PUUID is still the key.
+    >
+    > **Acceptance check.** Post a lobby of ten with `gameName` set: every `players` row has
+    > `display_name = gameName`. Repost unchanged: no column changes (the M1.5 diff-before-write rule holds).
+    > Set a name on `/admin/players`, then repost the lobby with a *different* `gameName`: `game_name` moves,
+    > `display_name` does not. Clear the field: it goes back to null and the next lobby post refills it from
+    > `gameName`. `/admin/players` and `/admin/tokens` show a readable name for every row in all of these.
+    >
+    > **Out of scope.** Nicknames per season, Discord display names (the group's Discord name is not the
+    > League name and linking them is M1.6's `discord_id`), and any change to how a player is matched.
+
+- [ ] **M1.8** `POST /api/companion/lobby` must check the caller is in the lobby it is reporting. There is no check at all today: any valid companion token can post any `lcu_party_id` with any member list, and because `replaceMembers` deletes every member not in the posted list, one stale or buggy companion rewrites another lobby's roster. Verified 2026-09-08 against the local stack: a token for a player who is in no lobby posted the ten-player party with one member and the stored roster dropped from ten rows to one, HTTP 200. Refuse with 403 when the token's player PUUID does not appear in the posted `members` (`isSpectator: true` counts, matching M2.8's widened game rule). Record the rule in `04-decisions.md` and add it to the "Security" bullet in `01-architecture.md`, which today only covers games.
+
+    > **Why (product).** M2.5 balances off `lobby_members` and M2.7 matches tonight's ten against history
+    > from the same table. A roster any token can shrink is a roster the referee cannot trust, and the failure
+    > is silent: teams get balanced for nine people and nobody knows why. This has to be decided before
+    > anything reads that table to make teams.
+    >
+    > **Edge cases.** Fewer than ten members is normal and stays a 200 — the lobby is still filling. An empty
+    > `members` array from a companion that is still in the lobby is the "everyone left" report and stays a
+    > 200, but it can no longer come from an outsider, because an empty list cannot contain the caller.
+    > A companion watching as a spectator posts itself with `isSpectator: true` and is accepted; if M0.3 finds
+    > the client does not list a spectator among lobby members at all, that is a finding for the lead, not a
+    > reason to drop the check. A second companion in the same lobby is unaffected: it is in the list.
+    >
+    > **Acceptance check.** A token whose player is in the posted `members` gets 200 and the roster is
+    > replaced. The same token posting a `members` list that does not contain its own player gets 403 and
+    > **no row in `lobbies` or `lobby_members` changes** — assert on the rows, not just the status. A token
+    > whose player is in the list as `isSpectator: true` gets 200. Posting an unknown `partyId` with the
+    > caller in the list still creates the lobby.
+
+- [ ] **M1.9** Rewrite the minted-token page for the friend who has to use it (`apps/web/lib/admin/tokenPage.ts`). It currently ends "Paste it into the companion's first-run prompt (`%APPDATA%/customs-night/config.json`)", which reads as if the file path is where you paste. Copy goes through product; the replacement wording is below and must ship verbatim.
+
+    > **Copy (product, 2026-09-08).** Body, in order:
+    >
+    > - `<h1>` — `Companion token`
+    > - `<p><strong>Copy it now.</strong> This is the only time it is shown — we only keep a scrambled copy, so we cannot show it to you again. Lost it? Mint another and revoke this one.`
+    > - the `<code>` block with the token, unchanged
+    > - the PUUID and Label list, unchanged
+    > - `<p>` — `Start the companion and paste this in when it asks. It remembers it, so you only do this once.`
+    > - `<p class="muted">` — `It saves it in %APPDATA%/customs-night/config.json if you ever need to find it.`
+    > - the "Back to tokens" link, unchanged
+    >
+    > **Acceptance check.** The rendered page contains those sentences verbatim, the token still appears in
+    > exactly one HTTP response and in no URL or cookie, and `renderMintedTokenPage`'s existing escaping test
+    > still passes.
+
+- [ ] **M1.10** The placeholder tonight page (`apps/web/app/page.tsx`, from M1.1) renders "Nothing tonight yet." followed by a bare `<ul>` of `top jungle mid adc support` with no explanation, and `/admin` links friends to it as "Tonight". Anyone who opens the site during M2 sees what looks like a broken page. Pure copy until M3.4 replaces the page: keep the heading, replace the body with `Nothing tonight yet. When ten of you are in a custom lobby with the companion running, the teams show up here.` and drop the role list.
+
+    > **Acceptance check.** `/` renders the heading and that one sentence, no role list, and nothing else.
+    > `pnpm --filter web build` still passes. M3.4 replaces the whole page and this task is not a constraint
+    > on it.
+
 
 Acceptance: `pnpm -r test` green; a curl with a valid token creates a lobby row and a game row; a second identical curl changes nothing.
 
@@ -375,6 +446,22 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > **Acceptance check (product).** Post an eog whose participants exclude the token's player but whose
     > lobby (same `lcu_party_id`) has that player as `isSpectator: true` — the game lands once with ten
     > `game_players` rows. A post from a token whose player is in neither list still 403s.
+- [ ] **M2.9** Freeze the lobby roster when the lobby leaves `open`. `replaceMembers` (M1.5) makes `lobby_members` mirror whatever the companion last posted, deletions included — verified 2026-09-08: posting the same party with an empty `members` array left the lobby row with zero members and HTTP 200. So the record of who was in a lobby is mutable right up to and past the game. M2.7 matches tonight's ten against "a lobby that had exactly the same ten puuids", and M5.5 lists lobbies that reached `in_game` and never finished; both read a list that a late or partial post can empty. Once the state machine (M2.5) moves a lobby to `in_game`, stop applying member deletes to it: later posts for that party may still refresh `side`, but no row is removed.
+
+    > **Why (product).** "Who was around tonight" is the input to the sit-out rotation (step 6 of the nightly
+    > loop) and to the repeat-split penalty. If it can be erased by the last companion to shut down, the
+    > referee forgets last night and the same five get put together again — the one failure of this product
+    > people would actually notice.
+    >
+    > **Edge cases.** Someone leaving while the lobby is still `open` is a real leave and must still delete
+    > their row; this rule only applies from `in_game` on. A lobby that goes `abandoned` without ever
+    > reaching `in_game` keeps the normal behaviour. A companion that reconnects mid-game and posts a partial
+    > list changes nothing. Two companions posting different lists after `in_game` both change nothing.
+    >
+    > **Acceptance check.** Post a ten-member lobby, drive it to `in_game`, then repost the same party with
+    > three members: `lobby_members` still has ten rows. Repost with an empty list: still ten. Do the same
+    > against a lobby still in `open`: the deletes apply as they do today.
+
 
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
 
@@ -382,7 +469,7 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 
 Goal: first real night. Ten join the lobby, teams appear in Discord with an explanation, results and leaderboard follow.
 
-- [ ] **M3.0** Design system: `designer` produces `docs/05-design.md` (tokens, type, component notes, Discord embed text layouts). Lands before any M3 UI task.
+- [x] **M3.0** Design system: `designer` produces `docs/05-design.md` (tokens, type, component notes, Discord embed text layouts). Lands before any M3 UI task.
 - [ ] **M3.1** On `balanced`: run the balancer, store the top three splits, post the teams embed to the Discord webhook: two columns with role and display rating, the explanation line, lobby name and password if known, and a sit-out line when more than ten are around.
 - [ ] **M3.2** Reroll: an admin route and a small button on the tonight page that promotes split 2 or 3 and reposts. No random reroll exists.
 - [ ] **M3.3** On `finished`: result embed with winner, duration, top damage, rating deltas per player.
@@ -416,6 +503,18 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > **Out of scope.** Changing the sort, the rating model, or `ordinal`. No separate "new players" board, no
     > provisional/placement badge that hides a rating, no change to how teams are balanced — balancing is on
     > `mu` and is unaffected.
+- [ ] **M3.9** Make starting a season a deliberate act. `/admin/seasons` has a name field and a `Start` button that fires on one click. From M3.5 on, that click empties the leaderboard: `ratings` is keyed `(player_id, season_id)`, nothing is carried over until M5.3, and there is no undo — the old season's rows survive but every public page reads the active one. Require a typed confirmation (the name of the season being ended) before the post is accepted, and say in the response what just happened. The copy on the page already spells out the consequence (product, 2026-09-08); this is the guardrail behind it.
+
+    > **Why (product).** Everything else in `/admin` is reversible in one more click. This is the only button
+    > in the app that destroys a month of the group's history in the eyes of everyone who looks at the board,
+    > and it sits two fields away from "set a role". A friend clicking around on a phone should not be able
+    > to do it by accident.
+    >
+    > **Acceptance check.** Posting to `/api/admin/seasons` without the confirmation field, or with the wrong
+    > value, answers 400 and no season changes. With the exact name of the currently active season it
+    > succeeds as it does today. The page shows the field with the name to type spelled out next to it.
+    > Nothing about `start_season` (migration 0002) or the one-active-season index changes.
+
 
 Acceptance: a full night with real players, teams posted within 15 seconds of the tenth join, results within 60 seconds of end of game, no human action beyond joining the lobby.
 
