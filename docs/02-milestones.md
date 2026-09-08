@@ -346,6 +346,13 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
 - [ ] **M2.3** Game capture: on gameflow `InProgress` POST the game ID against the lobby; on `EndOfGame` fetch the eog block and POST it. Handle the case where the client reaches `EndOfGame` while the companion was reconnecting: on connect, if phase is `EndOfGame` or `WaitingForStats`, fetch and post.
 - [ ] **M2.4** Rank sync: own rank on start and every 6 hours; rank for every unknown PUUID seen in a lobby, once, then weekly.
 - [ ] **M2.5** Server: lobby state machine (open, balanced, in_game, finished, abandoned) with the 10-second stability rule; on eog, insert `games` and `game_players`, run `rateGame`, update `ratings`. Ignore eog blocks whose `gameType` is not `CUSTOM_GAME`.
+
+    > **Note (product).** M1.5 already stores *every* `CUSTOM_GAME` eog block as a `games` row, remakes and
+    > short surrenders with fewer than ten participants included, so M2.5 cannot assume only real games reach
+    > it. Gate rating on the stored row: rate only when it has ten participants, five per side, and `durationS`
+    > above 300 seconds (5 minutes); otherwise keep the row and leave `ratings` untouched. M2.5 records that
+    > threshold in `04-decisions.md`. M2.3 may decide not to post remakes at all; the gate stands either way.
+
 - [ ] **M2.6** Packaging: single Windows exe (Node single-executable application or `pkg`), `README` for friends with three steps: download, paste token, leave it running. Verify it survives a client restart and a PC sleep.
 
 - [ ] **M2.7** `lastSplit` for the balancer: when a lobby reaches `balanced`, the API looks up the most recent chosen split (any night) whose lobby had exactly the same ten puuids as this lobby, and passes the five puuids of one of its sides as `lastSplit`. If no such split exists, it passes null. Never pass a split from a lobby with a different roster.
@@ -355,6 +362,19 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > returned split 1 is not the repeat. Change one player in the lobby and `lastSplit` is null on the next
     > balance. With no history for these ten, `lastSplit` is null. Side colour of the stored split does not
     > change the result (M1.4 already treats it as colour-agnostic).
+
+- [ ] **M2.8** Widen the game-ingest participant check so a spectator's companion is not locked out. `POST /api/companion/game` accepts an eog block when the token's player PUUID appears among the game's `participants` **or** is a member of the lobby with the same `lcu_party_id` as the posted game, `isSpectator` included. A token whose player is in neither list still gets a 403. Backfill's admin-approved exception is unchanged.
+
+    > **Why (product).** `companionLobbyMemberSchema` carries `isSpectator`, so a friend who sits out a
+    > round and runs the companion while watching is a real, normal case. Under the M1.5 rule their eog POST
+    > is rejected, and if they are the only one running the companion that night the game is lost until
+    > backfill (M5). This is not an M1.5 regression — the old `localPlayer` rule had the same hole — but it
+    > should be decided behavior, not an accident. M2.8 records the widened rule in `04-decisions.md` and
+    > updates the "Security" bullet in `01-architecture.md` the same session.
+
+    > **Acceptance check (product).** Post an eog whose participants exclude the token's player but whose
+    > lobby (same `lcu_party_id`) has that player as `isSpectator: true` — the game lands once with ten
+    > `game_players` rows. A post from a token whose player is in neither list still 403s.
 
 Acceptance: two people run the companion, play one custom, and the game appears once in `games` with ten `game_players` rows and updated ratings. Kill one companion mid-game; the game still lands.
 

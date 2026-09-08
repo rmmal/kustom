@@ -199,8 +199,9 @@ watching: on lobby event -> POST /api/companion/lobby
 
 - Companion tokens are random 32 bytes, stored hashed, one per player, revocable from admin.
 - The API never trusts a PUUID claim beyond what the companion reports; a companion can only report games it was
-  in (the eog block's `localPlayer` must match the token's player) except for backfill, which is admin-approved
-  the first time per player.
+  in: the token's player PUUID must appear among the participants of the posted game, or the API answers 403.
+  The companion's end-of-game payload is flattened and carries no `localPlayer`, so participation is the check.
+  Backfill is the exception, and it is admin-approved the first time per player.
 - Supabase Row Level Security: public read on `seasons`, `ratings`, `lobbies`, `lobby_members`, `splits`, `games`
   and `game_players`, plus `players` through the `players_public` view. `companion_tokens`,
   `companion_commands` and `discord_config` have no read policy at all. Writes only through the service role
