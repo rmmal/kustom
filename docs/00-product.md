@@ -74,6 +74,28 @@ the best player in the room and she is on the weaker side on paper, which is the
 take ten minutes of arguing. If someone still wants a different night, reroll gives the "swap Hana and Omar"
 teams instead, and then one more after that. There is no fourth.
 
+## The numbers on the screen
+
+The model keeps one rating per player, `{ mu, sigma }` — `mu` is what it thinks you are, `sigma` is how sure
+it is. Two numbers come out of that, and they have fixed names everywhere in the product:
+
+- **Rating** is `round(mu * 60)`. It sits beside your name in the teams embed, the result embed and the
+  tonight page, and it is what the balancer works from.
+- **Proven** is `round(ordinal * 60)`, where `ordinal = mu - 2 * sigma`. It is the leaderboard's number. The
+  board sorts on Proven and shows it as the primary column, with Rating underneath in smaller type, so the
+  order on the page always matches the number the page is showing. Proven is deliberately cautious: a new
+  player sits below their Rating until the board has watched about 30 games. The page says that in one
+  sentence rather than leaving people to guess.
+
+A printed change is always the difference of the two displayed numbers — `1469` becoming `1512` prints
+`(+43)`, never a separately rounded figure that makes the row fail to add up.
+
+**Rating changes do not sum to zero across the two teams.** Movement scales with how unsure the model is
+about each player, so five players it barely knows move further than five it has watched for a month: a
+result can be `-228` on one side and `+231` on the other. Both sides were rated correctly; the totals were
+never meant to match. That is why no surface ever prints a team total of rating changes — it would be a
+number that looks wrong every night while being right.
+
 ## Features by milestone
 
 See `02-milestones.md` for the build order. In product terms:
@@ -111,6 +133,7 @@ together, not a button someone presses to tidy up. Carrying `mu` over and resett
 - Lobby open to game start under three minutes.
 - Every game played with a companion user present is in the database with no human action.
 - Ratings visibly converge: a player's predicted win chance across their last twenty games averages near 50%.
-- A new player rises in strength faster than they rise on the board. Their rating settles in about ten
-  nightly games, but the leaderboard sorts on a deliberately cautious number (`ordinal = mu - 2 * sigma`)
-  that takes roughly a month of nightly games to catch up. That is on purpose: the board makes you prove it.
+- A new player rises in strength faster than they rise on the board. Their Rating settles in about ten
+  nightly games, but the leaderboard sorts on Proven, the deliberately cautious number
+  (`ordinal = mu - 2 * sigma`), which takes roughly a month of nightly games to catch up. That is on
+  purpose: the board makes you prove it.

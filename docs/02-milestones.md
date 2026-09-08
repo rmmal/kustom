@@ -491,11 +491,157 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 Goal: first real night. Ten join the lobby, teams appear in Discord with an explanation, results and leaderboard follow.
 
 - [x] **M3.0** Design system: `designer` produces `docs/05-design.md` (tokens, type, component notes, Discord embed text layouts). Lands before any M3 UI task.
-- [ ] **M3.1** On `balanced`: run the balancer, store the top three splits, post the teams embed to the Discord webhook: two columns with role and display rating, the explanation line, lobby name and password if known, and a sit-out line when more than ten are around.
+- [ ] **M3.1** On `balanced`: run the balancer, store the top three splits, post the teams embed to the Discord webhook: two columns with role and display rating, the explanation line, lobby name and password if known, and a sit-out line when more than ten are around. Sit-out copy goes through product before it ships.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **The scene.** Ten friends are in voice, someone opened a custom lobby, everyone joined. Nobody typed
+    > anything. Within seconds of the tenth join Discord shows two teams with roles beside the names, one
+    > sentence saying why, and the lobby name and password so a straggler can still get in. That is the whole
+    > task: the moment the lobby goes `balanced`, the group has teams.
+    >
+    > **What happens, in order.** M2.5 moves the lobby to `balanced` (ten non-spectator members unchanged for
+    > 10 seconds). On that transition the API builds the balancer input from `lobby_members` and `ratings` for
+    > the active season, takes `lastSplit` from M2.7, calls `balance()`, stores all three splits with their
+    > explanation strings in `splits` (exactly one `is_chosen`), computes the sit-out list when more than ten
+    > are around, and posts one teams embed to the webhook in `discord_config`. Field names, line format,
+    > order, colour and every string are `docs/05-design.md`, "Teams embed". That document is the copy, not a
+    > suggestion.
+    >
+    > **Explanation line.** Posted verbatim from the stored explanation of the chosen split. Never recomposed
+    > from the split's numbers, never shortened to fit, never split into fields. M3.7 is the end-to-end check.
+    >
+    > **Sit-out line.** Only when more than ten are around. It names the sitters and states the rule in one
+    > sentence. The strings are fixed in `05-design.md`; **copy goes through product** before it ships — an
+    > engineer who needs different wording asks for it rather than writing it.
+    >
+    > **Tonight page URL.** The embed `url` is `NEXT_PUBLIC_SITE_URL` (already introduced by M1.6 and read and
+    > normalised by `readAuthEnv` in `apps/web/lib/env.ts`) plus the tonight page path. **No domain exists
+    > yet**, so: when the variable is unset, fall back to the origin of the request that triggered the
+    > transition; if there is no usable origin either, post the embed with no `url` rather than a broken one.
+    > Never hardcode a host, and never post a `localhost` link to Discord.
+    >
+    > **Edge cases.**
+    >
+    > - **Fewer than ten.** No balance, no post. The lobby stays `open` and the tonight page shows the member
+    >   list. `balance()` throws on nine and that throw must never reach the webhook or the companion.
+    > - **More than ten.** The API picks the ten (fewest games tonight, then oldest sit-out) and the rest are
+    >   the sit-out list; `balance()` still receives exactly ten. If the selection cannot produce exactly ten,
+    >   log one line and post nothing: a wrong ten is worse than no post.
+    > - **Someone leaves before the post.** The 10-second stability rule has not fired, so nothing was posted
+    >   and there is nothing to undo.
+    > - **Someone leaves after the post.** The lobby returns to `open` and rebalances, which posts a new
+    >   embed. M3.1 does not edit or delete the earlier message; two messages in the channel is the honest
+    >   record of what happened.
+    > - **Companion disconnects.** Nothing is re-posted. The split is stored and the embed is out. When the
+    >   companion returns and re-posts the same party, ingest diffs before it writes and the transition does
+    >   not fire again. Two companions in one lobby produce one post; dedupe on `lcu_party_id`.
+    > - **Unknown player.** A lobby member with no `ratings` row for the active season is seeded from their
+    >   rank (M1.3, M2.4) before balancing; with no rank either, they seed unranked (`mu 20.00, sigma 10.00`).
+    >   They are balanced like anyone else and carry no marker in the embed — the "still settling" story is
+    >   the leaderboard's job (M3.8), not the teams post. A player with no `mainRole` is never counted
+    >   off-role.
+    > - **Webhook missing, or Discord refuses the post.** Store the splits anyway and log one line. The
+    >   tonight page is the other surface and must not depend on Discord having accepted anything. No retry
+    >   loop.
+    >
+    > **Acceptance check (product).**
+    >
+    > 1. Drive a ten-member lobby to `balanced`. Exactly one embed is posted, within 15 seconds of the tenth
+    >    join: accent bar (`14721854`), title `Teams are set`, the stored explanation string verbatim as the
+    >    description, two inline fields named `Blue · <sum>` and `Red · <sum>`, five lines each in lane order
+    >    `top jungle mid adc support` with the role in inline code, footer
+    >    `Customs Night · more on the tonight page`.
+    > 2. `splits` has three rows for that lobby with their three explanation strings, exactly one `is_chosen`.
+    > 3. Eleven around: the embed also carries the `Sitting out` field with the product copy verbatim, and the
+    >    ten in the team fields are the ten with the fewest games tonight.
+    > 4. Nine around: no post, no `splits` rows, and the companion's POST still answers 200.
+    > 5. Lobby name and password known: the `Lobby` field is present. Unknown: the field is absent, not empty
+    >    and not `unknown`.
+    > 6. Someone off-role in the chosen split: their line ends ` · off-role` and the description names them.
+    > 7. With `NEXT_PUBLIC_SITE_URL` unset and no usable request origin, the embed posts with no `url` and
+    >    nothing else changes.
+    >
+    > **Out of scope.** Reroll (M3.2), the result embed (M3.3), the tonight page (M3.4), voice split (M4),
+    > editing or deleting a posted message, @-mentions, reactions, buttons, and any slash command. Nobody
+    > types to make this happen and nobody types after it.
+
 - [ ] **M3.2** Reroll: an admin route and a small button on the tonight page that promotes split 2 or 3 and reposts. No random reroll exists.
 - [ ] **M3.3** On `finished`: result embed with winner, duration, top damage, rating deltas per player.
+
+    > **Brief (product, 2026-09-08) — the two number rules**
+    >
+    > **Delta rule.** A displayed rating change is `displayRating(muAfter) - displayRating(muBefore)`: both
+    > numbers are rounded first, then subtracted. Never `round((muAfter - muBefore) * 60)`. The row on the
+    > screen has to add up — `1469 (+43)` next to a new rating of `1512` — and it only does under this rule.
+    > The delta is computed at the display boundary from the two stored ratings, by one shared helper that the
+    > result embed, the tonight page and the player page all call, so the Discord message and the web page can
+    > never print different numbers for the same game. `packages/core` keeps `displayRating`; it does not gain
+    > a delta concept. Recorded in `04-decisions.md`.
+    >
+    > **Never print a team total of deltas.** The two sides do not sum to zero (movement scales with each
+    > player's own sigma), and a visible imbalance is a free argument about a thing that is working correctly.
+    > `00-product.md`, "The numbers on the screen", is the sentence to quote when someone asks in voice.
+    >
+    > **Fixture warning (from the designer, M3.0).** The per-player deltas in the result-embed example in
+    > `docs/05-design.md` were computed by hand from the two-team Plackett-Luce reduction, not by `rateGame`.
+    > They are illustrative only. **Replace them with real `rateGame` output before any of them is pinned in a
+    > test or a fixture**, and update the example in the design doc in the same session if the real numbers
+    > differ. Duration and top damage in that example are invented; the docs pin no result for the worked
+    > example.
+
 - [ ] **M3.4** `/` Tonight page: live via Supabase Realtime; phone-friendly; the link is what gets pasted in WhatsApp. Shows lobby members as they join, then teams, then result.
 - [ ] **M3.5** `/leaderboard` and `/p/[puuid]` with rating history. Nightly leaderboard post to the webhook at a configured time.
+
+    > **Brief (product, 2026-09-08) — the board shows two numbers**
+    >
+    > **Why.** The board sorts on `ordinal = mu - 2 * sigma`, but the number everyone recognises from the
+    > teams and result embeds is `round(mu * 60)`. Print only the second and the page shows a list that is
+    > visibly out of order; print only the first and nobody recognises their own number. So every row shows
+    > both, and each has one name used everywhere in the product.
+    >
+    > - **Proven** — `round(ordinal * 60)`. Primary, right-aligned on line 1, and **the sort key**. Rows are
+    >   ordered by Proven, descending, always.
+    > - **Rating** — `round(mu * 60)`. Secondary, dim, on line 2. The same number the embeds print beside a
+    >   name, and the number the balancer works from.
+    >
+    > **The rule: the sort order and the primary number are the same number, on every surface, with no
+    > exception.** Where only one number fits — the nightly Discord embed — it is Proven, because a list
+    > ordered by a number it does not show is exactly the complaint this rule exists to prevent.
+    >
+    > The names `Proven` and `Rating` are fixed. Capitalised as column labels, lower case inside a sentence.
+    > No surface invents a third name for either: not `/p/[puuid]`, not the embed, not the admin.
+    > `docs/05-design.md` carries the layout and `docs/00-product.md`, "The numbers on the screen", carries
+    > the explanation a friend gets read to them in voice.
+    >
+    > **Edge cases.**
+    >
+    > - **Fewer than 30 games.** The `settling` chip and the one-per-page sentence, both M3.8. Proven still
+    >   sorts them; nothing is hidden and no separate section exists.
+    > - **Zero games this season.** A seeded player with no games has a Rating and a Proven and appears on the
+    >   board, at the bottom, with `0 games` and the chip. Do not filter them out — a friend who was seeded
+    >   last night and cannot find themselves will ask why.
+    > - **Two players with the same Proven.** Break the tie on Rating, then on name, so the order is stable
+    >   between renders.
+    > - **Season with no games yet.** The board renders its heading, the sentence, and one line saying the
+    >   season has no games yet. Not an empty page, not a spinner.
+    >
+    > **Acceptance check (product).**
+    >
+    > 1. `/leaderboard` rows are in descending `round(ordinal * 60)` order and the primary number on every row
+    >    equals that value. Reading the primary column top to bottom never goes up.
+    > 2. Line 2 of every row shows `round(mu * 60)` as Rating, and for a player who just played, that number
+    >    equals what the result embed printed beside their name for the same game.
+    > 3. A player with fewer than 30 recorded games shows the chip, and the still-settling sentence appears
+    >    once on the page, not once per row.
+    > 4. The nightly embed lists players in the same order as `/leaderboard` and prints the Proven number
+    >    after each name, with the short still-settling sentence as the footer.
+    > 5. `/p/[puuid]` shows both numbers under the same two labels.
+    >
+    > **Out of scope.** Changing the sort or the rating model, carrying ratings between seasons (M5.3), role
+    > and duo stats (M5.4), any filter or search on the board, and pagination beyond what the group's size
+    > needs.
+
 - [ ] **M3.6** Role override for tonight: a player taps their role on the tonight page (Discord login) or an admin sets it. Cleared when the lobby finishes.
 - [ ] **M3.7** Off-role clause end to end: the teams embed and the tonight page show the explanation line of whichever split is currently promoted, including after a reroll, with the off-role clause matching that split.
 
@@ -518,8 +664,13 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >
     > **Acceptance check (product).** On `/leaderboard` and `/p/[puuid]`, a player with fewer than 30 recorded
     > games shows a "still settling" marker next to their row and one plain sentence explaining the board is
-    > cautious until it has seen you play; the marker disappears at 30 games; the number in the sentence
-    > matches the game count in the M1.3 brief. Copy goes through product before it ships.
+    > cautious until it has seen you play; the marker disappears at 30 games; the number in the sentence is
+    > **30**, matching the threshold the marker itself uses. Thirty is the product's round number for the
+    > M1.3 finding that a mis-seeded player's sigma first falls below 5.00 somewhere between game 26 and
+    > game 36 depending on results — so the sentence says "about 30 games" and the marker switches off at
+    > exactly 30. Copy is final and lives in `docs/05-design.md`, "Still-settling marker" (product,
+    > 2026-09-08): `The board sorts on Proven, which stays below your rating until it has seen about 30
+    > games. New players start low on purpose and climb as they play.` Any change goes through product.
     >
     > **Out of scope.** Changing the sort, the rating model, or `ordinal`. No separate "new players" board, no
     > provisional/placement badge that hides a rating, no change to how teams are balanced — balancing is on

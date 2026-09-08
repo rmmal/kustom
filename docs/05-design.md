@@ -156,7 +156,10 @@ and the group say them in lower case).
 - Card: `surface` with the side tint, 6px radius, a 3px rule in the side colour along the **top** edge only.
 - Header row: `Blue` in the side colour, `t-lg` 600, and on the right the sum of the five display ratings,
   mono `t-md` `dim`. Label it `7695` with no word: the header is `Blue` and a number, and the explanation line
-  below owns the word "gap". They are not the same quantity (see "Sums are not the gap" below).
+  below owns the word "gap". They are not the same quantity (see "Sums are not the gap" below). Decided
+  (product, 2026-09-08): the side sums stay **bare numbers with no label**, here and in the embed. Give the
+  web number visually-hidden text `sum of the five ratings` so a screen reader is not left with a bare
+  integer.
 - Five rows, always five, **always in lane order** top, jungle, mid, adc, support. Never sorted by rating.
   That order is `Split.blue` / `Split.red` as stored, so render the array as given.
 - Row: role label, mono `t-xs` `dim`, in a fixed 4.5rem column · name Archivo `t-md` 600 · display rating,
@@ -181,7 +184,10 @@ and the group say them in lower case).
 
 - The reroll control (M3.2, admins only) is a ghost button on the right of the strip on wide screens, and a
   full-width button under it on phone. Label `Reroll`. After the last split it is `disabled` and the strip
-  shows core's own sentence in `dim` `t-sm`: `No more splits. Rebalance or play these.`
+  shows, in `dim` `t-sm`: `No more splits. Change who is in the lobby to rebalance, or play these.`
+  (Product copy, 2026-09-08. It is deliberately *not* core's `BalanceError` message
+  `No more splits. Rebalance or play these.` — "rebalance" is not a button on this page, it is what happens
+  when the lobby membership changes, and the friend reading it should be told which.)
 - After a reroll the strip re-renders with the promoted split's stored string (M3.7). Same element, opacity
   fade, no scroll.
 
@@ -192,9 +198,11 @@ and the group say them in lower case).
   before you scan for your name.
 - When the viewer is one of the sitting players the strip leads with a second-person sentence and keeps the
   `accent` border; nobody else's strip changes.
-- Copy — **PLACEHOLDER, product to finalise** (the rule is fewest games tonight, then oldest sit-out):
-  - general: `Sitting out this game: Sara and Deniz. They have played the most tonight, so they are first in next game.`
-  - viewer: `You are sitting this one out. You have played the most tonight, so you are first in next game.`
+- Copy (product, 2026-09-08 — final; the rule behind it is fewest games tonight, then oldest sit-out):
+  - general: `Sitting out this game: Sara and Deniz. Each game goes to whoever has played least tonight, so they are first in line for the next one.`
+  - viewer: `You are sitting this one out. Each game goes to whoever has played least tonight, so you are first in line for the next one.`
+  - Names are joined with `, ` and a final ` and`: `Sara and Deniz`, `Sara, Deniz and Ali`. Any change to
+    these two sentences goes through product.
 
 ### Result card
 
@@ -225,7 +233,7 @@ and the group say them in lower case).
 
 - One row per player, min-height 56px (two lines), hairline between, no zebra striping.
 - Line 1: rank number, mono `t-sm` `dim`, fixed 2.5ch · name Archivo `t-md` 600, single line, ellipsis ·
-  the board number, mono `t-md` 600, right.
+  the **Proven** number, mono `t-md` 600, right.
 - Line 2, `t-xs` `dim`: `24 games · 13W 11L · W3` and, when the player has fewer than 30 games, the
   `settling` chip.
 - Rank 1 gets `accent` on the **rank number only**. No medals, no trophies, no emoji, no highlight row.
@@ -233,9 +241,10 @@ and the group say them in lower case).
 - **Two numbers, one problem.** The board sorts on `ordinal = mu − 2σ` but the number everyone knows is
   `round(mu × 60)`. Showing the second while sorting on the first puts visibly out-of-order numbers on the
   page, which is the exact complaint M3.8 exists to prevent. The design shows **both**, columns labelled:
-  `Board` (`round(ordinal × 60)`, the sort key, primary, right-most) and `Rating` (`round(mu × 60)`, `dim`,
-  mono `t-sm`, on line 2). Then the sort matches the primary column exactly, and "still settling" is the
-  sentence that explains why your two numbers differ. Flagged to the lead — see FINDINGS.
+  **`Proven`** (`round(ordinal × 60)`, the sort key, primary, right-most) and **`Rating`** (`round(mu × 60)`,
+  `dim`, mono `t-sm`, on line 2). Then the sort matches the primary column exactly, and the still-settling
+  sentence is what explains why a new player's two numbers differ. Accepted by the lead; the names `Proven`
+  and `Rating` are fixed by product (M3.5 brief, `02-milestones.md`) and no surface invents a third name.
 
 ### Still-settling marker (M3.8)
 
@@ -243,9 +252,11 @@ and the group say them in lower case).
   horizontal padding. No colour, no dot, no emoji, no asterisk. It reads as a label, not a warning.
 - Placed after the meta on line 2 of the leaderboard row, and beside the rating on `/p/[puuid]`.
 - The sentence appears **once per page**, under the leaderboard heading and under the rating chart on the
-  player page — not per row. Copy is **PLACEHOLDER, product finalises** (M3.8 says so explicitly):
-  `The board is deliberately cautious with new players: it counts you lower than your rating until it has seen
-  about 30 games.`
+  player page — not per row. Copy (product, 2026-09-08 — final):
+  `The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players
+  start low on purpose and climb as they play.`
+  Short form, for the one-line Discord footer where two sentences will not fit:
+  `Proven stays below a new player's rating until the board has seen about 30 games.`
 - Disappears at 30 games with no ceremony.
 
 ### Rating history (`/p/[puuid]`)
@@ -293,7 +304,7 @@ field 1      name "Blue · 7695"   inline  value: five lines, lane order
 field 2      name "Red · 7595"    inline  value: five lines, lane order
 field 3      name "Sitting out"   block   value: names + one sentence   [only if > 10 around]
 field 4      name "Lobby"         block   value: name and password      [only if known]
-footer       Customs Night · reroll on the tonight page
+footer       Customs Night · more on the tonight page
 timestamp    now
 ```
 
@@ -323,7 +334,7 @@ Filled in with the worked example (`docs/00-product.md`, split 1):
 > **Lobby**
 > `customs-night` · password `4471`
 >
-> Customs Night · reroll on the tonight page
+> Customs Night · more on the tonight page
 
 The exact strings the API builds:
 
@@ -348,18 +359,18 @@ field 2 value  `top` Omar · 1469
 field 4 name   Lobby
 field 4 value  `customs-night` · password `4471`
 
-footer         Customs Night · reroll on the tonight page
+footer         Customs Night · more on the tonight page
 ```
 
 Budget: a side field is ~110 characters against a 1024 limit, so a name would have to be ~180 characters to
 threaten it. Truncate a display name at 32 characters with `…` at the source anyway; do not truncate the field.
 
-Sit-out field, when it exists — copy is **PLACEHOLDER, product finalises**:
+Sit-out field, when it exists — copy (product, 2026-09-08 — final, same sentence as the web strip):
 
 ```
 field 3 name   Sitting out
-field 3 value  Sara, Deniz
-               They have played the most tonight, so they are first in next game.
+field 3 value  Sara and Deniz
+               Each game goes to whoever has played least tonight, so they are first in line for the next one.
 ```
 
 **Sums are not the gap.** `7695` and `7595` are the sums of five display ratings. Their difference equals the
@@ -427,11 +438,12 @@ field 1 name   Top ten
 field 1 value  `1` Lena · 2128 · 31 games
                `2` Bilal · 1667 · 44 games
                ...
-footer       Board rating counts new players low until about 30 games.
+footer       Proven stays below a new player's rating until the board has seen about 30 games.
 ```
 
-The number after the name is the **board** number (`round(ordinal × 60)`), matching the sort. The footer is
-the still-settling sentence in its shortest form — placeholder, product finalises.
+The number after the name is the **Proven** number (`round(ordinal × 60)`), matching the sort. The embed
+prints Proven only: a one-number list must show the number it is ordered by. The footer is the still-settling
+sentence in its short form (product, 2026-09-08 — final).
 
 ## Implementation notes for the web engineer
 
@@ -526,6 +538,12 @@ M3.4 does not get to invent its own state model. The page renders **exactly one 
 | `balanced` | `Teams set`, live dot | Sit-out notice, team cards, explanation line | — |
 | `in_game` | `In game`, live dot | Sit-out notice, team cards, explanation line | — |
 | `finished` | `Final` | Result card | Team cards and the explanation line, unchanged |
+
+Idle copy (product, 2026-09-08 — final), the same sentence the placeholder page already carries from M1.10 so
+the wording does not change under people when M3.4 lands: `When ten of you are in a custom lobby with the
+companion running, the teams show up here.` Under it, a link reading `Last night and the board`. Nothing
+else: no illustration, no spinner, no "check back later". The header strip already says `Nothing tonight`, so
+the body does not repeat it.
 
 The rule, in one sentence: **a state change replaces the primary block in place; the page never appends, never
 scrolls itself, and never animates anything but a 150ms opacity fade.** The header strip is always mounted and
