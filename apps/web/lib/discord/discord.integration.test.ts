@@ -442,6 +442,41 @@ if (stack === null) {
       expect(lines.some((line) => line.includes('Player0 ·'))).toBe(false);
       expect(lines.some((line) => line.includes('Player10 ·'))).toBe(true);
     });
+
+    it('goes back to the most-games clause once one game has been played (M3.12)', async () => {
+      const members = eleven.map((puuid, index) => ({ puuid, isSpectator: index === 10 }));
+      const first = party('eleven-night');
+      const balanced = await driveToBalanced(first, members, elevenToken);
+      const lobbyId = await lobbyIdOf(balanced);
+      expect(fieldsOf(0)['Sitting out']).toBe(
+        'Sitting out: Player0 — nobody has sat out before, so somebody had to be first.',
+      );
+
+      // The ten play it out. `el00` was in the lobby and not in the game, which is what a
+      // sit-out *is* (there is no sit-out table), and the other ten now have a game tonight.
+      const played = await postGame(
+        request(
+          eogBody({
+            gameId: gameNumber(),
+            puuids: eleven.slice(1),
+            partyId: first,
+            startedAt: new Date(Date.now() - 60_000).toISOString(),
+          }),
+          elevenToken,
+        ),
+      );
+      expect(played.status).toBe(200);
+      expect(lobbyId).toBeTruthy();
+
+      // Same eleven, next lobby of the night. They are no longer tied on games, so the clause
+      // is the plain one and the person sitting is somebody who has just played.
+      const second = party('eleven-night-2');
+      await driveToBalanced(second, members, elevenToken);
+
+      const fields = fieldsOf(2);
+      expect(fields['Sitting out']).toBe('Sitting out: Player1 — most games tonight.');
+      expect(fields.Seats).toBe('Swap: Player1 out, Player10 in.');
+    });
   });
 
   describe('a player the client has not named yet', () => {
