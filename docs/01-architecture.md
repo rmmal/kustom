@@ -154,6 +154,12 @@ open ---(10 stable members reported)---> balanced ---(gameflow InProgress)---> i
 
 - The companion posts the full member list every time it changes. The API debounces: a lobby is balanced when
   ten non-spectator members are unchanged for 10 seconds.
+- A companion may only post a lobby it is in (see "Security"), and the member list is frozen from `in_game` on
+  and stays frozen in `finished`: a later post for that party is still accepted and still refreshes the lobby's
+  name and password, but no member row is added, changed or removed and the response says `rosterFrozen: true`.
+  Once the game has started a player's side comes from `game_players`, not from `lobby_members`.
+- `open`, `balanced` and `abandoned` keep the replace semantics — the posted list is the roster, deletions
+  included — because a lobby that dissolves without ever starting has no history worth keeping.
 - Sit-outs: if more than ten people are "around" (in the lobby as spectators, or in the lobby voice channel
   once M4 exists), the API posts who should sit based on the fewest games tonight, then oldest sit-out.
 - The `lastSplit` passed to the balancer is the five puuids on one side of the most recent chosen split whose
