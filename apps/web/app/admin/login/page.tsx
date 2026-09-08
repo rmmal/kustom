@@ -40,7 +40,8 @@ export default async function AdminLoginPage({ searchParams }: { searchParams: P
       )}
       {denied === null ? null : (
         <p className="admin-error" role="alert">
-          {denied}. Ask an admin to link your Discord account on the players page.
+          {denied}. If nobody has linked your Discord account to your player yet, ask an admin to do it on the
+          players page.
         </p>
       )}
 

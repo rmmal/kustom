@@ -408,6 +408,27 @@ Goal: the monorepo, the database, and the pure core with tests. No client needed
 
 Acceptance: `pnpm -r test` green; a curl with a valid token creates a lobby row and a game row; a second identical curl changes nothing.
 
+> **Acceptance evidence (product, 2026-09-08).** Walked against the running local stack, `pnpm --filter web dev`.
+>
+> - `pnpm -r test`: core 3 files, db 3 files / 42 tests, web 10 files / 116 tests all pass. `packages/lcu`
+>   is 94 of 96 — the two failures are `lockfile.test.ts` and `cli/smoke.test.ts` asserting the League client
+>   is *not* running on this machine, and it is. Fixed in a parallel task; not an M1 defect.
+> - Lobby: `POST /api/companion/lobby` with a minted token, a ten-member party. First call
+>   `created: true`, `memberCount: 10`; `lobbies` 0 -> 1, `lobby_members` 0 -> 10, `players` 1 -> 10 (the
+>   token's own row already existed). Repeats returned `created: false` and a full `select *` snapshot of
+>   `lobbies`, `lobby_members`, `games`, `game_players`, `players` and `ratings` was byte-identical across a
+>   repost — `updated_at` included, so the M1.5 diff-before-write rule holds.
+> - Game: `POST /api/companion/game` with a `CUSTOM_GAME` eog for the same party. First call
+>   `created: true`, `participants: 10`; `games` 0 -> 1, `game_players` 0 -> 10, the row's `lobby_id`
+>   resolved to the lobby above. Repeats `created: false`, same snapshot diff, empty.
+> - Refusals behave as documented: no token 401, unknown token 401, bad body 400 with zod paths,
+>   `gameType: MATCHED_GAME` 422, an eog the token's player is not in 403.
+> - `ratings` stayed at 0 rows after a complete eog. That is correct for M1 — `rateGame` runs in M2.5.
+> - Test rows were deleted afterwards; all seven tables are back to 0.
+>
+> Gaps found in the pass are M1.7 to M1.10 above, M2.9 and M3.9. None of them contradict the two clauses
+> of this acceptance; M1.8 is the one that should land before M2.5 reads `lobby_members` to make teams.
+
 ## M2 Companion v1: roster and results (2 to 3 days, needs M0 and M1)
 
 Goal: a friend runs one exe, and every lobby and game they are in lands in the database with no action.

@@ -28,8 +28,8 @@ export default async function AdminDiscordPage({ searchParams }: { searchParams:
     <main>
       <h1>Discord</h1>
       <p className="admin-muted">
-        One guild, one row. Nothing here is read by the browser: `discord_config` has no read policy at all,
-        and this page reads it with the service role.
+        One guild, one row. The browser can never read this table on its own — the server reads it and sends
+        out only what you see here.
       </p>
 
       <Notices params={params} />
@@ -44,8 +44,8 @@ export default async function AdminDiscordPage({ searchParams }: { searchParams:
 
       {config === null ? (
         <p className="admin-empty">
-          Discord is not configured yet. Fill this in and the results webhook (M3) and voice split (M4) have
-          somewhere to go.
+          Discord is not configured yet. Fill this in now and the team posts and the voice split will have
+          somewhere to go when they are built.
         </p>
       ) : (
         <p className="admin-muted">Last saved {config.updatedAt.slice(0, 19).replace('T', ' ')} UTC.</p>

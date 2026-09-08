@@ -24,10 +24,10 @@ export default async function AdminSeasonsPage({ searchParams }: { searchParams:
     <main>
       <h1>Seasons</h1>
       <p className="admin-muted">
-        Starting a season ends the current one and makes the new one active, in one transaction. It does{' '}
-        <strong>not</strong> carry ratings forward: copying <span className="admin-mono">mu</span> and
-        resetting <span className="admin-mono">sigma</span> is M5.3. Until then everyone starts the new season
-        unrated.
+        Starting a season ends the current one and makes the new one active, in one go. It does{' '}
+        <strong>not</strong> carry anyone&rsquo;s rating over. Everyone starts the new season unrated, the
+        leaderboard goes back to empty, and it takes about a month of nightly games before it means anything
+        again. Carrying ratings over is not built yet, so only start a season when the group has agreed to it.
       </p>
 
       <Notices params={params} />
@@ -43,7 +43,10 @@ export default async function AdminSeasonsPage({ searchParams }: { searchParams:
 
       <h2>All seasons</h2>
       {seasons.length === 0 ? (
-        <Empty>No seasons. That should not happen — `0001_init.sql` inserts Season 1.</Empty>
+        <Empty>
+          No seasons at all. That should not be possible — the database is created with Season 1 already
+          running, so something is wrong with it.
+        </Empty>
       ) : (
         <div className="admin-scroll">
           <table>

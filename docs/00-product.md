@@ -89,8 +89,13 @@ See `02-milestones.md` for the build order. In product terms:
 | Auto side switch | M4 |
 | Discord voice split and "N around" presence | M4 |
 | Backfill every past custom from the client's match history | M5 |
-| Seasons, awards, role and duo stats | M5 |
+| Seasons that carry ratings over, awards, role and duo stats | M5 |
 | Tray app wrapper with auto-start | M6 |
+
+One admin-only piece landed earlier than that table suggests: `/admin` (M1) can already start a new
+season. It does not carry anyone's rating over — everyone starts the new season unrated and the board
+takes about a month of nightly games to mean anything again — so it is a thing the group decides
+together, not a button someone presses to tidy up. Carrying `mu` over and resetting `sigma` is M5.3.
 
 ## Explicitly out of scope
 
