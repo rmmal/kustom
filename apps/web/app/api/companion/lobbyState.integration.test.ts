@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { type Database, rosterKey } from '@customs/db';
 import { companionLobbyPayloadSchema } from '@customs/db/schemas';
 import { createClient } from '@supabase/supabase-js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mintCompanionToken } from '@/lib/companionAuth';
+import { selectLastSplit } from '@/lib/ingest/balance';
+import { clearLobbyHooks, registerLobbyHook } from '@/lib/ingest/hooks';
 import { ingestLobby } from '@/lib/ingest/lobby';
 import { ensurePlayers } from '@/lib/ingest/players';
 import { ROSTER_STABLE_MS, sweepIdleLobbies } from '@/lib/lobbyState';
@@ -175,6 +177,29 @@ if (stack === null) {
     if (playerError) throw new Error(playerError.message);
   }
 
+  /** A cast of its own, so no other case's games or splits can order or seed this one. */
+  async function freshCast(label: string, count = 10): Promise<string[]> {
+    const cast = Array.from(
+      { length: count },
+      (_, index) => `it-${runId}-${label}${String(index).padStart(2, '0')}`,
+    );
+    for (const puuid of cast) allPuuids.add(puuid);
+    await ensurePlayers(
+      db,
+      cast.map((puuid) => ({ puuid })),
+    );
+    return cast;
+  }
+
+  /** The ten puuids of a split, as a set, so blue and red can be compared colour-agnostically. */
+  function sideOf(assignments: readonly { puuid: string }[]): Set<string> {
+    return new Set(assignments.map((assignment) => assignment.puuid));
+  }
+
+  function sameFive(a: Set<string>, b: Set<string>): boolean {
+    return a.size === b.size && [...a].every((puuid) => b.has(puuid));
+  }
+
   beforeAll(async () => {
     await ensurePlayers(
       db,
@@ -325,8 +350,11 @@ if (stack === null) {
     it('sits whoever has played most tonight and puts the spectator in their slot', async () => {
       const id = party('eleven');
       const busy = puuids[3] ?? '';
-      await recordGame(busy, new Date(Date.now() - 60 * 60 * 1000));
-      await recordGame(busy, new Date(Date.now() - 30 * 60 * 1000));
+      // Pinned to an hour into tonight, not an hour before now: run this at 06:20 Cairo and
+      // "an hour ago" is last night, the games do not count, and nobody sits.
+      const tonight = nightStart(new Date(), TIME_ZONE).getTime();
+      await recordGame(busy, new Date(tonight + 60 * 60 * 1000));
+      await recordGame(busy, new Date(tonight + 90 * 60 * 1000));
 
       const members: MemberSpec[] = [...onTeams(puuids), { puuid: watcher, side: null, isSpectator: true }];
       const first = await ingest(id, members, new Date());
@@ -604,6 +632,192 @@ if (stack === null) {
       // Platinum I: 26 + 3 * 0.75 = 28.25, sigma 8.33.
       expect(seeded.get(platinum)?.mu_before).toBeCloseTo(28.25, 6);
       expect(seeded.get(platinum)?.sigma_before).toBeCloseTo(8.33, 6);
+    });
+  });
+
+  describe('lastSplit: not the same five again (M2.7)', () => {
+    it('hands the balancer the last chosen split for these ten, and split 1 is not a repeat', async () => {
+      const cast = await freshCast('ls');
+      const id = party('last-split');
+
+      // Night's first game for these ten.
+      const openedA = await ingest(id, onTeams(cast), new Date());
+      const balancedA = await ingest(id, onTeams(cast), await clockAt(openedA.lobbyId, ROSTER_STABLE_MS));
+      expect(balancedA.status).toBe('balanced');
+      const chosenA = balancedA.balanced;
+      if (chosenA === null || chosenA === undefined) throw new Error('the first lobby did not balance');
+
+      const blueA = sideOf(chosenA.split.blue);
+      const redA = sideOf(chosenA.split.red);
+
+      // The lookup the balancer is handed: the newest chosen split for exactly these ten.
+      const stored = await selectLastSplit(db, chosenA.rosterKey);
+      expect(stored).not.toBeNull();
+      expect(new Set(stored ?? [])).toEqual(blueA);
+
+      // Game one closes the row; the same party opens the night's next cycle (M2.14).
+      await db.from('lobbies').update({ status: 'finished' }).eq('id', openedA.lobbyId);
+      const openedB = await ingest(id, onTeams(cast), new Date());
+      expect(openedB.created).toBe(true);
+      expect(openedB.lobbyId).not.toBe(openedA.lobbyId);
+
+      const balancedB = await ingest(id, onTeams(cast), await clockAt(openedB.lobbyId, ROSTER_STABLE_MS));
+      const chosenB = balancedB.balanced;
+      if (chosenB === null || chosenB === undefined) throw new Error('the second lobby did not balance');
+
+      // Same ten, so the same key finds the history; a different five, because the repeat
+      // carries core's penalty.
+      expect(chosenB.rosterKey).toBe(chosenA.rosterKey);
+      const blueB = sideOf(chosenB.split.blue);
+      expect(sameFive(blueB, blueA)).toBe(false);
+      expect(sameFive(blueB, redA)).toBe(false);
+      expect(sameFive(sideOf(chosenB.split.red), blueA)).toBe(false);
+    });
+
+    it('has no history to avoid once one player is swapped', async () => {
+      const cast = await freshCast('ls2');
+      const swapped = [...cast.slice(0, 9), spare];
+      const id = party('last-split-swap');
+
+      const opened = await ingest(id, onTeams(cast), new Date());
+      const balanced = await ingest(id, onTeams(cast), await clockAt(opened.lobbyId, ROSTER_STABLE_MS));
+      const chosen = balanced.balanced;
+      if (chosen === null || chosen === undefined) throw new Error('the lobby did not balance');
+
+      // Change one player and the key changes with them: nothing to repeat, nothing to avoid.
+      const changed = await ingest(id, onTeams(swapped), new Date());
+      expect(changed.status).toBe('open');
+      const rebalanced = await ingest(id, onTeams(swapped), await clockAt(changed.lobbyId, ROSTER_STABLE_MS));
+      const chosenAgain = rebalanced.balanced;
+      if (chosenAgain === null || chosenAgain === undefined) throw new Error('the swap did not balance');
+
+      expect(chosenAgain.rosterKey).not.toBe(chosen.rosterKey);
+      // Before this balance stored its own row there was no chosen split for these ten at all,
+      // which is the `lastSplit: null` the balancer was called with.
+      const { count } = await db
+        .from('splits')
+        .select('id', { count: 'exact', head: true })
+        .eq('roster_key', chosenAgain.rosterKey)
+        .eq('is_chosen', true);
+      expect(count).toBe(1);
+      // And a roster nobody has ever split has no history either.
+      expect(await selectLastSplit(db, 'nobody-has-played-this-ten')).toBeNull();
+    });
+  });
+
+  describe('the Discord seam (M3.1 fills it)', () => {
+    afterEach(() => {
+      clearLobbyHooks();
+    });
+
+    it('balances and stores three splits even when a listener throws', async () => {
+      const cast = await freshCast('hk');
+      const id = party('hook-throws');
+      const seen: string[] = [];
+
+      // What a webhook being down looks like from in here.
+      registerLobbyHook({
+        onBalanced: (event) => {
+          seen.push(event.splitId);
+          throw new Error('discord is down');
+        },
+      });
+
+      const opened = await ingest(id, onTeams(cast), new Date());
+      const balanced = await ingest(id, onTeams(cast), await clockAt(opened.lobbyId, ROSTER_STABLE_MS));
+
+      expect(balanced.status).toBe('balanced');
+      expect(balanced.recheckInMs).toBeNull();
+      const rows = await splitRows(balanced.lobbyId);
+      expect(rows).toHaveLength(3);
+      expect(rows.filter((row) => row.is_chosen === true)).toHaveLength(1);
+      // The listener did run, and its throw cost the lobby nothing.
+      expect(seen).toEqual([balanced.balanced?.splitId]);
+    });
+
+    it('answers 200 through the route with a listener that throws', async () => {
+      const cast = await freshCast('hk2');
+      const id = party('hook-throws-route');
+      registerLobbyHook({
+        onBalanced: () => {
+          throw new Error('discord is down');
+        },
+      });
+
+      const token = await mintToken(cast[0] ?? '');
+      const response = await postLobby(request(body(id, onTeams(cast)), token));
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, status: 'open', memberCount: 10 });
+    });
+  });
+
+  describe('a game whose lobby was given up on', () => {
+    it('stores and rates it with lobby_id null rather than linking an abandoned row', async () => {
+      const cast = await freshCast('ab');
+      const id = party('abandoned-game');
+      const lcuGameId = gameNumber();
+
+      const opened = await ingest(id, onTeams(cast), new Date());
+      // Two hours of nothing: the sweep gives up on the lobby, and then the block arrives.
+      const swept = await sweepIdleLobbies(db, new Date(Date.now() + 2 * 60 * 60 * 1000 + 60_000));
+      expect(swept).toBeGreaterThan(0);
+      expect(await lobbyStatus(opened.lobbyId)).toBe('abandoned');
+
+      const token = await mintToken(cast[0] ?? '');
+      const response = await postGame(
+        request(eogBody({ gameId: lcuGameId, puuids: cast, partyId: id, durationS: 1_200 }), token),
+      );
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json).toMatchObject({ ok: true, created: true, participants: 10 });
+      // Not linked to the row the sweep abandoned, and rated all the same.
+      expect(json.lobbyId).toBeNull();
+      expect(await lobbyStatus(opened.lobbyId)).toBe('abandoned');
+
+      const { data } = await db
+        .from('game_players')
+        .select('mu_after')
+        .eq('game_id', json.gameId as string);
+      expect(data).toHaveLength(10);
+      expect(data?.every((row) => row.mu_after !== null)).toBe(true);
+    });
+
+    it('says so in the log when the lobby is already finished and cannot move again', async () => {
+      const cast = await freshCast('fin');
+      const id = party('already-finished');
+      const lcuGameId = gameNumber();
+      const token = await mintToken(cast[0] ?? '');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const opened = await ingest(id, onTeams(cast), new Date());
+        await db.from('lobbies').update({ status: 'finished' }).eq('id', opened.lobbyId);
+
+        const eog = eogBody({
+          gameId: lcuGameId,
+          puuids: cast,
+          partyId: id,
+          durationS: 1_200,
+          // Before the row was closed, so it still resolves to the cycle it was played in.
+          startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        });
+        const response = await postGame(request(eog, token));
+
+        expect(response.status).toBe(200);
+        expect((await response.json()).lobbyId).toBe(opened.lobbyId);
+        expect(
+          warn.mock.calls.some(
+            (call) =>
+              typeof call[0] === 'string' &&
+              call[0].includes(opened.lobbyId) &&
+              call[0].includes('finished -> finished'),
+          ),
+        ).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
     });
   });
 

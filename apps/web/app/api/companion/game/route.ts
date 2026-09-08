@@ -17,7 +17,7 @@ import {
 import { emitGameFinished } from '@/lib/ingest/hooks';
 import { isLobbyMemberOfGame, selectActiveLobby } from '@/lib/ingest/lobby';
 import { rateStoredGame } from '@/lib/ingest/rating';
-import { moveLobby, sweepIdleLobbies } from '@/lib/lobbyState';
+import { moveLobbyLogged, sweepIdleLobbies } from '@/lib/lobbyState';
 
 // node:crypto hashes the bearer token, so this route is not edge-compatible.
 export const runtime = 'nodejs';
@@ -54,7 +54,11 @@ export const POST = withCompanionAuth(companionGamePayloadSchema, async (payload
     const lobby = payload.partyId ? await selectActiveLobby(client, payload.partyId) : null;
     if (lobby !== null) {
       // From here the roster is history (M2.9). `in_game` never ages out.
-      await moveLobby(client, { lobbyId: lobby.id, from: ['open', 'balanced'], to: 'in_game' });
+      await moveLobbyLogged(
+        client,
+        { lobbyId: lobby.id, from: ['open', 'balanced'], to: 'in_game' },
+        `game ${payload.gameId} in_progress`,
+      );
     }
 
     return jsonOk(companionGameResponseSchema, {
@@ -95,12 +99,14 @@ export const POST = withCompanionAuth(companionGamePayloadSchema, async (payload
   // The fold: ten rows, five a side, over five minutes, and exactly once per game (M2.5).
   const fold = await rateStoredGame(client, result.gameId);
 
+  // A lobby that is already `finished` (the second companion's post) or that the sweep
+  // abandoned between resolving it and here claims nothing and says so in the log.
   if (result.lobbyId !== null) {
-    await moveLobby(client, {
-      lobbyId: result.lobbyId,
-      from: ['open', 'balanced', 'in_game'],
-      to: 'finished',
-    });
+    await moveLobbyLogged(
+      client,
+      { lobbyId: result.lobbyId, from: ['open', 'balanced', 'in_game'], to: 'finished' },
+      `game ${result.gameId}`,
+    );
   }
 
   // M3.3's seam. Only the post that actually did something announces it, so two companions in

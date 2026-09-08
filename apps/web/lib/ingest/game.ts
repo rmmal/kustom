@@ -120,6 +120,11 @@ async function selectGame(
  * has once that cycle closed. An end-of-game block can arrive minutes late — after the group
  * has already opened the night's next lobby with the same party id — and it still belongs to
  * the cycle it was played in.
+ *
+ * An `abandoned` row is **not** a lobby a game was played from: the two-hour sweep gave up on
+ * it, so linking a real game to it would say the group played a lobby that dissolved. Such a
+ * game is stored with `lobby_id: null` and still rated — ratings never depended on a lobby
+ * existing, which is also what makes backfill (M5.1) possible.
  */
 export async function findLobbyId(
   client: ServiceClient,
@@ -130,7 +135,16 @@ export async function findLobbyId(
 
   // An unknown party id is not an error: the companion may have missed the lobby events.
   const lobby = await selectLatestLobby(client, partyId, startedAt);
-  return lobby?.id ?? null;
+  if (lobby === null) return null;
+
+  if (lobby.status === 'abandoned') {
+    console.warn(
+      `ingestGame: party ${partyId} resolves only to abandoned lobby ${lobby.id}; storing the game with no lobby`,
+    );
+    return null;
+  }
+
+  return lobby.id;
 }
 
 /**

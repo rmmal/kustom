@@ -70,6 +70,21 @@ export function assertLegalTransition(from: LobbyStatusValue, to: LobbyStatusVal
   if (!isLegalTransition(from, to)) throw new IllegalLobbyTransitionError(from, to);
 }
 
+/** `finished` and `abandoned`: a row here never moves again, whoever asks. */
+export function isTerminalLobbyStatus(status: LobbyStatusValue): boolean {
+  return LOBBY_TRANSITIONS[status].length === 0;
+}
+
+/** The status the row holds right now, or `null` when it is gone. */
+export async function readLobbyStatus(
+  client: ServiceClient,
+  lobbyId: string,
+): Promise<LobbyStatusValue | null> {
+  const { data, error } = await client.from('lobbies').select('status').eq('id', lobbyId).maybeSingle();
+  if (error) throw new Error(`readLobbyStatus: ${error.message}`);
+  return data?.status ?? null;
+}
+
 export interface MoveLobbyInput {
   lobbyId: string;
   /** The statuses this move is allowed to start from. Every one is checked against the table. */
@@ -98,6 +113,30 @@ export async function moveLobby(client: ServiceClient, input: MoveLobbyInput): P
     .select('id');
   if (error) throw new Error(`moveLobby: ${input.to} failed: ${error.message}`);
   return (data ?? []).length > 0;
+}
+
+/**
+ * {@link moveLobby}, and when it claims nothing, one line saying why if the reason is that the
+ * lobby is already terminal.
+ *
+ * A refused move is usually ordinary — somebody else got there first, or the lobby is already
+ * where we wanted it. It is *not* ordinary when the row is `finished` or `abandoned`: a game
+ * that cannot close its lobby means the record and the game disagree, and the two-hour sweep
+ * abandoning a lobby out from under an arriving end-of-game block is exactly the case worth
+ * seeing in a log rather than guessing at later.
+ */
+export async function moveLobbyLogged(
+  client: ServiceClient,
+  input: MoveLobbyInput,
+  context: string,
+): Promise<boolean> {
+  if (await moveLobby(client, input)) return true;
+
+  const status = await readLobbyStatus(client, input.lobbyId);
+  if (status !== null && isTerminalLobbyStatus(status)) {
+    console.warn(`${context}: lobby ${input.lobbyId} is ${status}; cannot move ${status} -> ${input.to}`);
+  }
+  return false;
 }
 
 /**

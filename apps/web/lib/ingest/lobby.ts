@@ -12,6 +12,7 @@ import {
   isRosterStable,
   moveLobby,
   PLAYERS_PER_GAME,
+  readLobbyStatus,
   recheckInMs,
 } from '../lobbyState';
 import { DEFAULT_NIGHT_TIME_ZONE } from '../night';
@@ -239,7 +240,7 @@ export async function ingestLobby(
     attempt.kind === 'balanced'
       ? 'balanced'
       : attempt.kind === 'lost'
-        ? await currentStatus(client, lobby.id, row.status)
+        ? ((await readLobbyStatus(client, lobby.id)) ?? row.status)
         : row.status;
 
   return {
@@ -360,17 +361,6 @@ async function maybeBalance(client: ServiceClient, input: MaybeBalanceInput): Pr
     await moveLobby(client, { lobbyId: lobby.id, from: ['balanced'], to: 'open' });
     return { kind: 'failed' };
   }
-}
-
-/** The status the row holds right now, for a request that lost a race and has to report it. */
-async function currentStatus(
-  client: ServiceClient,
-  lobbyId: string,
-  fallback: LobbyStatusValue,
-): Promise<LobbyStatusValue> {
-  const { data, error } = await client.from('lobbies').select('status').eq('id', lobbyId).maybeSingle();
-  if (error) throw new Error(`ingestLobby: status re-read failed: ${error.message}`);
-  return data?.status ?? fallback;
 }
 
 /**

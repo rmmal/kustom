@@ -6,6 +6,7 @@ import {
   IllegalLobbyTransitionError,
   isLegalTransition,
   isRosterStable,
+  isTerminalLobbyStatus,
   LOBBY_TRANSITIONS,
   MIN_RATED_DURATION_S,
   MIN_RECHECK_MS,
@@ -48,6 +49,14 @@ describe('the transition table', () => {
   it.each([['finished'], ['abandoned']] as [LobbyStatusValue][])('makes %s terminal', (from) => {
     for (const to of STATUSES) {
       expect(isLegalTransition(from, to)).toBe(false);
+    }
+  });
+
+  it('knows which statuses are terminal, which is what the game route warns about', () => {
+    expect(isTerminalLobbyStatus('finished')).toBe(true);
+    expect(isTerminalLobbyStatus('abandoned')).toBe(true);
+    for (const status of ['open', 'balanced', 'in_game'] as LobbyStatusValue[]) {
+      expect(isTerminalLobbyStatus(status)).toBe(false);
     }
   });
 

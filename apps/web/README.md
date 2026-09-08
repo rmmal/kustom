@@ -75,6 +75,10 @@ so two companions posting the same lobby produce one transition. An illegal move
   ```
 
   With `CRON_SECRET` unset the route answers 503 and sweeps nothing. `in_game` is never swept.
+  An end-of-game block whose party resolves only to an `abandoned` row is stored with
+  `lobby_id: null` and still rated: the sweep gave up on that lobby, so linking a real game to
+  it would be a lie. A move that claims nothing because the lobby is already terminal is one
+  `console.warn` naming the lobby and the move.
 - **`CUSTOMS_NIGHT_TZ`** (default `Africa/Cairo`) is the timezone "tonight" is measured in: a
   night runs 06:00 to 06:00 there, so a session that ends at 01:30 is one night.
 
