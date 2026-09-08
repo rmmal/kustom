@@ -6,8 +6,10 @@ anything in a game.
 
 ## 1. Download it
 
-Get `CustomsNight.exe` from the link in the group chat and put it somewhere you will find it again. Your
-desktop is fine.
+Get `CustomsNight.exe` from the link in the group chat —
+<https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe>, which always
+gives you the newest one — and put it somewhere you will find it again. Your desktop is fine. You do not
+need a GitHub account.
 
 Windows may say it does not recognise the app. Click **More info**, then **Run anyway**. It says that
 about anything that is not from a big company.
