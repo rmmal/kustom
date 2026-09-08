@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.next/
+.turbo/
+*.log
+.env
+.env.local
+.env.*.local
+packages/db/supabase/.temp/
+apps/companion/build/
+.DS_Store
