@@ -87,6 +87,8 @@ export {
   type LcuError,
   LcuErrorSchema,
   type Lobby,
+  type LobbyInvitation,
+  LobbyInvitationSchema,
   type LobbyMember,
   LobbyMemberSchema,
   LobbyMembersSchema,
@@ -118,6 +120,17 @@ export {
   type TeamId,
   TeamIdSchema,
 } from './schemas.js';
+export {
+  isSensitiveUri,
+  REDACTED,
+  type ScrubbedDroppedFrame,
+  type ScrubbedEvent,
+  SENSITIVE_URI_PREFIXES,
+  scrubDroppedFrame,
+  scrubEvent,
+  scrubText,
+  scrubValue,
+} from './scrub.js';
 export {
   ALL_EVENTS_TOPIC,
   type FrameParseResult,

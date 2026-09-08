@@ -176,6 +176,21 @@ describe('LcuSocket', () => {
       true,
     );
 
+    // A refused frame that carries a credential is logged scrubbed, never raw.
+    const droppedSecret = once<LcuSocketDroppedFrame>((handler) => socket.once('dropped', handler));
+    fake.broadcast(
+      '[8,"OnJsonApiEvent",{"eventType":"Bogus","uri":"/x","data":{"password":"hunter2-secret","ok":1}}]',
+    );
+    await droppedSecret;
+    fake.broadcast('not json at all password=plaintext-secret-value');
+    await once<LcuSocketDroppedFrame>((handler) => socket.once('dropped', handler));
+    const droppedLogs = logs.filter((entry) => entry.message === 'lcu socket dropped frame');
+    expect(droppedLogs.length).toBeGreaterThanOrEqual(3);
+    const logText = JSON.stringify(droppedLogs);
+    expect(logText).not.toContain('hunter2-secret');
+    expect(logText).not.toContain('plaintext-secret-value');
+    expect(logText).toContain('[redacted]');
+
     const received = once<LcuEvent>((handler) => socket.once('event', handler));
     fake.emitEvent('/lol-gameflow/v1/gameflow-phase', 'Update', 'Lobby');
     expect(await received).toEqual({
