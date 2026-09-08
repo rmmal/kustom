@@ -33,11 +33,16 @@ those agents, stay inside what you own and route everything else through the lea
 ```
 pnpm install
 pnpm -r typecheck            # every package
-pnpm -r test                 # vitest
+pnpm -r test                 # vitest, run mode
+pnpm lint                    # biome check .
+pnpm format                  # biome format --write .
 pnpm --filter web dev        # http://localhost:3000
-pnpm --filter companion dev  # needs the League client running on this machine
-pnpm db:migrate              # supabase db push (see packages/db/README.md)
-pnpm db:types                # regenerate packages/db/src/types.ts
+pnpm --filter companion dev  # needs the League client running on this machine (M2.1)
+pnpm db:start                # supabase start: local stack, needs Docker (see packages/db/README.md)
+pnpm db:stop                 # supabase stop
+pnpm db:reset                # supabase db reset: replay every migration locally
+pnpm db:migrate              # supabase db push to the linked hosted project
+pnpm db:types                # regenerate packages/db/src/types.ts from the local stack
 ```
 
 If a command above does not exist yet, the milestone that creates it is in `docs/02-milestones.md`. Add it there and here when you create it.

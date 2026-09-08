@@ -9,3 +9,6 @@ dist/
 packages/db/supabase/.temp/
 apps/companion/build/
 .DS_Store
+coverage/
+*.tsbuildinfo
+next-env.d.ts
