@@ -10,7 +10,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | M1.1 to M1.10 done; M1.11 (auth callback query string) queued after M2.5 leaves apps/web; hosted login verified 2026-09-08 with a wildcard allow-list entry as the interim. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13, M2.14 done; M2.6 in flight; test night needs M2.11 (Windows) and the M2 acceptance walk. |
-| M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
+| M3 Teams in Discord and on the web | in progress | M3.0, M3.1, M3.3 done (webhook posts on balanced and finished). M3.2, M3.4 to M3.10 open. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
@@ -1583,7 +1583,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > **Out of scope.** The ten-human lobby fixture (see the note under this milestone's acceptance line).
     > M4's lobby creation. Any spectator-facing UI.
 
-- [ ] **M2.15** The sit-out copy: who sits, and who swaps into their slot. M2.5 decides it (everyone around is a candidate, spectators included; most games tonight sits, then least recent sit-out) and the numbers are settled — this task is the wording and the embed field, and it ships with M3.1. The strings below are product copy and ship verbatim; `05-design.md` gains the field layout in the same session.
+- [x] **M2.15** The sit-out copy: who sits, and who swaps into their slot. M2.5 decides it (everyone around is a candidate, spectators included; most games tonight sits, then least recent sit-out) and the numbers are settled — this task is the wording and the embed field, and it ships with M3.1. The strings below are product copy and ship verbatim; `05-design.md` gains the field layout in the same session.
 
     > **The copy (product, 2026-09-08).** Two independent fields. Each appears only when it has something to
     > say, and neither ever apologises for the other.
@@ -1677,7 +1677,7 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 Goal: first real night. Ten join the lobby, teams appear in Discord with an explanation, results and leaderboard follow.
 
 - [x] **M3.0** Design system: `designer` produces `docs/05-design.md` (tokens, type, component notes, Discord embed text layouts). Lands before any M3 UI task.
-- [ ] **M3.1** On `balanced`: post the teams embed to the Discord webhook from the stored chosen split (M2.5 runs the balancer and stores the three splits): two columns with role and display rating, the explanation line, lobby name and password if known, and a sit-out line when more than ten are around. Sit-out copy goes through product before it ships (M2.15).
+- [x] **M3.1** On `balanced`: post the teams embed to the Discord webhook from the stored chosen split (M2.5 runs the balancer and stores the three splits): two columns with role and display rating, the explanation line, lobby name and password if known, and a sit-out line when more than ten are around. Sit-out copy goes through product before it ships (M2.15).
 
     > **Brief (product, 2026-09-08)**
     >
@@ -1753,7 +1753,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > types to make this happen and nobody types after it.
 
 - [ ] **M3.2** Reroll: an admin route and a small button on the tonight page that promotes split 2 or 3 and reposts. No random reroll exists.
-- [ ] **M3.3** On `finished`: result embed with winner, duration, top damage, rating deltas per player.
+- [x] **M3.3** On `finished`: result embed with winner, duration, top damage, rating deltas per player.
 
     > **Brief (product, 2026-09-08) — the two number rules**
     >
