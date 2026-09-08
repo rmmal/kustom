@@ -232,12 +232,31 @@ and the group say them in lower case).
 ### Leaderboard row
 
 - One row per player, min-height 56px (two lines), hairline between, no zebra striping.
-- Line 1: rank number, mono `t-sm` `dim`, fixed 2.5ch · name Archivo `t-md` 600, single line, ellipsis ·
-  the **Proven** number, mono `t-md` 600, right.
-- Line 2, `t-xs` `dim`: `24 games · 13W 11L · W3` and, when the player has fewer than 30 games, the
-  `settling` chip.
+- **Line 1**, left to right: rank number, mono `t-sm` `dim`, fixed 2.5ch · name Archivo `t-md` 600, single
+  line, ellipsis · **Proven**, mono `t-md` 600, right-aligned, hard against the row's right edge.
+- **Line 2**, `t-xs` `dim`, exactly this order, separated by ` · `:
+
+  ```
+  Rating 1266 · 28 games · 13W 15L · L2 · [settling]
+  ```
+
+  Rating comes **first on line 2 and sits directly under the Proven number**, right-aligned to the same edge,
+  so the two numbers form one vertical pair per row and the eye reads them as one player's two facts rather
+  than as two competing columns. Everything after it (games, W/L, streak, the `settling` chip) is left-aligned
+  under the name. So line 2 is two groups pinned to opposite edges, the same as line 1.
+- **The words print per row, not as column headers.** `Rating` prints inline on every line 2, `Proven` prints
+  nowhere on the row at all — it is the unlabelled primary number, named once in a `t-xs` `dim` header line
+  above the list (`Proven · Rating`, right-aligned over the two numbers). Reasons: the list is a stacked card
+  list on a phone, not a table, so a header row scrolls away after four rows and every row below it is then
+  two unexplained numbers; and `Rating` is the number people arrive knowing, so it is the one that needs its
+  name attached where it appears. The header line is a legend, not a header row: it does not stick, does not
+  sort, and is not tappable.
+- `Proven` is never abbreviated and the two numbers are never merged into one cell (`1266 / 654`). They are
+  different quantities on different lines.
 - Rank 1 gets `accent` on the **rank number only**. No medals, no trophies, no emoji, no highlight row.
 - The viewer's own row: 2px `accent` left border. No auto-scroll to it.
+- At ≥720px the row does not become a table. Same two lines, wider gutters. A twenty-person board does not
+  need a table and a table would need the header row this design just removed.
 - **Two numbers, one problem.** The board sorts on `ordinal = mu − 2σ` but the number everyone knows is
   `round(mu × 60)`. Showing the second while sorting on the first puts visibly out-of-order numbers on the
   page, which is the exact complaint M3.8 exists to prevent. The design shows **both**, columns labelled:
@@ -261,10 +280,27 @@ and the group say them in lower case).
 
 ### Rating history (`/p/[puuid]`)
 
+- **The plotted series is `Rating` (`round(mu × 60)`) — one series, never Proven.** The chart is titled
+  `Rating` in `t-xs` `dim` above the plot, using the same word as line 2 of the leaderboard row, so the page
+  has exactly two numbers with two names and the chart belongs to one of them.
+
+  Product's reasoning, recorded here so nobody "fixes" it later: a Proven line sags at the start of a player's
+  history for a reason the chart cannot show. Proven falls when σ is high and rises as σ falls, so a new
+  player's Proven line climbs steeply while their actual skill estimate is flat, and a returning player's dips
+  while nothing about them changed. That shape reads as "I got worse" and there is no axis, label or tooltip
+  on a 140px phone chart that can say "that is your uncertainty, not your play". Rating moves only when you
+  win or lose a game, which is the only thing a history chart can honestly claim to be about.
+
+- Consequence: **the seed reference line is in the same units** — a hairline horizontal at
+  `round(seedMu × 60)` with a `t-xs` `dim` label `seed`. Never the seed's ordinal. One unit on one chart.
+- The player's current `Proven` number is not plotted; it appears once as text beside the current Rating, with
+  the `settling` chip when under 30 games, above the chart. The chart shows the journey, the numbers beside it
+  show where the board has them today.
 - A single 1.5px `accent` line, no fill, no points, no grid. X is game index, not date — nights are uneven and
   a date axis makes a settled player look erratic.
-- One hairline horizontal reference at the seed rating with a `t-xs` `dim` label `seed`.
 - Height 140px on phone. No tooltip on hover; the recent-games list underneath is the detail view.
+- Y range is the series min/max padded by 5%, and the seed line is always inside it even when that widens the
+  range. A chart whose reference line is off-screen is a chart with no reference.
 
 ## Discord embeds
 
@@ -435,15 +471,48 @@ color        accent
 title        Season 1 · standings
 url          https://<leaderboard>
 field 1 name   Top ten
-field 1 value  `1` Lena · 2128 · 31 games
-               `2` Bilal · 1667 · 44 games
+field 1 value  `1` Lena · 1548 · 41 games
+               `2` Bilal · 1137 · 44 games
                ...
 footer       Proven stays below a new player's rating until the board has seen about 30 games.
 ```
 
-The number after the name is the **Proven** number (`round(ordinal × 60)`), matching the sort. The embed
-prints Proven only: a one-number list must show the number it is ordered by. The footer is the still-settling
-sentence in its short form (product, 2026-09-08 — final).
+The number after the name is the **Proven** number (`round(ordinal × 60)`), and the list is ordered by it,
+descending. The embed prints Proven only: a one-number list must show the number it is ordered by, and a
+second number in a proportional font with no column to sit in is unreadable. `Rating` is on the web page.
+
+Filled in with the worked example's ten (`docs/02-milestones.md` M1.4 table — `ordinal = mu − 2σ`, then
+`× 60`, rounded once). Game counts are illustrative; the docs pin none:
+
+> **Season 1 · standings**
+>
+> **Top ten**
+> `1` Lena · 1548 · 41 games
+> `2` Bilal · 1137 · 44 games
+> `3` Rami · 1062 · 39 games
+> `4` Iris · 990 · 38 games
+> `5` Karim · 987 · 40 games
+> `6` Omar · 917 · 42 games
+> `7` Hana · 882 · 37 games
+> `8` Theo · 831 · 38 games
+> `9` Nadia · 654 · 28 games
+> `10` Yuki · 534 · 24 games
+>
+> Proven stays below a new player's rating until the board has seen about 30 games.
+
+The arithmetic, so nobody has to redo it: Lena `34.80 − 2 × 4.50 = 25.80`, `× 60 = 1548`. Omar
+`24.49 − 9.20 = 15.29`, `× 60 = 917.4 → 917`. Iris and Karim land 3 points apart (`990` / `987`) on a `1578` /
+`1551` rating gap of 27 — Proven compresses, and rows will often sit close together. Design for near-ties: the
+number is `t-md` mono tabular and never abbreviated, so `990` above `987` reads as ordered rather than equal.
+
+Note the order is not the Rating order. Nadia (`1266` rating, `654` Proven) sits below Theo (`1419` / `831`)
+on both, but Yuki at `1134` rating is last on Proven by a wider margin than her rating suggests, because her
+σ is the second highest in the room. That is the whole point of the column, and it is why the footer sentence
+ships with every one of these posts and not just the first.
+
+Nadia and Yuki are under 30 games in this example, so on the **web** leaderboard both carry the `settling`
+chip. The embed has no chip: the footer sentence covers the message, and a `(settling)` suffix per line would
+double the length of the two lines that are already about the newest players.
 
 ## Implementation notes for the web engineer
 
