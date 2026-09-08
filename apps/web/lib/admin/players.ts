@@ -111,6 +111,44 @@ export async function setPlayerRoles(
   return writeOk(data.id);
 }
 
+export interface SetPlayerDisplayNameInput {
+  playerId: string;
+  /** `null` (the form posts `""`) puts the row back on automatic. */
+  displayName: string | null;
+}
+
+/**
+ * The name the group actually calls someone (M1.7).
+ *
+ * This is the only override there is: `ensurePlayers` fills `display_name` from the Riot
+ * `gameName` and keeps following it *while it still equals the stored `game_name`*, so writing
+ * anything else here freezes the name against every later rename, and writing null hands it
+ * back to the client at the next report (`lib/ingest/players.ts`, `isDisplayNameAutomatic`).
+ *
+ * Nothing here compares the new name to `game_name`: setting the name to exactly the current
+ * `gameName` is indistinguishable from automatic *by design* — that is the whole rule, and it
+ * degrades to "you typed what it already says", not to a lost override.
+ */
+export async function setPlayerDisplayName(
+  client: ServiceClient,
+  input: SetPlayerDisplayNameInput,
+): Promise<AdminWriteResult<string>> {
+  if (input.displayName !== null && input.displayName.length > 40) {
+    return writeFailed(400, 'that name is too long for a team sheet; keep it under 40 characters');
+  }
+
+  const { data, error } = await client
+    .from('players')
+    .update({ display_name: input.displayName })
+    .eq('id', input.playerId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) throw new Error(`setPlayerDisplayName failed: ${error.message}`);
+  if (data === null) return writeFailed(404, 'no such player');
+  return writeOk(data.id);
+}
+
 export interface SetPlayerDiscordIdInput {
   playerId: string;
   /** `null` unlinks. */

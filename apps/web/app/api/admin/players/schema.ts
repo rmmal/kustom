@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { booleanFieldSchema, idSchema, nullableRoleSchema, nullableTextSchema } from '@/lib/admin/formValues';
 
 /**
- * `POST /api/admin/players`. One route, three actions, discriminated on `action` — the repo's
+ * `POST /api/admin/players`. One route, four actions, discriminated on `action` — the repo's
  * convention (`CLAUDE.md`) and what lets a plain HTML form say which button was pressed with a
  * hidden field.
  *
@@ -16,6 +16,17 @@ export const setRolesRequestSchema = z.object({
   playerId: idSchema,
   mainRole: nullableRoleSchema,
   secondaryRole: nullableRoleSchema,
+});
+
+/**
+ * The name the group uses (M1.7). `displayName: null` — which is what the empty form field
+ * posts — clears the override and puts the row back on following the Riot `gameName`, so this
+ * field is the only way in *and* the only way out of an admin-set name.
+ */
+export const setNameRequestSchema = z.object({
+  action: z.literal('set-name'),
+  playerId: idSchema,
+  displayName: nullableTextSchema,
 });
 
 /** `discordId: null` (or "") unlinks. */
@@ -37,6 +48,7 @@ export const setAdminRequestSchema = z.object({
 
 export const adminPlayersRequestSchema = z.discriminatedUnion('action', [
   setRolesRequestSchema,
+  setNameRequestSchema,
   setDiscordRequestSchema,
   setAdminRequestSchema,
 ]);
@@ -45,7 +57,7 @@ export type AdminPlayersRequest = z.infer<typeof adminPlayersRequestSchema>;
 
 export const adminPlayersResponseSchema = z.object({
   ok: z.literal(true),
-  action: z.enum(['set-roles', 'set-discord', 'set-admin']),
+  action: z.enum(['set-roles', 'set-name', 'set-discord', 'set-admin']),
   playerId: z.uuid(),
 });
 

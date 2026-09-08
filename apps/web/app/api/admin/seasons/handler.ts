@@ -8,16 +8,25 @@ export async function handleStartSeason(
   input: StartSeasonRequest,
   context: AdminContext,
 ): Promise<NextResponse> {
-  const result = await startSeason(context.client, input.name);
+  const result = await startSeason(context.client, {
+    name: input.name,
+    confirmSeasonName: input.confirmSeasonName,
+  });
+  // A missing or wrong confirmation lands here as a 400: the envelope for a JSON caller, a 303
+  // back to `/admin/seasons` with `?error=` for the form. Nothing was written either way.
   if (!result.ok) return context.fail(result.status, result.error);
 
-  const season = result.value;
+  const { started, ended } = result.value;
   return context.respond(
     startSeasonResponseSchema,
     {
       ok: true,
-      season: { id: season.id, name: season.name, startsAt: season.startsAt, isActive: true },
+      season: { id: started.id, name: started.name, startsAt: started.startsAt, isActive: true },
+      endedSeason: ended === null ? null : { id: ended.id, name: ended.name },
     },
-    `${season.name} is now the active season`,
+    // What just happened, both halves of it: what ended and what the group is looking at now.
+    ended === null
+      ? `${started.name} is now the active season, and its leaderboard starts empty.`
+      : `${ended.name} has ended. ${started.name} is now the active season, and its leaderboard starts empty.`,
   );
 }

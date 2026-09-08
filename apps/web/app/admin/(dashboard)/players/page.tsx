@@ -1,10 +1,11 @@
 import { displayRating, ordinal } from '@customs/core';
 import type { Metadata } from 'next';
+import { playerLabel, shortPuuid } from '@/lib/admin/playerName';
 import { type AdminPlayerRow, listAdminPlayers } from '@/lib/admin/players';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
-import { Empty, Notices, RoleSelect, type SearchParams, shortPuuid } from '../../_components/ui';
+import { Empty, Notices, RoleSelect, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +15,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Every player, with the three things only an admin can change: roles, the Discord link and
- * the admin flag.
+ * Every player, with the four things only an admin can change: the name the group uses, roles,
+ * the Discord link and the admin flag.
  *
  * Read with the service-role client, so `discord_id` is visible — `players_public` (what every
  * public page reads) does not carry it.
@@ -32,7 +33,8 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
       <p className="admin-muted">
         {players.length} player{players.length === 1 ? '' : 's'}. Ratings are the active season
         {season === null ? ' (none active)' : ` (${season.name})`}. A row appears on its own the first time a
-        PUUID shows up in a lobby, a game or a rank report — there is no "add player".
+        PUUID shows up in a lobby, a game or a rank report — there is no "add player". A name follows the Riot
+        ID until you set one here; clear the field to put it back on automatic.
       </p>
 
       <Notices params={params} />
@@ -71,13 +73,35 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
 
 function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingPlayerId: string }) {
   const isSelf = player.id === actingPlayerId;
+  // Never a blank cell and never a bare PUUID where a name exists: the same chain every other
+  // admin surface uses, and the label the forms below refer to.
+  const label = playerLabel(player);
 
   return (
     <tr>
       <td className="admin-mono" title={player.puuid}>
         {shortPuuid(player.puuid)}
       </td>
-      <td>{player.displayName ?? '—'}</td>
+      <td>
+        {/* The readable name first, then the field that overrides it: an admin has to see what
+            the group currently reads before deciding to change it, and on a row that is still on
+            automatic the field is empty while this line already says a name. */}
+        <div>{label}</div>
+        <form method="post" action="/api/admin/players">
+          <input type="hidden" name="action" value="set-name" />
+          <input type="hidden" name="playerId" value={player.id} />
+          <input
+            type="text"
+            name="displayName"
+            size={14}
+            maxLength={40}
+            defaultValue={player.displayName ?? ''}
+            placeholder="follows the Riot ID"
+            aria-label={`Name for ${label}`}
+          />
+          <button type="submit">Save</button>
+        </form>
+      </td>
       <td>{player.gameName === null ? '—' : `${player.gameName}#${player.tagLine ?? '???'}`}</td>
       <td>{formatRank(player)}</td>
       <td>{formatRating(player)}</td>
@@ -102,7 +126,7 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
             size={20}
             defaultValue={player.discordId ?? ''}
             placeholder="snowflake, empty to unlink"
-            aria-label={`Discord id for ${player.displayName ?? player.puuid}`}
+            aria-label={`Discord id for ${label}`}
           />
           <button type="submit">Save</button>
         </form>
