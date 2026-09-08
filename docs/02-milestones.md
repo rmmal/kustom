@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | M1.1 to M1.10 done; M1.11 (auth callback query string) queued after M2.5 leaves apps/web; hosted login verified 2026-09-08 with a wildcard allow-list entry as the interim. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.1 to M2.4, M2.9, M2.10, M2.13 done; M2.14+M2.5 in review; M2.6 next. |
+| M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13, M2.14 done; M2.6 in flight; test night needs M2.11 (Windows) and the M2 acceptance walk. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -576,7 +576,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > lists it. Everything else in point 6 stands: the block is not posted, a block that reaches the API anyway is
     > refused by name, nothing is written, nothing is rated, and no status is invented for it.
 
-- [ ] **M2.14** A lobby row is one game cycle, not one party. `lobbies.lcu_party_id` is unique and M2.9 freezes the roster from `in_game` through `finished`, but the client keeps the same party all night: in `packages/lcu/fixtures/16.17/ws-events.ndjson`, party `e3c69392` was created at 16:36:41, its game ran 16:37:39 (`GameStart`) to 16:53:05 (`EndOfGame`), and the same party id was still emitting lobby `Update` events at 17:39:27 with no new `Create` and no new id. So without this, only the first game of the night is ever balanced. **Approach (lead, 2026-09-08):** migration `0003` drops the plain unique on `lobbies.lcu_party_id` and replaces it with a partial unique index `where status in ('open','balanced','in_game')` — at most one live lobby per party. A lobby post whose latest row for that party is `finished` or `abandoned` creates a **new** lobby row with the same party id; `selectLobby` (lobby ingest) and `findLobbyId` (game ingest) resolve a party to its live row, falling back to the newest row for a game post that arrives after the cycle closed. M2.7's `lastSplit` lookup is untouched (it reads `splits.roster_key`, not lobbies) and so is the M2.9 freeze: the old row keeps its ten frozen members and its `games` link. No data is lost and nothing is rewritten, so this is a migration, not a decision. **Sequenced immediately after M2.10** — same engineer, same package, same contract pass.
+- [x] **M2.14** A lobby row is one game cycle, not one party. `lobbies.lcu_party_id` is unique and M2.9 freezes the roster from `in_game` through `finished`, but the client keeps the same party all night: in `packages/lcu/fixtures/16.17/ws-events.ndjson`, party `e3c69392` was created at 16:36:41, its game ran 16:37:39 (`GameStart`) to 16:53:05 (`EndOfGame`), and the same party id was still emitting lobby `Update` events at 17:39:27 with no new `Create` and no new id. So without this, only the first game of the night is ever balanced. **Approach (lead, 2026-09-08):** migration `0003` drops the plain unique on `lobbies.lcu_party_id` and replaces it with a partial unique index `where status in ('open','balanced','in_game')` — at most one live lobby per party. A lobby post whose latest row for that party is `finished` or `abandoned` creates a **new** lobby row with the same party id; `selectLobby` (lobby ingest) and `findLobbyId` (game ingest) resolve a party to its live row, falling back to the newest row for a game post that arrives after the cycle closed. M2.7's `lastSplit` lookup is untouched (it reads `splits.roster_key`, not lobbies) and so is the M2.9 freeze: the old row keeps its ten frozen members and its `games` link. No data is lost and nothing is rewritten, so this is a migration, not a decision. **Sequenced immediately after M2.10** — same engineer, same package, same contract pass.
 
     > **Why (product).** This is the whole scene failing at 21:30. Game one gets teams; game two, three and
     > four get silence, and the group goes back to arguing while the bot watches. It is also the thing M2.7
@@ -1069,7 +1069,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > Any lookup by Riot ID or summoner name — PUUID is the identity and this task never resolves anything the
     > other way round.
 
-- [ ] **M2.5** Server: lobby state machine (open, balanced, in_game, finished, abandoned) with the 10-second stability rule; on eog, insert `games` and `game_players`, run `rateGame`, update `ratings`. Ignore eog blocks whose `gameType` is not `CUSTOM_GAME`.
+- [x] **M2.5** Server: lobby state machine (open, balanced, in_game, finished, abandoned) with the 10-second stability rule; on eog, insert `games` and `game_players`, run `rateGame`, update `ratings`. Ignore eog blocks whose `gameType` is not `CUSTOM_GAME`.
 
     > **Note (product).** M1.5 already stores *every* `CUSTOM_GAME` eog block as a `games` row, remakes and
     > short surrenders with fewer than ten participants included, so M2.5 cannot assume only real games reach
@@ -1445,7 +1445,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > companion dev` stays the path for the two of us who develop it. Any change to what the companion does:
     > this task changes only how it is delivered and what a friend reads.
 
-- [ ] **M2.7** `lastSplit` for the balancer: when a lobby reaches `balanced`, the API looks up the most recent chosen split (any night) whose lobby had exactly the same ten puuids as this lobby, and passes the five puuids of one of its sides as `lastSplit`. If no such split exists, it passes null. Never pass a split from a lobby with a different roster.
+- [x] **M2.7** (landed inside M2.5: roster_key lookup feeds lastSplit, tested) `lastSplit` for the balancer: when a lobby reaches `balanced`, the API looks up the most recent chosen split (any night) whose lobby had exactly the same ten puuids as this lobby, and passes the five puuids of one of its sides as `lastSplit`. If no such split exists, it passes null. Never pass a split from a lobby with a different roster.
 
     > **Acceptance check (product).** With a stored chosen split for the same ten players, a new lobby with those
     > ten sends a `lastSplit` of exactly five puuids drawn from that stored split's blue or red side, and the
@@ -1453,7 +1453,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > balance. With no history for these ten, `lastSplit` is null. Side colour of the stored split does not
     > change the result (M1.4 already treats it as colour-agnostic).
 
-- [ ] **M2.8** Widen the game-ingest participant check so a spectator's companion is not locked out. `POST /api/companion/game` accepts an eog block when the token's player PUUID appears among the game's `participants` **or** is a member of the lobby with the same `lcu_party_id` as the posted game, `isSpectator` included. A token whose player is in neither list still gets a 403. Backfill's admin-approved exception is unchanged.
+- [x] **M2.8** Widen the game-ingest participant check so a spectator's companion is not locked out. `POST /api/companion/game` accepts an eog block when the token's player PUUID appears among the game's `participants` **or** is a member of the lobby with the same `lcu_party_id` as the posted game, `isSpectator` included. A token whose player is in neither list still gets a 403. Backfill's admin-approved exception is unchanged.
 
     > **Why (product).** `companionLobbyMemberSchema` carries `isSpectator`, so a friend who sits out a
     > round and runs the companion while watching is a real, normal case. Under the M1.5 rule their eog POST
