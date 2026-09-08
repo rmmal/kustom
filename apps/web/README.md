@@ -82,16 +82,16 @@ so two companions posting the same lobby produce one transition. An illegal move
 - **`CUSTOMS_NIGHT_TZ`** (default `Africa/Cairo`) is the timezone "tonight" is measured in: a
   night runs 06:00 to 06:00 there, so a session that ends at 01:30 is one night.
 
-## Discord (M3.1)
+## Discord (M3.1, M3.3)
 
-The teams embed, posted by the API to the webhook URL in `discord_config`. There is no bot here — that is
-`apps/discord` in M4 — and nobody types anything to make the message happen. M3.3 adds the result embed.
+Two messages, both posted by the API to the webhook URL in `discord_config`. There is no bot here — that is
+`apps/discord` in M4 — and nobody types anything to make either message happen.
 
 ```
-lib/discord/embeds.ts    pure: teamsEmbed(input) -> the webhook JSON. No I/O, no clock.
+lib/discord/embeds.ts    pure: teamsEmbed(input) / resultEmbed(input) -> the webhook JSON. No I/O, no clock.
 lib/discord/assemble.ts  rows and hook events -> those inputs. Names are read fresh; `Someone` is the fallback.
 lib/discord/webhook.ts   the only I/O: one POST, 5 s, one retry, never throws.
-lib/discord/post.ts      postTeamsForEvent / postTeamsForSplit, and the hook object.
+lib/discord/post.ts      postTeamsForEvent / postTeamsForSplit / postResultForGame, and the hook object.
 lib/ingest/discord.ts    registers the hooks at module load. The companion routes import it for the side effect.
 ```
 
@@ -99,6 +99,11 @@ lib/ingest/discord.ts    registers the hooks at module load. The companion route
   stored explanation verbatim as the description, `Sitting out` and `Seats` when somebody sits or has to move
   (M2.15's copy), and `Lobby` when the client reported a name. Layout and every string are `docs/05-design.md`,
   "Discord embeds"; the sit-out wording is product's and is not edited here.
+- **On `finished`**: the result embed — winner, duration, top damage, and each player's new rating with its
+  change. A change is always `displayRating(muAfter) - displayRating(muBefore)` from `displayDelta`
+  (`lib/ratingDisplay.ts`), the one helper every surface calls, so Discord and the web page can never print
+  different numbers. **No team total of deltas, ever** (`docs/00-product.md`, "The numbers on the screen").
+  Only a game the fold rated is posted: a remake, a short surrender or a second companion's re-post is silent.
 - **When Discord is down or unconfigured**, nothing else changes: the splits are stored, the fold runs, the
   route answers 200. The post is one POST with a five-second budget, one retry on a 5xx or a network error and
   one wait on a 429; then a log line. `lib/ingest/hooks.ts` is the seam and a hook that throws is caught there.

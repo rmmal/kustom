@@ -1,6 +1,42 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`a night, from the tenth join > posts one teams embed on balanced, and nothing more when the companion posts again 1`] = `
+exports[`a night, from the tenth join to the result > posts one result embed when the end-of-game block is rated, and none on a re-post 1`] = `
+{
+  "embeds": [
+    {
+      "color": 15363945,
+      "description": "Even 50%. Top damage: Player9, 22.3k.",
+      "fields": [
+        {
+          "inline": true,
+          "name": "Blue",
+          "value": "\`top\` Player0 · 1107 (-93)
+\`jungle\` Player1 · 1107 (-93)
+\`mid\` Player2 · 1107 (-93)
+\`adc\` Player3 · 1107 (-93)
+\`support\` Player4 · 1107 (-93)",
+        },
+        {
+          "inline": true,
+          "name": "Red",
+          "value": "\`top\` Player5 · 1293 (+93)
+\`jungle\` Player6 · 1293 (+93)
+\`mid\` Player7 · 1293 (+93)
+\`adc\` Player8 · 1293 (+93)
+\`support\` Player9 · 1293 (+93)",
+        },
+      ],
+      "footer": {
+        "text": "Season 1 · game <n>",
+      },
+      "timestamp": "<timestamp>",
+      "title": "Red wins · 32:00",
+    },
+  ],
+}
+`;
+
+exports[`a night, from the tenth join to the result > posts one teams embed on balanced, and nothing more when the companion posts again 1`] = `
 {
   "embeds": [
     {

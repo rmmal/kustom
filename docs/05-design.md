@@ -443,10 +443,12 @@ timestamp    game end
 Line format, deliberately the same shape as the teams embed so the two messages read as one scoreboard:
 
 ```
-`adc` Bilal · 1667 (-46)
+`adc` Bilal · 1668 (-45)
 ```
 
-Filled in — Red wins the worked example, the underdog at 46%:
+Filled in — Red wins the worked example, the underdog at 46%. **These are `rateGame`'s numbers** (M3.3,
+2026-09-08: the earlier hand-computed version of this table was replaced by the output of the `openskill`
+package, pinned as a snapshot in `apps/web/lib/discord/embeds.test.ts`):
 
 > **Red wins · 34:12**
 >
@@ -454,22 +456,23 @@ Filled in — Red wins the worked example, the underdog at 46%:
 >
 > | **Blue** | **Red** |
 > |---|---|
-> | `top` Hana · 1392 (-42) | `top` Omar · 1512 (+43) |
-> | `jungle` Iris · 1530 (-48) | `jungle` Rami · 1684 (+46) |
-> | `mid` Karim · 1507 (-44) | `mid` Nadia · 1318 (+52) |
-> | `adc` Bilal · 1667 (-46) | `adc` Lena · 2128 (+40) |
-> | `support` Theo · 1371 (-48) | `support` Yuki · 1184 (+50) |
+> | `top` Hana · 1393 (-41) | `top` Omar · 1510 (+41) |
+> | `jungle` Iris · 1531 (-47) | `jungle` Rami · 1683 (+45) |
+> | `mid` Karim · 1508 (-43) | `mid` Nadia · 1316 (+50) |
+> | `adc` Bilal · 1668 (-45) | `adc` Lena · 2127 (+39) |
+> | `support` Theo · 1372 (-47) | `support` Yuki · 1182 (+48) |
 >
 > Season 1 · game 47
 
-Notes on the numbers above: they are consistent with the model (movement scales with each player's σ², so
-Nadia at σ 5.10 moves most and Lena at σ 4.50 moves least, and the underdog win moves everyone more than a
-favourite's win would), but they were computed by hand from the two-team Plackett-Luce reduction, not by the
-`openskill` package. **Verify against `rateGame` before pinning them in a test.** Duration and top damage are
-invented; the docs pin no result for the worked example.
+The shape the hand version predicted survived contact with the package — Nadia at σ 5.10 moves most, Lena at
+σ 4.50 moves least — but every individual number moved by one or two points, which is why nothing here may be
+retyped by hand again. Duration and top damage are still invented; the docs pin no result for the worked
+example.
 
-The two columns do not sum to zero (−228 and +231). That is correct and it is why the result embed prints no
-team totals.
+**On this roster the two columns do happen to cancel** (−223 and +223), which the hand-computed version did
+not (it had −228 and +231). They are not guaranteed to: movement scales with each player's own σ² and the two
+sides' σ² sums are not equal, so the cancellation here is arithmetic luck, not a property. The rule is
+unchanged and it is a rule about the embed, not about the numbers: **the result embed prints no team totals.**
 
 Losers keep their side's field first-or-second position by side number, never reordered to put the winner
 first: the two embeds must line up so that "my column" is in the same place both times.

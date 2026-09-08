@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { PoolMember, SeatMove } from '../ingest/selection';
 import { workedBalance, workedNames, workedPool, workedPuuid } from '../testing/workedExample';
 import type { NameLookup } from './assemble';
-import { buildTeamsInput, readAssignments, type TeamsSource, teamsPuuids } from './assemble';
+import {
+  buildResultInput,
+  buildTeamsInput,
+  type ResultSource,
+  readAssignments,
+  type TeamsSource,
+  teamsPuuids,
+} from './assemble';
 
 /**
  * The assembler: rows and events in, embed inputs out. Everything here is the pure half —
@@ -141,6 +148,68 @@ describe('teamsPuuids', () => {
     expect(new Set(puuids).size).toBe(12);
     expect(puuids).toContain('puuid-sara');
     expect(puuids).toContain('puuid-deniz');
+  });
+});
+
+function resultSource(overrides: Partial<ResultSource> = {}): ResultSource {
+  const players = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'].map((letter, index) => ({
+    puuid: `puuid-${letter}`,
+    name: letter.toUpperCase(),
+    side: (index < 5 ? 100 : 200) as 100 | 200,
+    role: null,
+    damage: 1_000 * (index + 1),
+    muBefore: 25,
+    muAfter: index < 5 ? 24.5 : 25.5,
+  }));
+
+  return {
+    winningSide: 200,
+    durationS: 1_800,
+    seasonName: 'Season 1',
+    gameNumber: 3,
+    blueWinProb: 0.5,
+    endedAt: '2026-09-08T21:00:00.000Z',
+    players,
+    ...overrides,
+  };
+}
+
+describe('buildResultInput', () => {
+  it('rounds both ratings before subtracting, so the row adds up', () => {
+    const input = buildResultInput(resultSource(), CONTEXT);
+    expect(input?.blue[0]).toMatchObject({ rating: 1470, delta: -30 });
+    expect(input?.red[0]).toMatchObject({ rating: 1530, delta: 30 });
+    for (const player of [...(input?.blue ?? []), ...(input?.red ?? [])]) {
+      expect(player.rating - player.delta).toBe(1500);
+    }
+  });
+
+  it('is null for a game the fold did not rate: there is nothing to say', () => {
+    const source = resultSource();
+    const players = source.players.map((player, index) =>
+      index === 0 ? { ...player, muBefore: null, muAfter: null } : player,
+    );
+    expect(buildResultInput({ ...source, players }, CONTEXT)).toBeNull();
+    expect(buildResultInput({ ...source, players: [] }, CONTEXT)).toBeNull();
+  });
+
+  it('picks the single highest damage, and says nothing when the block carried none', () => {
+    expect(buildResultInput(resultSource(), CONTEXT)?.topDamage).toEqual({ name: 'J', damage: 10_000 });
+
+    const source = resultSource();
+    const players = source.players.map((player) => ({ ...player, damage: 0 }));
+    expect(buildResultInput({ ...source, players }, CONTEXT)?.topDamage).toBeNull();
+  });
+
+  it('breaks a damage tie on puuid, so the same game always names the same player', () => {
+    const source = resultSource();
+    const players = source.players.map((player) => ({ ...player, damage: 5_000 }));
+    expect(buildResultInput({ ...source, players }, CONTEXT)?.topDamage?.name).toBe('A');
+  });
+
+  it('timestamps the game, not the post', () => {
+    const input = buildResultInput(resultSource(), { ...CONTEXT, timestamp: '2026-09-08T21:00:00.000Z' });
+    expect(input?.timestamp).toBe('2026-09-08T21:00:00.000Z');
   });
 });
 

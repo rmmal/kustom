@@ -7,11 +7,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { mintCompanionToken } from '../companionAuth';
 import { ensurePlayers } from '../ingest/players';
 import { ROSTER_STABLE_MS } from '../lobbyState';
+import { eogBody, testGameId } from '../testing/fixtures';
 import { resolveLocalStack } from '../testing/localStack';
 
 /**
- * M3.1 end to end: the companion posts a lobby through the real route, the state machine
- * balances, and one teams embed lands on a webhook that is a real HTTP server in this process.
+ * M3.1 and M3.3 end to end: the companion posts a lobby through the real route, the state
+ * machine balances, and one teams embed lands on a webhook that is a real HTTP server in this
+ * process. Then the end-of-game block, and the result embed.
  *
  * What it is here to prove, beyond "a message arrives":
  *
@@ -38,6 +40,7 @@ if (stack === null) {
 
   // Importing the routes is what registers the Discord hooks (`lib/ingest/discord.ts`).
   const { POST: postLobby } = await import('@/app/api/companion/lobby/route');
+  const { POST: postGame } = await import('@/app/api/companion/game/route');
   const { resetWebhookWarning } = await import('./webhook');
 
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
@@ -48,6 +51,7 @@ if (stack === null) {
   const guildId = `it-${runId}-guild`;
   const puuids = Array.from({ length: 10 }, (_, index) => `it-${runId}-dc${String(index).padStart(2, '0')}`);
   const partyIds = new Set<string>();
+  const gameIds = new Set<number>();
 
   let token = '';
   let webhookUrl = '';
@@ -58,6 +62,12 @@ if (stack === null) {
   function party(name: string): string {
     const id = `dc-${runId}-${name}`;
     partyIds.add(id);
+    return id;
+  }
+
+  function gameNumber(): number {
+    const id = testGameId() + gameIds.size;
+    gameIds.add(id);
     return id;
   }
 
@@ -165,6 +175,10 @@ if (stack === null) {
   afterAll(async () => {
     await db.from('discord_config').delete().eq('guild_id', guildId);
     await db
+      .from('games')
+      .delete()
+      .in('lcu_game_id', [...gameIds]);
+    await db
       .from('lobbies')
       .delete()
       .in('lcu_party_id', [...partyIds]);
@@ -176,7 +190,7 @@ if (stack === null) {
     });
   });
 
-  describe('a night, from the tenth join', () => {
+  describe('a night, from the tenth join to the result', () => {
     it('posts one teams embed on balanced, and nothing more when the companion posts again', async () => {
       const id = party('night');
       const balanced = await driveToBalanced(id);
@@ -189,6 +203,26 @@ if (stack === null) {
       // The companion keeps posting the same lobby; the transition has already happened.
       const again = await postLobby(request(lobbyBody(id, puuids)));
       expect(again.status).toBe(200);
+      expect(posts).toHaveLength(1);
+    });
+
+    it('posts one result embed when the end-of-game block is rated, and none on a re-post', async () => {
+      const id = party('night');
+      const gameId = gameNumber();
+      const body = eogBody({ gameId, puuids, partyId: id, winningSide: 200 });
+
+      const first = await postGame(request(body));
+      expect(first.status).toBe(200);
+      expect(posts).toHaveLength(1);
+
+      const posted = posts[0]?.body ?? {};
+      const embed = (posted.embeds as Record<string, unknown>[])[0];
+      expect(embed?.title).toBe('Red wins · 32:00');
+      expect(normalise(posted)).toMatchSnapshot();
+
+      // The second companion in the same game: stored, rated and posted by nobody.
+      const second = await postGame(request(body));
+      expect(second.status).toBe(200);
       expect(posts).toHaveLength(1);
     });
   });

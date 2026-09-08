@@ -1,15 +1,23 @@
 import { activeSeasonId, loadPool } from '../ingest/balance';
-import type { LobbyBalancedEvent, LobbyHook } from '../ingest/hooks';
+import type { GameFinishedEvent, LobbyBalancedEvent, LobbyHook } from '../ingest/hooks';
 import { compareForSitOut, type PoolMember, planSeats } from '../ingest/selection';
 import { DEFAULT_NIGHT_TIME_ZONE } from '../night';
 import { tonightPageUrl } from '../siteUrl';
 import { getServiceClient, type ServiceClient } from '../supabase';
-import { buildTeamsInput, loadNames, readAssignments, type TeamsSource, teamsPuuids } from './assemble';
-import { teamsEmbed } from './embeds';
+import {
+  buildResultInput,
+  buildTeamsInput,
+  loadNames,
+  loadResultSource,
+  readAssignments,
+  type TeamsSource,
+  teamsPuuids,
+} from './assemble';
+import { resultEmbed, teamsEmbed } from './embeds';
 import { postToWebhook, type WebhookOptions, type WebhookOutcome } from './webhook';
 
 /**
- * The teams posts and the hook that fires them (M3.1; M3.3 adds the result post).
+ * The three posts and the hook that fires them (M3.1, M3.3).
  *
  * Every function here answers with a {@link WebhookOutcome} and none of them throws for a
  * Discord problem: a webhook that is down must cost the group nothing but a log line. The
@@ -79,6 +87,29 @@ export async function postTeamsForSplit(
 }
 
 /**
+ * The result embed for a game the fold just rated. `skipped` when the game has no ratings —
+ * a remake, a short surrender, or a block somebody else already rated — because the whole
+ * message is what the game did to ten ratings.
+ */
+export async function postResultForGame(
+  client: ServiceClient,
+  gameId: string,
+  options: PostOptions = {},
+): Promise<WebhookOutcome> {
+  const source = await loadResultSource(client, gameId);
+  if (source === null) return SKIPPED('no such game');
+
+  const input = buildResultInput(source, {
+    url: tonightPageUrl(options.requestOrigin),
+    // The game's own end, not now: the embed is a record of something that happened.
+    timestamp: source.endedAt,
+  });
+  if (input === null) return SKIPPED('game is not rated');
+
+  return postToWebhook(client, resultEmbed(input), 'result embed', options);
+}
+
+/**
  * The stored split, the lobby it belongs to, and the pool around it, in the shape the pure
  * builder wants. `null` when the split is gone.
  */
@@ -135,5 +166,13 @@ export const discordLobbyHook: LobbyHook = {
     // `getServiceClient` reads the environment when it is called, never at import, so this
     // module can be imported by a build that has no Supabase keys.
     await postTeamsForEvent(getServiceClient(), event);
+  },
+  onFinished: async (event: GameFinishedEvent): Promise<void> => {
+    // Only a game the fold actually rated. The route already narrows this to the post that
+    // changed something, so two companions in one game produce one message.
+    if (!event.rated) return;
+    await postResultForGame(getServiceClient(), event.gameId, {
+      requestOrigin: event.requestOrigin ?? null,
+    });
   },
 };

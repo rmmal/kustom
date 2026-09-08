@@ -1,7 +1,7 @@
-import type { Role } from '@customs/core';
+import type { Role, Side } from '@customs/core';
 
 /**
- * The Discord embeds, as pure functions (M3.1 teams; M3.3 adds the result embed here).
+ * The Discord embeds, as pure functions (M3.1 teams, M3.3 result).
  *
  * Nothing in this file reads the database, the clock or the environment: it takes plain data
  * — names, roles, display ratings, an explanation string, a timestamp — and returns the JSON
@@ -15,6 +15,8 @@ import type { Role } from '@customs/core';
 
 /** Bar colours, as the integers the API passes (`05-design.md`, dark palette). */
 export const ACCENT_COLOR = 14_721_854;
+export const BLUE_COLOR = 7_054_839;
+export const RED_COLOR = 15_363_945;
 
 /** Lane order. Every list of five is printed in it, on both embeds, so the two line up. */
 const LANE_ORDER: readonly Role[] = ['top', 'jungle', 'mid', 'adc', 'support'];
@@ -88,6 +90,33 @@ export interface TeamsEmbedInput {
   timestamp: string;
 }
 
+export interface ResultPlayer {
+  puuid: string;
+  name: PlayerName;
+  /** `null` when neither the scoreboard nor the split says where they played. */
+  role: Role | null;
+  /** `displayRating(muAfter)`. */
+  rating: number;
+  /** `displayRating(muAfter) - displayRating(muBefore)`, from `displayDelta`. */
+  delta: number;
+}
+
+export interface ResultEmbedInput {
+  winningSide: Side;
+  durationS: number;
+  blue: readonly ResultPlayer[];
+  red: readonly ResultPlayer[];
+  /** The chosen split's `blue_win_prob`, or `null` when this game had no stored split. */
+  blueWinProb: number | null;
+  /** The single highest `damage_to_champs`, or `null` when the block carried none. */
+  topDamage: { name: PlayerName; damage: number } | null;
+  seasonName: string;
+  /** Which game of the season this is, or `null` when it could not be counted. */
+  gameNumber: number | null;
+  url?: string | undefined;
+  timestamp: string;
+}
+
 /**
  * The teams embed: two columns with role and display rating, the explanation verbatim, the
  * sit-out copy when somebody sits, and the lobby name and password so a straggler can get in.
@@ -126,9 +155,71 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
   };
 }
 
+/**
+ * The result embed: who won, how long it took, the top damage, and what it did to each
+ * player's rating.
+ *
+ * The two columns keep their side's position — blue first, always — so "my column" is in the
+ * same place it was in the teams embed. There is no team total of deltas and there never will
+ * be one: the two sides do not sum to zero, and printing that invites an argument about a
+ * thing that is working correctly (`00-product.md`, "The numbers on the screen").
+ */
+export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
+  const winner = input.winningSide === 100 ? 'Blue' : 'Red';
+  const description = [favoredClause(input.blueWinProb), topDamageClause(input.topDamage)]
+    .filter((clause) => clause !== null)
+    .join(' ');
+
+  return {
+    embeds: [
+      {
+        color: input.winningSide === 100 ? BLUE_COLOR : RED_COLOR,
+        title: `${winner} wins · ${formatDuration(input.durationS)}`,
+        ...(input.url === undefined ? {} : { url: input.url }),
+        ...(description.length > 0 ? { description } : {}),
+        fields: [
+          { name: 'Blue', value: inLaneOrder(input.blue).map(resultLine).join('\n'), inline: true },
+          { name: 'Red', value: inLaneOrder(input.red).map(resultLine).join('\n'), inline: true },
+        ],
+        footer: {
+          text:
+            input.gameNumber === null ? input.seasonName : `${input.seasonName} · game ${input.gameNumber}`,
+        },
+        timestamp: input.timestamp,
+      },
+    ],
+  };
+}
+
 /** `` `top` Hana · 1434 `` , plus ` · off-role` on the line of whoever is off it. */
 function teamsLine(player: TeamsPlayer): string {
   return `\`${player.role}\` ${renderName(player.name)} · ${player.rating}${player.offRole ? ' · off-role' : ''}`;
+}
+
+/** `` `adc` Bilal · 1667 (-46) ``. The same shape as a teams line, on purpose. */
+function resultLine(player: ResultPlayer): string {
+  const role = player.role === null ? '' : `\`${player.role}\` `;
+  return `${role}${renderName(player.name)} · ${player.rating} (${formatDelta(player.delta)})`;
+}
+
+/** `+43`, `-46`, `+0`. Signed always: a delta with no sign reads as a rating. */
+export function formatDelta(delta: number): string {
+  return delta >= 0 ? `+${delta}` : String(delta);
+}
+
+/** `34:12`, and `1:02:03` for the long ones. */
+export function formatDuration(durationS: number): string {
+  const total = Math.max(0, Math.round(durationS));
+  const hours = Math.floor(total / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+  const seconds = total % 60;
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+}
+
+/** `47.3k` over a thousand, the plain number below it. */
+export function formatDamage(damage: number): string {
+  return damage >= 1_000 ? `${(damage / 1_000).toFixed(1)}k` : String(Math.round(damage));
 }
 
 /**
@@ -176,10 +267,30 @@ function lobbyFieldValue(lobby: { name: string | null; password: string | null }
   return password.length === 0 ? `\`${name}\`` : `\`${name}\` · password \`${password}\``;
 }
 
-function inLaneOrder<T extends { role: Role; puuid: string }>(players: readonly T[]): T[] {
+/**
+ * `Blue was favored 54%.` Past tense, because the game has been played; the teams embed's
+ * present-tense clause is core's and this one is not a recomposition of it — it is the same
+ * number said about a game that is over.
+ */
+function favoredClause(blueWinProb: number | null): string | null {
+  if (blueWinProb === null) return null;
+  const percent = Math.round(blueWinProb * 100);
+  if (percent > 50) return `Blue was favored ${percent}%.`;
+  if (percent < 50) return `Red was favored ${100 - percent}%.`;
+  return 'Even 50%.';
+}
+
+function topDamageClause(top: { name: PlayerName; damage: number } | null): string | null {
+  if (top === null) return null;
+  return `Top damage: ${renderName(top.name)}, ${formatDamage(top.damage)}.`;
+}
+
+function inLaneOrder<T extends { role: Role | null; puuid: string }>(players: readonly T[]): T[] {
   return [...players].sort((a, b) => {
-    const rank = LANE_ORDER.indexOf(a.role) - LANE_ORDER.indexOf(b.role);
-    return rank !== 0 ? rank : a.puuid < b.puuid ? -1 : a.puuid > b.puuid ? 1 : 0;
+    const rankA = a.role === null ? LANE_ORDER.length : LANE_ORDER.indexOf(a.role);
+    const rankB = b.role === null ? LANE_ORDER.length : LANE_ORDER.indexOf(b.role);
+    if (rankA !== rankB) return rankA - rankB;
+    return a.puuid < b.puuid ? -1 : a.puuid > b.puuid ? 1 : 0;
   });
 }
 
