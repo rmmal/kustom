@@ -14,7 +14,7 @@
  * The token is never printed, logged or echoed; the hidden prompt masks it.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -111,11 +111,9 @@ export function loadConfig(dir: string): LoadConfigResult {
   try {
     raw = JSON.parse(text);
   } catch (error) {
-    return {
-      status: 'invalid',
-      path,
-      reason: `not JSON: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    // Never V8's message: it quotes a snippet of the source, which for a hand-edited file may be the token.
+    const position = error instanceof Error ? /position (\d+)/.exec(error.message)?.[1] : undefined;
+    return { status: 'invalid', path, reason: position ? `not JSON (at position ${position})` : 'not JSON' };
   }
   const parsed = configSchema.safeParse(raw);
   if (parsed.success) {
@@ -142,6 +140,15 @@ export function saveConfig(dir: string, config: CompanionConfig): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const body = `${JSON.stringify(configSchema.parse(config), null, 2)}\n`;
   writeFileSync(path, body, { mode: 0o600 });
+  // `mode` only applies when the file is created; a pre-existing file (the partial-config first-run path)
+  // keeps whatever mode it had, so tighten it explicitly. Windows has no POSIX modes; ignore failure there.
+  try {
+    chmodSync(path, 0o600);
+  } catch (error) {
+    if (process.platform !== 'win32') {
+      throw error;
+    }
+  }
   return path;
 }
 

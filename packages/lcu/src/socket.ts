@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { basicAuthHeader, LCU_HOST } from './auth.js';
 import type { LockfileCredentials } from './lockfile.js';
 import { type Logger, silentLogger } from './log.js';
+import { scrubDroppedFrame } from './scrub.js';
 import { DEFAULT_TLS_MODE, type TlsMode, tlsConnectionOptions } from './tls.js';
 
 /** Subscribes to every JSON API event. */
@@ -232,13 +233,20 @@ export class LcuSocket extends EventEmitter<LcuSocketEvents> {
           case 'empty':
             this.logger.debug('lcu socket empty frame');
             return;
-          case 'malformed':
+          case 'malformed': {
+            // Never the raw text: a frame the schema refused can still be a login or chat payload.
+            const scrubbed = scrubDroppedFrame(result.raw);
             this.logger.warn('lcu socket dropped frame', {
               reason: result.reason,
-              preview: result.raw.slice(0, 200),
+              ...('preview' in scrubbed
+                ? { preview: scrubbed.preview }
+                : 'uri' in scrubbed
+                  ? { uri: scrubbed.uri, redacted: true }
+                  : { frame: scrubbed.frame }),
             });
             this.emit('dropped', { reason: result.reason, raw: result.raw });
             return;
+          }
         }
       });
 

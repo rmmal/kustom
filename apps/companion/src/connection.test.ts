@@ -103,6 +103,7 @@ async function start(
     hooks?: Partial<CompanionHooks>;
     logger?: CompanionLogger;
     lockfilePort?: number;
+    requestTimeoutMs?: number;
   } = {},
 ): Promise<Harness> {
   const fake = await startFakeLcu({ password: PASSWORD, routes: { ...baseRoutes, ...options.routes } });
@@ -122,7 +123,7 @@ async function start(
     tls: { mode: 'pinned', ca: fake.ca },
     pollIntervalMs: 40,
     backoff: { minMs: 20, maxMs: 60 },
-    requestTimeoutMs: 2_000,
+    requestTimeoutMs: options.requestTimeoutMs ?? 2_000,
   });
   const transitions: Transition[] = [];
   machine.on('transition', (transition) => transitions.push(transition));
@@ -371,6 +372,28 @@ describe('ConnectionMachine', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(h.fake.wsReceived).toHaveLength(1);
     expect(h.machine.connected).toBeNull();
+  });
+
+  it('stops cleanly while the connect-time reads are in flight and then fail, without an illegal transition', async () => {
+    // stop() lands between `client_reached` and the end of buildContext; the pending current-summoner read then
+    // times out (a network failure). That used to fire `client_lost` from `stopped` and log it as illegal.
+    const summoner = baseRoutes['GET /lol-summoner/v1/current-summoner'];
+    if (!summoner) {
+      throw new Error('base route missing');
+    }
+    const h = await start({
+      routes: { 'GET /lol-summoner/v1/current-summoner': { ...summoner, delayMs: 600 } },
+      requestTimeoutMs: 150,
+    });
+    await h.machine.waitForState('connected');
+    h.machine.stop();
+    await h.run;
+    expect(h.machine.state).toBe('stopped');
+    expect(h.record.connected).toHaveLength(0);
+    expect(h.record.disconnected).toEqual([]);
+    expect(h.logger.lines.filter((line) => line.level === 'error')).toEqual([]);
+    expect(h.logger.lines.some((line) => line.message.includes('illegal connection transition'))).toBe(false);
+    expect(h.transitions.map((t) => t.event)).toEqual(['client_reached', 'stop']);
   });
 
   it('stops cleanly while waiting for a lockfile', async () => {

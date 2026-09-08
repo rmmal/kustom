@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -122,11 +122,37 @@ describe('loadConfig / saveConfig', () => {
     });
   });
 
-  it('refuses a file that is not JSON rather than overwriting it', () => {
+  it('refuses a file that is not JSON rather than overwriting it, without quoting its contents', () => {
     const dir = tempDir();
-    writeFileSync(configPath(dir), '{not json');
+    // A hand-edited file with the token pasted unquoted: the parse error must not echo it.
+    const token = 'tok_pasted_unquoted_SECRET_9x8y7z';
+    const body = `{ "apiBase": "http://localhost:3000", "companionToken": ${token} }`;
+    writeFileSync(configPath(dir), body);
     const result = loadConfig(dir);
     expect(result.status).toBe('invalid');
+    // main.ts logs exactly `path` and `reason` from this result; neither may carry any fragment of the file.
+    const text = JSON.stringify(result);
+    expect(text).not.toContain(token);
+    expect(text).not.toContain('tok_');
+    expect(text).not.toContain('apiBase');
+    if (result.status === 'invalid') {
+      expect(result.reason).toMatch(/^not JSON( \(at position \d+\))?$/);
+      for (let i = 0; i + 4 <= body.length; i += 1) {
+        expect(result.reason).not.toContain(body.slice(i, i + 4));
+      }
+    }
+  });
+
+  it('tightens a pre-existing world-readable config to 0600 when the token is written', () => {
+    const dir = tempDir();
+    const path = configPath(dir);
+    writeFileSync(path, JSON.stringify({ apiBase: 'http://localhost:3000' }), { mode: 0o644 });
+    chmodSync(path, 0o644);
+    saveConfig(dir, { apiBase: 'http://localhost:3000', companionToken: 'tok_abcdef' });
+    if (process.platform !== 'win32') {
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+    }
+    expect(loadConfig(dir).status).toBe('ok');
   });
 
   it('rejects an apiBase with a path', () => {

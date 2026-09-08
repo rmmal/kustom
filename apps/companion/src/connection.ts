@@ -160,6 +160,14 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
     return this.currentState;
   }
 
+  /**
+   * A method, not a property read, on purpose: `stop()` can land during any `await`, and TypeScript would
+   * otherwise narrow `this.currentState` past the first check and flag the later ones as impossible.
+   */
+  private isStopped(): boolean {
+    return this.currentState === 'stopped';
+  }
+
   /** The current client context, or null unless `connected`/`watching`. */
   get connected(): ConnectedContext | null {
     return this.context;
@@ -276,6 +284,10 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
     }
 
     const context = await this.buildContext(client, version.json);
+    if (this.isStopped()) {
+      client.close();
+      return;
+    }
     if (context === null) {
       // HTTPS failed between two reads: the client is going away. Back to disconnected.
       this.transition('client_lost');
@@ -311,14 +323,14 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
     } catch (error) {
       this.logger.warn('socket did not open', errorFields(error));
       this.teardown(client, socket);
-      if (this.currentState !== 'stopped') {
+      if (!this.isStopped()) {
         this.transition('client_lost');
         await this.runHook('onDisconnected', () => this.hooks.onDisconnected?.('client_lost'));
         await sleep(this.backoff.next(), signal);
       }
       return;
     }
-    if (this.currentState === 'stopped') {
+    if (this.isStopped()) {
       this.teardown(client, socket);
       return;
     }
