@@ -15,6 +15,8 @@ export interface FakeApiResponse {
   readonly contentType?: string;
   /** Close the connection without answering (a network error on the client side). */
   readonly drop?: boolean;
+  /** Delay before answering, for coalescing tests. */
+  readonly delayMs?: number;
 }
 
 export interface FakeApiRequest {
@@ -87,12 +89,19 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         res.socket?.destroy();
         return;
       }
-      const isText = typeof response.body === 'string';
-      const payload = isText ? (response.body as string) : JSON.stringify(response.body);
-      res.writeHead(response.status, {
-        'content-type': response.contentType ?? (isText ? 'text/plain' : 'application/json'),
-      });
-      res.end(payload);
+      const send = (): void => {
+        const isText = typeof response.body === 'string';
+        const payload = isText ? (response.body as string) : JSON.stringify(response.body);
+        res.writeHead(response.status, {
+          'content-type': response.contentType ?? (isText ? 'text/plain' : 'application/json'),
+        });
+        res.end(payload);
+      };
+      if (response.delayMs) {
+        setTimeout(send, response.delayMs);
+      } else {
+        send();
+      }
     });
   });
 

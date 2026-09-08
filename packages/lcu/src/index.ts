@@ -25,6 +25,7 @@ export {
   type PathParam,
   READ_ENDPOINTS,
   type ReadEndpoint,
+  readEndpoint,
   WRITE_ENDPOINTS,
 } from './endpoints.js';
 export {
@@ -56,6 +57,19 @@ export {
   WINDOWS_LOCKFILE_PATH,
 } from './lockfile.js';
 export { consoleLogger, type LogFields, type Logger, silentLogger, verboseConsoleLogger } from './log.js';
+export {
+  isEogBot,
+  isLobbyBot,
+  type MapEogOptions,
+  type MapRankOptions,
+  mapEog,
+  mapLobby,
+  mapRank,
+  type NameCache,
+  nameFromSummoner,
+  RANK_QUEUE,
+  type RiotIdName,
+} from './mapper.js';
 export {
   type AliasLookup,
   AliasLookupSchema,

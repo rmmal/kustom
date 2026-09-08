@@ -17,6 +17,7 @@
     "record-ws": "tsx src/cli/record-ws.ts"
   },
   "dependencies": {
+    "@customs/db": "workspace:*",
     "ws": "8.21.3",
     "zod": "4.5.4"
   },
