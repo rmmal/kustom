@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | All tasks M1.1 to M1.10 done; product acceptance met 2026-09-08. Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.9 and M2.13 done; M2.1 and M2.10 in flight; M2.2/M2.3 after M2.10. |
+| M2 Companion v1: roster and results | in progress | M2.1, M2.9, M2.13 done; M2.10 in flight; M2.2/M2.3/M2.4 after M2.10. |
 | M3 Teams in Discord and on the web | not started | M3.0 design system done (docs/05-design.md). Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
@@ -550,7 +550,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > to the M2.5 rating gate, the lobby state machine or the M2.9 freeze. No match-history or backfill shapes
     > (M5). No champion-name or icon lookup. No packaging.
 
-- [ ] **M2.1** `apps/companion` CLI: config file, first-run token prompt, connection state machine with reconnect and backoff, structured logs with rotation.
+- [x] **M2.1** `apps/companion` CLI: config file, first-run token prompt, connection state machine with reconnect and backoff, structured logs with rotation.
 
     > **Note (product, 2026-09-08, after M0.3).** The companion subscribes to the firehose
     > (`[5, "OnJsonApiEvent"]`) and filters by `uri`, because the per-URI topics have not been exercised yet.
