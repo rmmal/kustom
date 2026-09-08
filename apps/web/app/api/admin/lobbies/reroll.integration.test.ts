@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { Database } from '@customs/db';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
+import { NO_MORE_SPLITS, NO_SUCH_LOBBY } from '@/lib/admin/reroll';
 import {
   type AdminAuthResult,
   authorizeAdmin,
@@ -343,6 +343,16 @@ if (stack === null) {
       expect(posts).toHaveLength(0);
     });
 
+    it('404s a lobby id that is not a uuid at all, rather than letting Postgres 500', async () => {
+      // The lobby is a path segment, so anything can arrive in it. `lobbies.id` is a uuid
+      // column and an unparsable one is 22P02 — an "our bug" 500 for a request that is only
+      // asking about a lobby that does not exist.
+      const response = await reroll('not-a-uuid')(post('not-a-uuid', { splitId: splitOfRank(2).id }));
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({ ok: false, error: NO_SUCH_LOBBY });
+      expect(posts).toHaveLength(0);
+    });
+
     it('400s a body that does not name a split', async () => {
       const response = await reroll(lobbyId)(post(lobbyId, { splitId: 'next' }));
       expect(response.status).toBe(400);
@@ -371,6 +381,40 @@ if (stack === null) {
 
       const response = await reroll(otherLobbyId)(post(otherLobbyId, { splitId: otherSplitId }));
       expect(response.status).toBe(409);
+      expect(posts).toHaveLength(0);
+    });
+
+    it('409s when the ten in that split are not all in the lobby any more', async () => {
+      // The narrow window: somebody has left but no companion post has reopened the lobby yet,
+      // so the status still says `balanced`. Promoting here and discovering it inside
+      // `postTeamsForSplit` would answer `skipped` with the old chosen row already gone.
+      const { error: statusError } = await db
+        .from('lobbies')
+        .update({ status: 'balanced' })
+        .eq('id', otherLobbyId);
+      if (statusError) throw new Error(statusError.message);
+
+      const { data: leaver } = await db
+        .from('players')
+        .select('id')
+        .eq('puuid', other[3] ?? '')
+        .single();
+      const { error: deleteError } = await db
+        .from('lobby_members')
+        .delete()
+        .eq('lobby_id', otherLobbyId)
+        .eq('player_id', leaver?.id ?? '');
+      if (deleteError) throw new Error(deleteError.message);
+
+      const response = await reroll(otherLobbyId)(post(otherLobbyId, { splitId: otherSplitId }));
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        ok: false,
+        error:
+          'the ten in that split are not all in the lobby any more, so nothing was promoted; the next balance posts new teams',
+      });
+      // Nothing moved: the lobby still has the split it was balanced with.
+      expect(await chosenRows(otherLobbyId)).toEqual([{ rank: 1 }]);
       expect(posts).toHaveLength(0);
     });
   });

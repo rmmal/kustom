@@ -429,7 +429,12 @@ again (`No more splits. …`, above).
 **Names, in every line of both embeds.** One renderer (`renderName`): the newest display name we have,
 trimmed; `Someone` when we have none (M3.10); 31 characters and `…` when it is longer than 32. A blank-looking
 line in a five-line field reads as a bug, which is why the fallback is a word and not an empty string.
-`Someone` is a rendering rule and is never written to a row.
+`Someone` is never written to a **row**: `players.display_name` and `players.game_name` stay null, so the
+next sweep or end-of-game block fills the real name in with no migration and no cleanup. It is not only a
+rendering rule, though (amended 2026-09-09, M3.15): it is also the name the API hands the balancer, so it is
+the word inside `splits.explanation` — a stored sentence the embed and the tonight page quote verbatim and may
+never recompose. One word in both places, or one message reads `Someone` on a team line and
+`Next best: swap Unknown and Hana` in the sentence above it. See the 2026-09-09 row in `04-decisions.md`.
 
 A name is printed as **text, not markup**. Riot IDs carry underscores and asterisks, and a single stray
 backtick closes the role's code span and swallows the rest of the field. Escape `` ` ``, `*`, `_`, `~` and `|`

@@ -2219,10 +2219,14 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > "Names fill in after someone's first game." That sentence is the whole explanation and it does not
     > need a link.
     >
-    > **Behavior.** The fallback is applied at render, never stored: `display_name` stays null in the
-    > database so the next sweep or eog block fills it in without a migration or a cleanup. Two players with
-    > no name both render `Someone`; that is acceptable and rare, and it resolves itself within one game.
-    > A name that arrives while the page is open replaces it live (the tonight page is already Realtime).
+    > **Behavior.** The fallback is never written to `players`: `display_name` and `game_name` stay null in
+    > the database so the next sweep or eog block fills them in without a migration or a cleanup. It is
+    > applied at render on every surface — and, from **M3.15** (2026-09-09), it is also the name the API
+    > hands the balancer, so `Someone` is the word inside `splits.explanation`, the one string three surfaces
+    > quote verbatim and none may recompose. "Never stored" means never stored in a `players` row, not never
+    > written into a sentence we keep. Two players with no name both render `Someone`; that is acceptable and
+    > rare, and it resolves itself within one game. A name that arrives while the page is open replaces it
+    > live (the tonight page is already Realtime).
     >
     > **Acceptance check.** With one `players` row holding a null `game_name` and null `display_name`: the
     > teams embed, the result embed and the tonight page all print `Someone` for that player and everything

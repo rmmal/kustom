@@ -1,6 +1,7 @@
 import type { LobbyStatusValue } from '@customs/db';
 import { readAssignments } from '../discord/assemble';
 import type { ServiceClient } from '../supabase';
+import { idSchema } from './formValues';
 import { type AdminWriteResult, writeFailed, writeOk } from './result';
 
 /**
@@ -18,6 +19,14 @@ import { type AdminWriteResult, writeFailed, writeOk } from './result';
 
 /** The sentence for a third press. `05-design.md`, "The title on a reroll"; verbatim. */
 export const NO_MORE_SPLITS = 'No more splits. Change who is in the lobby to rebalance, or play these.';
+
+/**
+ * A lobby id that names nothing, whether it is a well-formed uuid we have no row for or a
+ * path segment that is not a uuid at all. One answer for both: a caller who guessed wrong
+ * learns the same thing either way, and `lobbies.id` is a uuid column, so a non-uuid is a
+ * lookup that cannot match rather than an error worth its own status.
+ */
+export const NO_SUCH_LOBBY = 'no lobby with that id';
 
 /** One of the lobby's stored splits, as `/admin` and the route need it. */
 export interface RerollSplit {
@@ -64,13 +73,18 @@ export async function promoteSplit(
   client: ServiceClient,
   input: { lobbyId: string; splitId: string },
 ): Promise<AdminWriteResult<RerollOutcome>> {
+  // The lobby id is a path segment, so it arrives unvalidated. `lobbies.id` is a uuid column
+  // and Postgres answers a malformed one with 22P02, which would surface as a 500 — an
+  // "our bug" status for a request that is simply asking about a lobby that does not exist.
+  if (!idSchema.safeParse(input.lobbyId).success) return writeFailed(404, NO_SUCH_LOBBY);
+
   const { data: lobby, error: lobbyError } = await client
     .from('lobbies')
     .select('id, status')
     .eq('id', input.lobbyId)
     .maybeSingle();
   if (lobbyError) throw new Error(`promoteSplit: lobby lookup failed: ${lobbyError.message}`);
-  if (!lobby) return writeFailed(404, 'no lobby with that id');
+  if (!lobby) return writeFailed(404, NO_SUCH_LOBBY);
   if (lobby.status !== 'balanced') return writeFailed(409, notBalancedMessage(lobby.status));
 
   const splits = await listSplits(client, input.lobbyId);

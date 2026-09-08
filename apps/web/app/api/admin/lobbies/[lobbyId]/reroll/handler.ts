@@ -13,6 +13,12 @@ import { type RerollRequest, rerollRequestSchema, rerollResponseSchema } from '.
  * Promote, then post. In that order and never the other way round: the promotion is what the
  * group agreed to and it stands whatever Discord answers. The response says whether the
  * message went out, and nothing retries it.
+ *
+ * The lobby id is a path segment and is validated by `promoteSplit`, which is the first thing
+ * this calls and does no read before it: a segment that is not a uuid is a 404, not the 500
+ * Postgres's 22P02 would have produced. It is checked there rather than in `route.ts` so that
+ * the session is still the first gate — an unauthenticated caller learns nothing about this
+ * route's shape, which is the rule the rest of `/api/admin/*` keeps.
  */
 export async function handleReroll(
   lobbyId: string,
