@@ -7,12 +7,12 @@
  * with the service role key and passes `Database` as its generic.
  */
 
-import type { Tables, TablesInsert, TablesUpdate } from './types.js';
+import type { Tables, TablesInsert, TablesUpdate } from './types';
 
-export * from './rosterKey.js';
-export * from './schemas/index.js';
-export type { Database, Enums, Json, Tables, TablesInsert, TablesUpdate } from './types.js';
-export { Constants } from './types.js';
+export * from './rosterKey';
+export * from './schemas/index';
+export type { Database, Enums, Json, Tables, TablesInsert, TablesUpdate } from './types';
+export { Constants } from './types';
 
 /** Rows, as `select()` returns them. */
 export type SeasonRow = Tables<'seasons'>;

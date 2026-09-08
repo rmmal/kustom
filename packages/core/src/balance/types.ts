@@ -1,4 +1,4 @@
-import type { Role } from '../types.js';
+import type { Role } from '../types';
 
 /** One of the ten. `name` is only used in the explanation; identity is the puuid. */
 export interface BalancePlayer {

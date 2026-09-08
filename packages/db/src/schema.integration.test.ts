@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { SEASON_ONE_ID } from './index.js';
-import { resolveLocalStack } from './localStack.js';
-import { rosterKey } from './rosterKey.js';
+import { SEASON_ONE_ID } from './index';
+import { resolveLocalStack } from './localStack';
+import { rosterKey } from './rosterKey';
 
 /**
  * What `0001_init.sql` actually enforces, exercised through PostgREST exactly the way the

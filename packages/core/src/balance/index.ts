@@ -7,15 +7,15 @@
  * broken by a stable key.
  */
 
-import { config } from '../config.js';
-import { predictWin } from '../rating/index.js';
-import { ROLES } from '../types.js';
-import { explain } from './explain.js';
-import { roleTier } from './roles.js';
-import type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split } from './types.js';
+import { config } from '../config';
+import { predictWin } from '../rating/index';
+import { ROLES } from '../types';
+import { explain } from './explain';
+import { roleTier } from './roles';
+import type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split } from './types';
 
-export { explain } from './explain.js';
-export type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split } from './types.js';
+export { explain } from './explain';
+export type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split } from './types';
 
 /** Thrown for every input the balancer refuses. The message is written for a Discord line. */
 export class BalanceError extends Error {

@@ -1,0 +1,78 @@
+import type { NextResponse } from 'next/server';
+import type { z } from 'zod';
+import { ensureBootstrapAdmin } from './bootstrapAdmin';
+import {
+  authenticateCompanion,
+  type CompanionIdentity,
+  supabaseTokenLookup,
+  supabaseTokenTouch,
+} from './companionAuth';
+import { ServerEnvError } from './env';
+import { jsonError, parseJsonBody } from './http';
+import { getServiceClient, type ServiceClient } from './supabase';
+
+/**
+ * Everything `/api/companion/*` has in common: the service-role client, the bearer token check
+ * and the zod parse of the body, in that order. A helper rather than Next middleware so it can
+ * be unit tested and so the identity is a typed argument instead of a header the handler has
+ * to re-read.
+ *
+ * Auth runs before the body is parsed: an unauthenticated caller learns nothing about the
+ * shape we expect.
+ */
+
+export interface CompanionContext {
+  client: ServiceClient;
+  /** Who the token says this is. Never who the payload claims to be. */
+  identity: CompanionIdentity;
+}
+
+export type CompanionHandler<T> = (input: T, context: CompanionContext) => Promise<NextResponse>;
+
+export interface CompanionRouteDeps {
+  /** Injection point for tests. Defaults to the process-wide service-role client. */
+  getClient?: () => ServiceClient;
+}
+
+export function withCompanionAuth<S extends z.ZodType>(
+  schema: S,
+  handle: CompanionHandler<z.output<S>>,
+  deps: CompanionRouteDeps = {},
+): (request: Request) => Promise<NextResponse> {
+  return async (request) => {
+    let client: ServiceClient;
+    try {
+      client = deps.getClient ? deps.getClient() : getServiceClient();
+    } catch (error) {
+      if (error instanceof ServerEnvError) {
+        console.error(`companion route: ${error.message}`);
+        return jsonError(500, 'server is not configured');
+      }
+      throw error;
+    }
+
+    try {
+      await ensureBootstrapAdmin(client);
+
+      const auth = await authenticateCompanion({
+        authorization: request.headers.get('authorization'),
+        lookup: supabaseTokenLookup(client),
+        touch: supabaseTokenTouch(client),
+      });
+      if (!auth.ok) {
+        return jsonError(auth.status, auth.error);
+      }
+
+      const body = await parseJsonBody(request, schema);
+      if (!body.ok) {
+        return body.response;
+      }
+
+      return await handle(body.data, { client, identity: auth.identity });
+    } catch (error) {
+      // A thrown error here is our bug or the database being down. Never leak the message.
+      console.error('companion route failed', error);
+      return jsonError(500, 'internal error');
+    }
+  };
+}

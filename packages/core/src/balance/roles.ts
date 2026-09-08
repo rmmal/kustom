@@ -3,8 +3,8 @@
  * is off-role. Spec: M1.4 brief, "Role edge cases".
  */
 
-import type { Role } from '../types.js';
-import type { BalancePlayer } from './types.js';
+import type { Role } from '../types';
+import type { BalancePlayer } from './types';
 
 export type RoleTier = 'main' | 'secondary' | 'fill';
 

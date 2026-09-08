@@ -3,9 +3,9 @@
  * Clauses joined by a single space, each ending in a full stop, numerals throughout.
  */
 
-import { ROLES } from '../types.js';
-import { isOffRole } from './roles.js';
-import type { Assignment, BalancePlayer, Split } from './types.js';
+import { ROLES } from '../types';
+import { isOffRole } from './roles';
+import type { Assignment, BalancePlayer, Split } from './types';
 
 type Named = Pick<BalancePlayer, 'puuid' | 'name' | 'mainRole' | 'secondaryRole' | 'roleOverride'>;
 

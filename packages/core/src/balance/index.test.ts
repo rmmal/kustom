@@ -10,7 +10,7 @@ import {
   ROLES,
   type Role,
   type Split,
-} from '../index.js';
+} from '../index';
 
 /**
  * The worked example from docs/00-product.md and the M1.4 brief in docs/02-milestones.md.

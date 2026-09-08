@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rosterKey } from './rosterKey.js';
+import { rosterKey } from './rosterKey';
 
 describe('rosterKey', () => {
   it('is the same key whatever order the ten arrive in', () => {

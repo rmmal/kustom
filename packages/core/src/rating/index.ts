@@ -6,8 +6,8 @@
  */
 
 import { predictWin as openskillPredictWin, rate as openskillRate } from 'openskill';
-import { config, type RankDivision, type RankTier } from '../config.js';
-import type { Rating, Side } from '../types.js';
+import { config, type RankDivision, type RankTier } from '../config';
+import type { Rating, Side } from '../types';
 
 const { rating: cfg } = config;
 

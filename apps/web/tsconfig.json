@@ -6,6 +6,9 @@
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
+    // scripts/ is run straight by node (type stripping), which needs the .ts extension on
+    // relative imports. Safe here because nothing in this package emits.
+    "allowImportingTsExtensions": true,
     "tsBuildInfoFile": "./.next/tsconfig.tsbuildinfo",
     "plugins": [{ "name": "next" }],
     "paths": {

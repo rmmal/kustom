@@ -1,0 +1,78 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * Finding the Supabase CLI local stack, for integration tests only. Nothing in the app
+ * imports this: route handlers read their URL and keys from the environment.
+ *
+ * Same approach as `packages/db/src/localStack.ts` (that file is not part of `@customs/db`'s
+ * public exports, and widening the package's surface for a test helper is worse than the
+ * duplication). Keep the two in step if the CLI's output ever changes.
+ */
+
+export interface LocalStack {
+  /** e.g. `http://127.0.0.1:54321` */
+  url: string;
+  anonKey: string;
+  serviceRoleKey: string;
+}
+
+const DB_PACKAGE_ROOT = fileURLToPath(new URL('../../../../packages/db/', import.meta.url));
+
+function fromEnv(): LocalStack | null {
+  const url = process.env.SUPABASE_LOCAL_URL;
+  const anonKey = process.env.SUPABASE_LOCAL_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_LOCAL_SERVICE_ROLE_KEY;
+  if (!url || !anonKey || !serviceRoleKey) return null;
+  return { url, anonKey, serviceRoleKey };
+}
+
+function fromCli(): LocalStack | null {
+  let output: string;
+  try {
+    output = execFileSync('supabase', ['status', '-o', 'env'], {
+      cwd: DB_PACKAGE_ROOT,
+      encoding: 'utf8',
+      timeout: 30_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    // No CLI, no Docker, or the stack is not running. The caller skips.
+    return null;
+  }
+
+  const values = new Map<string, string>();
+  for (const line of output.split('\n')) {
+    const match = /^([A-Z0-9_]+)="(.*)"$/.exec(line.trim());
+    if (match?.[1] && match[2]) values.set(match[1], match[2]);
+  }
+
+  const url = values.get('API_URL');
+  const anonKey = values.get('ANON_KEY');
+  const serviceRoleKey = values.get('SERVICE_ROLE_KEY');
+  if (!url || !anonKey || !serviceRoleKey) return null;
+  return { url, anonKey, serviceRoleKey };
+}
+
+/**
+ * The running local stack, or `null` when there is none. Integration tests skip on `null` so
+ * `pnpm -r test` stays green on a machine without Docker.
+ */
+export async function resolveLocalStack(): Promise<LocalStack | null> {
+  const stack = fromEnv() ?? fromCli();
+  if (!stack) return null;
+
+  try {
+    const response = await fetch(`${stack.url}/rest/v1/`, {
+      headers: { apikey: stack.anonKey },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return null;
+    // Drain so the socket closes and vitest can exit.
+    await response.text();
+  } catch {
+    return null;
+  }
+
+  return stack;
+}

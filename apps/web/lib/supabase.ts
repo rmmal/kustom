@@ -1,0 +1,42 @@
+import type { Database } from '@customs/db';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { readServerEnv } from './env';
+
+/**
+ * The Supabase client route handlers write with.
+ *
+ * It uses the service role key, which bypasses RLS (`0001_init.sql` has no write policy at
+ * all — every write in this project goes through a route handler that has already checked a
+ * companion token or an admin session). Never import this from a client component.
+ */
+export type ServiceClient = SupabaseClient<Database>;
+
+let cached: { fingerprint: string; client: ServiceClient } | null = null;
+
+/** A fresh service-role client. Prefer {@link getServiceClient} outside of tests. */
+export function createServiceClient(): ServiceClient {
+  const env = readServerEnv();
+
+  return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      // A route handler is not a browser session: no cookie, no refresh loop, no storage.
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
+/**
+ * The process-wide service client, rebuilt if the environment it was made from changes
+ * (which only happens in tests). The client itself is a `fetch` wrapper with no connection
+ * pool, so caching it is about not re-reading the environment on every request.
+ */
+export function getServiceClient(): ServiceClient {
+  const env = readServerEnv();
+  const fingerprint = `${env.NEXT_PUBLIC_SUPABASE_URL}\n${env.SUPABASE_SERVICE_ROLE_KEY}`;
+  if (cached?.fingerprint !== fingerprint) {
+    cached = { fingerprint, client: createServiceClient() };
+  }
+  return cached.client;
+}
