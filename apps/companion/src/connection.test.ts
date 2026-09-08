@@ -17,6 +17,7 @@ import {
   ConnectionMachine,
   type EogHookEvent,
   type LobbyHookEvent,
+  type RankedStatsHookEvent,
   TRANSITIONS,
   type Transition,
 } from './connection.js';
@@ -43,6 +44,7 @@ interface Recorded {
   lobby: LobbyHookEvent[];
   phases: string[];
   eog: EogHookEvent[];
+  ranked: RankedStatsHookEvent[];
   disconnected: ConnectionEvent[];
 }
 
@@ -59,6 +61,9 @@ function recordingHooks(record: Recorded, extra: Partial<CompanionHooks> = {}): 
     },
     onEogBlock: (event) => {
       record.eog.push(event);
+    },
+    onRankedStats: (event) => {
+      record.ranked.push(event);
     },
     onDisconnected: (reason) => {
       record.disconnected.push(reason);
@@ -113,7 +118,7 @@ async function start(
     writeFileSync(lockfile, `LeagueClient:4242:${port}:${PASSWORD}:https`);
   };
   writeLockfile(options.lockfilePort);
-  const record: Recorded = { connected: [], lobby: [], phases: [], eog: [], disconnected: [] };
+  const record: Recorded = { connected: [], lobby: [], phases: [], eog: [], ranked: [], disconnected: [] };
   const memory = createMemoryLogger();
   const logger = options.logger ?? memory;
   const machine = new ConnectionMachine({
@@ -230,6 +235,28 @@ describe('ConnectionMachine', () => {
     const dropped = h.logger.lines.find((line) => line.message.includes('dropped'));
     expect(dropped?.fields.uri).toBe('/lol-lobby/v2/lobby');
     expect(JSON.stringify(h.logger.lines)).not.toContain('chat-payload-value');
+  });
+
+  it('routes a cached-ranked-stats push to onRankedStats with the puuid from the URI, and drops a malformed one', async () => {
+    const h = await start();
+    await h.machine.waitForState('watching');
+    const fixture = readFixture('16.17', 'ranked-stats-by-puuid--ws-cached');
+    if (!fixture.ok) {
+      throw new Error(fixture.reason);
+    }
+    const puuid = 'c04e977c-133a-5d94-9fd3-6202f8beec4c';
+    h.fake.emitEvent(`/lol-ranked/v1/cached-ranked-stats/${puuid}`, 'Update', fixture.envelope.body);
+    h.fake.emitEvent(`/lol-ranked/v1/cached-ranked-stats/${puuid}`, 'Update', { queueMap: 'nope' });
+    h.fake.emitEvent(`/lol-ranked/v1/cached-ranked-stats/${puuid}`, 'Delete', null);
+    h.fake.emitEvent('/lol-ranked/v1/cached-ranked-stats/', 'Update', fixture.envelope.body);
+    h.fake.emitEvent('/lol-gameflow/v1/gameflow-phase', 'Update', 'Lobby');
+    await until(() => h.record.phases.length === 1);
+    expect(h.record.ranked).toHaveLength(1);
+    expect(h.record.ranked[0]?.puuid).toBe(puuid);
+    expect(h.record.ranked[0]?.stats.queueMap.RANKED_SOLO_5x5?.tier).toBe('');
+    const dropped = h.logger.lines.filter((line) => line.message.includes('dropped'));
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]?.fields.uri).toBe(`/lol-ranked/v1/cached-ranked-stats/${puuid}`);
   });
 
   it('replays the recorded custom game: phases in order, then the end-of-game block', async () => {

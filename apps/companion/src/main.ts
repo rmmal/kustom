@@ -1,12 +1,13 @@
 /**
  * `pnpm --filter companion dev` (and, packaged, the exe a friend leaves running).
  *
- * Startup: resolve the config directory, load or prompt for the config, open the log, ping the API, then hand
- * over to the connection state machine, which runs until SIGINT/SIGTERM. Nothing after startup exits the
- * process on an error: uncaught exceptions and unhandled rejections are logged and the loop goes on.
+ * Startup: resolve the config directory, load or prompt for the config, open the log, ping the API, say who
+ * the token is (`GET /api/companion/me`), replay the end-of-game queue, then hand over to the connection state
+ * machine, which runs until SIGINT/SIGTERM. Nothing after startup exits the process on an error: uncaught
+ * exceptions and unhandled rejections are logged and the loop goes on.
  *
  * Environment:
- *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json and logs/).
+ *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json, logs/ and queue/).
  *  - `CUSTOMS_NIGHT_LOG_LEVEL` sets the console level (`debug`, `info`, `warn`, `error`; default `info`).
  *    The file always gets `debug`.
  *  - `LCU_LOCKFILE_CANDIDATES` (from `@customs/lcu`) replaces the default lockfile paths.
@@ -23,9 +24,12 @@ import {
   stdioPrompt,
 } from './config.js';
 import { ConnectionMachine } from './connection.js';
+import { GameWatcher } from './gameWatcher.js';
 import { composeHooks, loggingHooks } from './hooks.js';
+import { announceIdentity, checkIdentity } from './identity.js';
 import { LobbyWatcher } from './lobbyWatcher.js';
 import { type CompanionLogger, createFileLogger, errorFields, isLogLevel } from './log.js';
+import { RankSync } from './rankSync.js';
 import { COMPANION_VERSION } from './version.js';
 
 async function resolveConfig(dir: string, logger: CompanionLogger): Promise<CompanionConfig | null> {
@@ -83,10 +87,29 @@ async function main(): Promise<number> {
     logger.warn('api not reachable now; calls will retry', { apiBase: config.apiBase, reason: health });
   }
 
-  const lobbyWatcher = new LobbyWatcher({ api, logger });
+  // The queue needs the API, not League: replay it before anything else, so an API that is slow to answer
+  // the identity check below never delays a queued game.
+  const gameWatcher = new GameWatcher({ api, logger, configDir: dir });
+  gameWatcher.start();
+
+  // Who this token is, on every start and right after the first-run prompt. One attempt; never blocks.
+  announceIdentity(await checkIdentity(api), logger);
+
+  const lobbyWatcher = new LobbyWatcher({
+    api,
+    logger,
+    onResponse: (response) => rankSync.needed(response.ranksNeeded),
+  });
+  const rankSync = new RankSync({ api, logger, names: lobbyWatcher.knownNames });
   const machine = new ConnectionMachine({
     logger,
-    hooks: composeHooks(logger, loggingHooks(logger), lobbyWatcher.hooks()),
+    hooks: composeHooks(
+      logger,
+      loggingHooks(logger),
+      lobbyWatcher.hooks(),
+      gameWatcher.hooks(),
+      rankSync.hooks(),
+    ),
     lockfile: config.lockfilePath ? { overridePath: config.lockfilePath } : {},
   });
 
@@ -111,6 +134,8 @@ async function main(): Promise<number> {
 
   await machine.run();
   lobbyWatcher.stop();
+  rankSync.stop();
+  gameWatcher.stop();
   logger.info('stopped');
   return 0;
 }

@@ -64,6 +64,8 @@ export interface LobbyWatcherOptions {
   /** Delay between retries of a failed post while it is still the newest. Default 1 s to 60 s. */
   readonly backoff?: BackoffOptions;
   readonly schedule?: Scheduler;
+  /** Called with every successful answer; the rank sync (M2.4) takes `ranksNeeded` from it. Never awaited. */
+  readonly onResponse?: (response: CompanionLobbyResponse) => void;
 }
 
 interface Item {
@@ -80,6 +82,7 @@ export class LobbyWatcher {
   private readonly lookupIntervalMs: number;
   private readonly retryBackoff: Backoff;
   private readonly schedule: Scheduler;
+  private readonly onResponse: ((response: CompanionLobbyResponse) => void) | undefined;
   private readonly stopController = new AbortController();
 
   private context: ConnectedContext | null = null;
@@ -106,6 +109,7 @@ export class LobbyWatcher {
     this.lookupIntervalMs = options.lookupIntervalMs ?? DEFAULT_LOOKUP_INTERVAL_MS;
     this.retryBackoff = new Backoff(options.backoff);
     this.schedule = options.schedule ?? realScheduler;
+    this.onResponse = options.onResponse;
   }
 
   /** The last answer the API gave, or null before the first successful post. */
@@ -320,6 +324,11 @@ export class LobbyWatcher {
       }
       if (!superseded && typeof data.recheckInMs === 'number') {
         this.defer(item, data.recheckInMs, 'recheck');
+      }
+      try {
+        this.onResponse?.(data);
+      } catch (error) {
+        this.logger.error('lobby response listener threw', errorFields(error));
       }
       return;
     }

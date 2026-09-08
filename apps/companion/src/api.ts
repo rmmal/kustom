@@ -53,6 +53,11 @@ export type ApiResult<T> = { readonly ok: true; readonly status: number; readonl
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
+export interface RequestOptions {
+  /** Skip the final failure log line; the caller reports the outcome itself (the identity check does). */
+  readonly quiet?: boolean;
+}
+
 export interface ApiClientOptions {
   readonly apiBase: string;
   readonly token: string;
@@ -131,6 +136,7 @@ export class ApiClient {
     body: unknown,
     schema: z.ZodType<T>,
     maxAttempts: number = this.maxAttempts,
+    options: RequestOptions = {},
   ): Promise<ApiResult<T>> {
     const endpoint = `${method} ${path}`;
     const url = `${this.apiBase}${path.startsWith('/') ? path : `/${path}`}`;
@@ -163,6 +169,9 @@ export class ApiClient {
     }
 
     const failure = last ?? { ok: false, reason: 'network', message: 'no attempt made', attempts: 0 };
+    if (options.quiet) {
+      return failure;
+    }
     const fields = { endpoint, ...failureFields(failure) };
     if (failure.reason === 'http' && failure.status === 401) {
       this.logger.error('api rejected the companion token; mint a new one on the admin page', fields);

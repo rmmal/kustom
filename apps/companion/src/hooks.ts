@@ -1,7 +1,7 @@
 /**
- * The M2.1 hooks: they only log. The lobby watcher (M2.2, `lobbyWatcher.ts`) runs beside them through
- * `composeHooks`; M2.3 (game capture) and M2.4 (rank sync) add theirs the same way. The shape of
- * `CompanionHooks` is the seam. Nothing here posts to the API or writes to the client.
+ * The M2.1 hooks: they only log. The lobby watcher (M2.2, `lobbyWatcher.ts`), the game watcher (M2.3,
+ * `gameWatcher.ts`) and the rank sync (M2.4, `rankSync.ts`) run beside them through `composeHooks`. The shape
+ * of `CompanionHooks` is the seam. Nothing here posts to the API or writes to the client.
  *
  * Log fields are chosen so a line is useful and safe: party ids, puuids, member counts, game ids, phases.
  * Never a lobby password, never chat credentials (the block and the lobby both carry them).
@@ -33,6 +33,7 @@ export function composeHooks(logger: CompanionLogger, ...parts: readonly Compani
     onGameflowPhase: (phase, context) =>
       each('onGameflowPhase', (part) => part.onGameflowPhase?.(phase, context)),
     onEogBlock: (event, context) => each('onEogBlock', (part) => part.onEogBlock?.(event, context)),
+    onRankedStats: (event, context) => each('onRankedStats', (part) => part.onRankedStats?.(event, context)),
     onDisconnected: (reason) => each('onDisconnected', (part) => part.onDisconnected?.(reason)),
   };
 }
@@ -80,6 +81,10 @@ export function loggingHooks(logger: CompanionLogger): CompanionHooks {
         winningTeam: block.teams.find((team) => team.isWinningTeam)?.teamId ?? null,
         players: block.teams.reduce((count, team) => count + team.players.length, 0),
       });
+    },
+    onRankedStats(event) {
+      // Puuid only. The body is another player's ladder record and is not ours unless the server asked.
+      log.debug('ranked stats pushed by the client', { puuid: event.puuid });
     },
     onDisconnected(reason) {
       log.info('disconnected from the League client', { reason });
