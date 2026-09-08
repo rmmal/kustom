@@ -5,9 +5,11 @@ import {
   companionLobbyResponseSchema,
   companionMeResponseSchema,
   companionRankPayloadSchema,
+  DETECTED_TEAM_POSITION_ROLES,
   lcuGameIdSchema,
   lobbyStatusSchema,
   puuidSchema,
+  roleFromDetectedTeamPosition,
   roleSchema,
   sideSchema,
   summonerIdSchema,
@@ -364,5 +366,40 @@ describe('companionMeResponseSchema', () => {
     expect(parsed).toMatchObject({ puuid: PUUID_A, displayName: null });
     // `ok: false` is the error envelope's shape, never this one's.
     expect(companionMeResponseSchema.safeParse({ ...parsed, ok: false }).success).toBe(false);
+  });
+});
+
+describe('roleFromDetectedTeamPosition', () => {
+  it('maps the five positions the client reports', () => {
+    // The eog block's own vocabulary. `BOTTOM` is our `adc` and `UTILITY` is our `support`;
+    // getting either backwards would put every marksman on the support line of the embed.
+    expect(roleFromDetectedTeamPosition('TOP')).toBe('top');
+    expect(roleFromDetectedTeamPosition('JUNGLE')).toBe('jungle');
+    expect(roleFromDetectedTeamPosition('MIDDLE')).toBe('mid');
+    expect(roleFromDetectedTeamPosition('BOTTOM')).toBe('adc');
+    expect(roleFromDetectedTeamPosition('UTILITY')).toBe('support');
+    // The published table is the only copy; the mapper in packages/lcu imports it.
+    expect(Object.keys(DETECTED_TEAM_POSITION_ROLES)).toEqual([
+      'TOP',
+      'JUNGLE',
+      'MIDDLE',
+      'BOTTOM',
+      'UTILITY',
+    ]);
+  });
+
+  it('is null for everything else, and never guesses', () => {
+    // `role` is nullable everywhere for exactly this reason (M2.10, point 7). A role is never
+    // inferred from the champion: a Teemo in the jungle is a Teemo in the jungle.
+    for (const position of ['', 'NONE', 'BOT', 'SUPPORT', 'ADC', 'unknown-to-us']) {
+      expect(roleFromDetectedTeamPosition(position)).toBeNull();
+    }
+    expect(roleFromDetectedTeamPosition(null)).toBeNull();
+    expect(roleFromDetectedTeamPosition(undefined)).toBeNull();
+  });
+
+  it('tolerates the casing and padding a client patch might add', () => {
+    expect(roleFromDetectedTeamPosition(' middle ')).toBe('mid');
+    expect(roleFromDetectedTeamPosition('Utility')).toBe('support');
   });
 });

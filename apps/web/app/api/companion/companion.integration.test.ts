@@ -528,6 +528,28 @@ if (stack === null) {
       expect(json.ranksNeeded).toContain(newPuuid);
     });
 
+    it('includes a spectator, who plays the next round and needs a name either way', async () => {
+      const watcherPuuid = `it-${runId}-rank-watcher`;
+      allPuuids.push(watcherPuuid);
+
+      const response = await postLobby(
+        post(
+          {
+            partyId: ranksPartyId,
+            members: [
+              { puuid: puuids[0] ?? '', summonerId: 5100, side: 100, isSpectator: false },
+              { puuid: watcherPuuid, summonerId: 5101, side: null, isSpectator: true },
+            ],
+          },
+          ownerToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.ranksNeeded).toContain(watcherPuuid);
+    });
+
     it('still answers it for a frozen roster, because those people still need a rank', async () => {
       // M2.9 freezes `lobby_members`, not the question of whose rank we are missing.
       const body = ranksBody([puuids[0] ?? '', newPuuid]);

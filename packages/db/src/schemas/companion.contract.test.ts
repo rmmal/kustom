@@ -603,7 +603,9 @@ describe('game payload, mapped from fixtures/16.17/eog-stats-block.json', () => 
 
     // It parses — "nobody won" is a statement, not a forgotten field — and the route answers
     // 422 with this exact message, writes no `games` row and rates nothing (M2.10, point 6).
-    // The lobby is left alone: it stays `in_game` and ages out on the idle rule (M2.5).
+    // No lobby moves either: one already at `in_game` stays there for good, because M2.5's
+    // 2-hour sweep covers `open` and `balanced` only and an `in_game` roster is frozen
+    // (M2.9). M5.5 is what lists a lobby whose game never landed.
     const parsed = companionGamePayloadSchema.parse(payload);
     if (parsed.phase !== 'eog') throw new Error('unreachable');
     expect(parsed.winningSide).toBeNull();

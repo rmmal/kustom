@@ -29,8 +29,9 @@ export const dynamic = 'force-dynamic';
  * Refused here, before anything is written:
  * - 422 when `gameType` is not `CUSTOM_GAME` — we only track our own customs;
  * - 422 when no team won: a remake or a `TerminatedInError` block (M2.10, point 6). The
- *   companion is not supposed to post one; if it does, nothing is written and nothing is
- *   rated, and the lobby is left alone to age out on the idle rule (M2.5);
+ *   companion is not supposed to post one; if it does, nothing is written, nothing is rated
+ *   and no lobby moves. A lobby already at `in_game` stays there permanently — the 2-hour
+ *   sweep covers `open` and `balanced` only (M2.5) — and M5.5 lists it;
  * - 422 when the same PUUID appears twice on the scoreboard;
  * - 403 when the token's player is not on the scoreboard (architecture "Security": a
  *   companion may only report a game it was in).
