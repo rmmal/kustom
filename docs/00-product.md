@@ -36,6 +36,44 @@ accused of stacking. New or rotating players make it worse because nobody agrees
 5. At end of game the companion captures the full stats block. Ratings move. Leaderboard updates.
 6. If more than ten showed up, the server posts who sits next game based on who sat last.
 
+## Worked example
+
+The concrete version of "the bot is the referee", used as the pinned test case for the balancer
+(`docs/02-milestones.md`, M1.4, has the full arithmetic and the expected second and third splits).
+
+Ten friends are in the lobby on an ordinary Tuesday. They have been playing for a few weeks, so their ratings
+have drifted off the rank they were seeded from.
+
+| Name | Rank | Rating | Main | Backup |
+|---|---|---|---|---|
+| Bilal | Platinum I | 1713 | adc | mid |
+| Hana | Gold III | 1434 | top | mid |
+| Iris | Platinum IV | 1578 | jungle | top |
+| Karim | Gold I | 1551 | mid | adc |
+| Lena | Master | 2088 | adc | jungle |
+| Nadia | Silver III | 1266 | mid | support |
+| Omar | Gold II | 1469 | top | support |
+| Rami | Platinum III | 1638 | jungle | mid |
+| Theo | Gold III | 1419 | support | adc |
+| Yuki | Bronze II | 1134 | support | top |
+
+Nobody types anything. This appears in Discord:
+
+| | Blue | Red |
+|---|---|---|
+| top | Hana | Omar |
+| jungle | Iris | Rami |
+| mid | Karim | Nadia |
+| adc | Bilal | Lena |
+| support | Theo | Yuki |
+
+> Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and Omar, gap 170.
+
+Everyone got the role they main. The two sides are 100 rating points apart out of about 7,600 a side. Lena is
+the best player in the room and she is on the weaker side on paper, which is the sort of thing that used to
+take ten minutes of arguing. If someone still wants a different night, reroll gives the "swap Hana and Omar"
+teams instead, and then one more after that. There is no fourth.
+
 ## Features by milestone
 
 See `02-milestones.md` for the build order. In product terms:

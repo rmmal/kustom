@@ -8,7 +8,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | Milestone | Status | Notes |
 |---|---|---|
 | M0 Spike: verify the client | not started | Blocks M2. Do first. |
-| M1 Foundation | not started | Can run in parallel with M0. |
+| M1 Foundation | in progress | M1.1 done. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | not started | Needs M0 and M1. |
 | M3 Teams in Discord and on the web | not started | Needs M2. First night of real use. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
@@ -36,10 +36,295 @@ Acceptance: `pnpm --filter lcu test` passes against fixtures; the reference doc 
 
 Goal: the monorepo, the database, and the pure core with tests. No client needed.
 
-- [ ] **M1.1** Monorepo: pnpm workspaces, TypeScript project references, Biome, vitest, `apps/web` (Next.js App Router), `packages/core`, `packages/db`, `packages/lcu` (from M0 or a stub). Root scripts listed in `CLAUDE.md` all exist.
+- [x] **M1.1** Monorepo: pnpm workspaces, TypeScript project references (dropped, see decisions 2026-09-08: source-shipping packages, `tsc --noEmit`), Biome, vitest, `apps/web` (Next.js App Router), `packages/core`, `packages/db`, `packages/lcu` (from M0 or a stub). Root scripts listed in `CLAUDE.md` all exist.
 - [ ] **M1.2** Supabase project, migration `0001_init.sql` with the schema in `01-architecture.md`, RLS policies, generated types, `pnpm db:migrate` and `pnpm db:types`.
 - [ ] **M1.3** `packages/core/rating`: seed from tier, `rateGame`, `ordinal`, `displayRating`, `predictWin`. Tests: seeds match the table; a Bronze on the winning side gains more than a Master beside them; ten games converge a mis-seeded player.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > **Seed table, divisions spelled out.** Seed `mu` from `players.rank_tier` + `players.rank_division` at
+    > first sight. Division IV is the tier base; add 0.75 per division above IV.
+    >
+    > | Tier | IV | III | II | I |
+    > |---|---|---|---|---|
+    > | Iron | 14.00 | 14.75 | 15.50 | 16.25 |
+    > | Bronze | 17.00 | 17.75 | 18.50 | 19.25 |
+    > | Silver | 20.00 | 20.75 | 21.50 | 22.25 |
+    > | Gold | 23.00 | 23.75 | 24.50 | 25.25 |
+    > | Platinum | 26.00 | 26.75 | 27.50 | 28.25 |
+    > | Emerald | 29.00 | 29.75 | 30.50 | 31.25 |
+    > | Diamond | 32.00 | 32.75 | 33.50 | 34.25 |
+    >
+    > Master, Grandmaster and Challenger are all 35.00 with **no division bonus** (they have no divisions; if the
+    > client reports one, ignore it). Unranked, or any tier string we do not recognise, is 20.00.
+    >
+    > **Seed sigma.** 8.33 for any ranked seed. 10.00 for unranked/unknown. Nothing else.
+    >
+    > **Functions.**
+    > - `seedFromRank(tier, division) -> { mu, sigma }`. Pure lookup, no clamping, no rounding.
+    > - `rateGame(blue, red, winningSide) -> { blue, red }` where `blue`/`red` are five `{ mu, sigma }` in input
+    >   order and `winningSide` is `100` or `200`. Returns new ratings in the same order. **There is no draw
+    >   path** — a League custom cannot draw, and a remake is not a game (the API drops it before this call).
+    > - `ordinal({ mu, sigma }) -> mu - 2 * sigma`.
+    > - `displayRating(mu) -> Math.round(mu * 60)`.
+    > - `predictWin(blue, red) -> number`. **Blue's probability first**, a single number in `[0, 1]`. Red's is
+    >   `1 - it`. Takes the real `{ mu, sigma }`, never the role-adjusted effective skill.
+    >
+    > **Tests, exactly.**
+    >
+    > 1. *Seeds match the table.* Every cell above, plus Master/GM/Challenger = 35.00, plus unranked = 20.00 with
+    >    sigma 10.00, plus a garbage tier string = 20.00 with sigma 10.00.
+    > 2. *A Bronze on the winning side gains more than a Master beside them.* This only holds when their sigmas
+    >    differ — OpenSkill moves `mu` in proportion to the player's own `sigma^2`, not their rank, so two
+    >    players with the same sigma on the same winning team gain the identical amount. Pin the setup:
+    >    the Bronze II is freshly seeded (`mu 18.50, sigma 8.33`), the Master is settled (`mu 35.00, sigma 3.50`),
+    >    they are on the same team with three `mu 25.00, sigma 5.00` teammates, the other five are all
+    >    `mu 25.00, sigma 5.00`, and their side wins. Assert `muAfter - muBefore` is strictly larger for the
+    >    Bronze. Do not "fix" this by giving them equal sigmas and asserting something weaker.
+    > 3. *Ten games converge a mis-seeded player.* Setup: `P0` seeded Iron IV (`mu 14.00, sigma 8.33`). Ten other
+    >    players, all settled Gold IV (`mu 23.00, sigma 3.50`). Ten games; in game `k` (0-indexed), `P0`'s team is
+    >    `P0` plus players `1 + (k % 10)`, `1 + ((k+1) % 10)`, `1 + ((k+2) % 10)`, `1 + ((k+3) % 10)` (wrapping,
+    >    skipping `P0`), the remaining five are the opponents, and `P0`'s side wins every time. Assert all three:
+    >    - `mu(P0)` strictly increases after every game;
+    >    - `sigma(P0)` strictly decreases after every game and ends below 5.00;
+    >    - after the tenth game `mu(P0) > 23.00`, i.e. above the Gold IV seed.
+    >
+    >    If the third assertion fails against the real `openskill` package, **do not lower the number.** Record
+    >    the game count it actually takes, report it to the lead as a finding, and leave the test failing or
+    >    skipped with the real number in a comment — "how many games a smurf distorts teams for" is a product
+    >    fact we want to know, not a test to tune.
+    >
+    > **Out of scope for M1.3.** Season resets (M5.3), the rating-rebuild fold (M5.2), any database or API call,
+    > and anything that reads the clock. `rateGame` is a pure function of its arguments.
+
 - [ ] **M1.4** `packages/core/balance`: partition enumeration, role assignment, scoring, top three, explanation string, reroll. Tests: the worked example from the product vision (ten named players with ranks) yields a gap of 100 with everyone on a main role; duo lock is respected; repeat-split penalty changes the choice; nine or eleven players throws.
+
+    > **Brief (product, 2026-09-08)**
+    >
+    > ### What a player sees
+    >
+    > Ten friends are in a custom lobby. Nobody typed anything. Within a few seconds Discord shows two teams of
+    > five, each with a role next to the name, a win chance, a gap number, and one line saying what the next
+    > best teams would have been. If someone shouts "rigged", an admin taps reroll and the second-best split
+    > goes up instead. That is the whole feature. `packages/core/balance` is the part that turns ten players
+    > into those three splits and those three sentences. It touches nothing else.
+    >
+    > ### Input
+    >
+    > `balance(input)` where `input` is:
+    >
+    > - `players` — exactly ten. Each: `puuid` (string, the identity), `name` (string, `players.display_name`,
+    >   used only in the explanation), `mu` (number), `sigma` (number), `mainRole` (role or `null`),
+    >   `secondaryRole` (role or `null`), `roleOverride` (role or absent).
+    > - `duos` — array of `[puuidA, puuidB]` pairs that must land on the same team. May be empty. May be absent.
+    > - `lastSplit` — the five puuids that were on **one** side of the last chosen split for this group, or
+    >   `null`. Side colour is not part of it.
+    >
+    > Roles are `'top' | 'jungle' | 'mid' | 'adc' | 'support'`.
+    >
+    > ### Output
+    >
+    > `{ splits, explanations }` — `splits` is one to three entries, best first. Each split:
+    >
+    > - `blue` — five `{ puuid, role }`, `red` — five `{ puuid, role }`
+    > - `gap` — integer, display-rating units (see "Numbers" below)
+    > - `blueWinProb` — number in `[0, 1]`, blue's chance
+    > - `score` — number, unrounded, the value that ordered the list
+    > - `offRoleCount` — integer, 0 to 10
+    >
+    > `explanations[i]` is the sentence for `splits[i]`. Store all three in the `splits` table so reroll and the
+    > tonight page never recompute.
+    >
+    > ### Numbers, stated once so the tests can pin them
+    >
+    > - Effective skill of a player on a role, in **display units**: `mu * multiplier * 60`, multiplier `1.00`
+    >   main, `0.93` secondary, `0.85` anything else.
+    > - Per team, pick the role assignment (all 120 permutations) that maximises
+    >   `sum(effective) - 120 * offRoleCount(thisTeam)`.
+    > - `rawGap = |sum(blueEffective) - sum(redEffective)|`, unrounded, display units.
+    > - `score = rawGap + 120 * offRoleCount + 200 * isRepeatOfLastSplit`. A split that separates a duo is not
+    >   scored at all — it is never generated.
+    > - `gap = Math.round(rawGap)`. Rounding happens once, for display only.
+    > - `blueWinProb = predictWin(blue, red)` on the real `{ mu, sigma }`, never on effective skill.
+    > - **Enumeration and side colour.** Sort the ten players by `puuid` ascending first, so the same ten in any
+    >   order give byte-identical output. Then enumerate the 126 partitions as: player `[0]` is always on blue,
+    >   choose four of the remaining nine to join them. That fixes which side is blue without any other rule,
+    >   and lets red be the favoured side when the numbers say so.
+    > - **Ties.** Lower `score` wins; then lower `offRoleCount`; then the lexicographically smaller sorted list
+    >   of blue puuids. Deterministic, no randomness anywhere in this package.
+    >
+    > ### Role edge cases
+    >
+    > - `mainRole: null` (a friend nobody has set up yet) means **flexible**: every role is a main for them,
+    >   multiplier `1.00`, never counted off-role. A new face must never make the night worse.
+    > - `mainRole` set, `secondaryRole: null`: every non-main role is `0.85` and off-role.
+    > - `roleOverride` present: **the override becomes the main; the usual main becomes the secondary; the
+    >   declared secondary drops to `0.85`.** One line to explain to a friend — "the role you tapped is your
+    >   role tonight, your usual role is your backup" — and it never punishes someone for their real strength.
+    > - `roleOverride` equal to the existing main is a no-op.
+    >
+    > ### Duos
+    >
+    > A duo is two puuids that must be on the same team. Colour does not matter. Build connected components
+    > with union-find (`[A,B]` and `[B,C]` means A, B and C are one block), then keep only the partitions where
+    > every block sits entirely on one side. Everything else is discarded before scoring — there is no
+    > "infinite penalty" number in the code, just a filter.
+    >
+    > If no partition survives — a block larger than five, or blocks whose sizes cannot be packed into 5 and 5,
+    > for example sizes `4, 4, 2` — throw `BalanceError('Duo locks cannot fit five and five: <names of each
+    > block>')`. Do not silently drop a duo. The API turns this into a Discord line the group can act on.
+    >
+    > ### Repeat-split penalty
+    >
+    > "Same as last night" means **the same five people together**, regardless of side colour. A split is a
+    > repeat if `set(blue) === lastSplit` or `set(red) === lastSplit`. Penalty `200` display points, added once.
+    >
+    > Tiny scenario that flips the choice, using the worked example below: pass
+    > `lastSplit = [Hana, Iris, Karim, Bilal, Theo]`. Split 1 now scores `99.6 + 200 = 299.6` and falls to
+    > fourth. The chosen split becomes the old split 2 (gap 170), then the old split 3 (gap 220), then an
+    > off-role split scoring 244.92. That is the whole test.
+    >
+    > ### Explanation string
+    >
+    > One line, clauses joined by a single space, each clause ending in a full stop. Numerals throughout.
+    >
+    > 1. **Win chance.** `p = Math.round(blueWinProb * 100)`. If `p > 50`: `Blue favored {p}%.` If `p < 50`:
+    >    `Red favored {100 - p}%.` If `p === 50`: `Even 50%.`
+    > 2. **Roles.** If `offRoleCount === 0`: `Everyone on a main role.` If `1`: `{Name} off-role at {role}.`
+    >    If `2` or more: `{n} off-role: {Name} at {role}, {Name} at {role}.` — blue's players first, then red's,
+    >    each side in role order top, jungle, mid, adc, support.
+    > 3. **Gap.** `Gap {gap}.`
+    > 4. **Next best.** Compare this split with the next one in the stored list. Align them first: take
+    >    whichever of the next split's two sides overlaps this split's blue more. Let `k` be the number of
+    >    players who move.
+    >    - `k === 1`: `Next best: swap {name leaving blue} and {name joining blue}, gap {gap}.`
+    >    - `k >= 2`: `Next best: {k} swaps, gap {gap}.`
+    >    - If the next split has a different `offRoleCount`, append it before the full stop:
+    >      `..., gap {gap} with {n} off-role.` (The next best can have a smaller gap and still be worse,
+    >      because off-role costs 120 a head. Saying so is the point of the line.)
+    >    - If there is no next split — this is the last of the three, or duo locks left only one — omit
+    >      clause 4 entirely. No "no alternatives" filler.
+    >
+    > Names come from `name` as given. Core does not deduplicate identical names.
+    >
+    > ### The worked example
+    >
+    > Also in `00-product.md` under "Worked example". Ten friends, a few weeks into the season, so `mu` has
+    > drifted off the seed. Puuids are `puuid-<lowercase name>`, which makes the sort order alphabetical and
+    > puts Bilal at index 0, hence on blue.
+    >
+    > | Name | Rank | Seed mu | Current mu | sigma | Display | Main | Secondary |
+    > |---|---|---|---|---|---|---|---|
+    > | Bilal | Platinum I | 28.25 | 28.55 | 4.80 | 1713 | adc | mid |
+    > | Hana | Gold III | 23.75 | 23.90 | 4.60 | 1434 | top | mid |
+    > | Iris | Platinum IV | 26.00 | 26.30 | 4.90 | 1578 | jungle | top |
+    > | Karim | Gold I | 25.25 | 25.85 | 4.70 | 1551 | mid | adc |
+    > | Lena | Master | 35.00 | 34.80 | 4.50 | 2088 | adc | jungle |
+    > | Nadia | Silver III | 20.75 | 21.10 | 5.10 | 1266 | mid | support |
+    > | Omar | Gold II | 24.50 | 24.49 | 4.60 | 1469 | top | support |
+    > | Rami | Platinum III | 26.75 | 27.30 | 4.80 | 1638 | jungle | mid |
+    > | Theo | Gold III | 23.75 | 23.65 | 4.90 | 1419 | support | adc |
+    > | Yuki | Bronze II | 18.50 | 18.90 | 5.00 | 1134 | support | top |
+    >
+    > Two mains per role, no duos, no overrides, `lastSplit: null`.
+    >
+    > **Split 1** (chosen). Gap **100**, everyone on a main role.
+    >
+    > | | Blue | Red |
+    > |---|---|---|
+    > | top | Hana | Omar |
+    > | jungle | Iris | Rami |
+    > | mid | Karim | Nadia |
+    > | adc | Bilal | Lena |
+    > | support | Theo | Yuki |
+    >
+    > Blue mu sum `128.25`, red `126.59`, difference `1.66`. In display units `1.66 * 60 = 99.6`, and
+    > `Math.round(99.6) = 100`. `offRoleCount 0`, so `score = 99.6`.
+    >
+    > **Split 2.** Swap Hana and Omar. Gap **170** (`2.84 * 60 = 170.4`), everyone still on a main role,
+    > `score = 170.4`.
+    >
+    > **Split 3.** Split 1 with both the top pair and the jungle pair swapped: blue Hana, Rami, Karim, Bilal,
+    > Theo. Gap **220** (`3.66 * 60 = 219.6`), everyone on a main role, `score = 219.6`.
+    >
+    > The next best split after those three is off-role and scores `244.92`, so the top three are stable: any
+    > split with someone off-role costs at least `240` before its gap is counted, and all three of these are
+    > below that. The roster was built that way on purpose — the test must not depend on a coin-flip between an
+    > off-role split and an all-main one.
+    >
+    > **Expected explanations**, in order:
+    >
+    > ```
+    > Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and Omar, gap 170.
+    > Blue favored 57%. Everyone on a main role. Gap 170. Next best: 2 swaps, gap 220.
+    > Blue favored 59%. Everyone on a main role. Gap 220.
+    > ```
+    >
+    > The percentages are the only figures here that come out of the `openskill` package rather than our own
+    > arithmetic. They were computed as `Phi(dMu / sqrt(2 * beta^2 + sum of all ten sigma^2))` with
+    > `beta = 25/6` and `sum(sigma^2) = 229.77`, giving `0.5406`, `0.5693`, `0.5890`. Each sits at least
+    > 0.004 away from a rounding boundary, so a small implementation difference will not move the printed
+    > number. Verify against the real package before pinning. If it disagrees, pin what the package returns,
+    > update this brief and `00-product.md`, and add a row to `04-decisions.md` — do not adjust the roster.
+    >
+    > Note: the sample string in `01-architecture.md` ends "gap 300". That was written before this roster
+    > existed and is a format illustration only; 170 is the real next-best gap here.
+    >
+    > ### Errors
+    >
+    > All throw `BalanceError` with a message a human can read:
+    >
+    > - `players.length !== 10` — "Balancing needs exactly ten players, got 9." Nine and eleven both throw.
+    >   Deciding who sits is the API's job, not ours.
+    > - Duplicate `puuid` in `players` — "Duplicate player: <puuid>."
+    > - A `duos` entry naming a puuid that is not in `players` — "Duo names someone not in the lobby: <puuid>."
+    > - A `duos` entry naming the same puuid twice.
+    > - Duo locks with no legal partition, as above.
+    > - `lastSplit` that is not five puuids drawn from `players` — throw rather than ignore; a bad `lastSplit`
+    >   silently ignored means the repeat penalty quietly stops working and nobody notices for a month.
+    >
+    > ### Reroll
+    >
+    > `nextSplit(splits, currentIndex) -> number`. Returns `currentIndex + 1` while one exists; throws
+    > `BalanceError('No more splits. Rebalance or play these.')` at the end of the list. It never reshuffles,
+    > never randomises, and never calls `balance` again. Two people pressing reroll twice get the same third
+    > split, not a new one.
+    >
+    > ### Tests, exactly
+    >
+    > 1. The worked example returns three splits with gaps `100`, `170`, `220`, all with `offRoleCount 0`, the
+    >    exact rosters and roles in the tables above, and the three explanation strings verbatim.
+    > 2. Feeding the same ten players in a shuffled order returns identical output, field for field.
+    > 3. `duos: [[Hana, Lena]]` — every returned split has Hana and Lena on the same side, and split 1 is the
+    >    base split 2 (blue Omar, Iris, Karim, Bilal, Theo; gap 170, `offRoleCount 0`).
+    > 4. `duos: [[Hana, Omar]]` — the two top mains locked together. Split 1 has gap 26 with `offRoleCount 2`
+    >    (Hana at mid, Nadia at top). Assert only split 1; splits 2 and 3 tie on score here and are settled by
+    >    the tie-break, which is not worth pinning.
+    > 5. Duo locks that cannot fit: blocks of 4, 4 and 2 throw, and the message names the blocks.
+    > 6. `lastSplit = [Hana, Iris, Karim, Bilal, Theo]` — split 1 becomes the base split 2 (gap 170). Passing
+    >    the red five of the base split 1 instead produces the same result, proving side colour is ignored.
+    > 7. `roleOverride: top` on Yuki — split 1 has gap 98 and `offRoleCount 1`, Yuki at top on red, Omar at
+    >    support on blue, and the explanation reads
+    >    `Blue favored 58%. Omar off-role at support. Gap 98. Next best: 2 swaps, gap 4 with 2 off-role.`
+    > 8. Nine players throws. Eleven players throws. Duplicate puuids throw.
+    > 9. A player with `mainRole: null` is never counted in `offRoleCount` and can be placed in any role.
+    > 10. `nextSplit` walks 0 to 1 to 2 and then throws.
+    > 11. Performance: balancing ten players stays under 100 ms on a laptop. One `expect` on elapsed time is
+    >     enough; this runs on a Vercel function while ten people wait.
+    >
+    > ### Out of scope for M1.4
+    >
+    > - **Who sits out.** More than ten people around is the API's problem (M2.5, sit-out logic). Core sees ten
+    >   or throws.
+    > - **Someone leaves mid-lobby, the companion disconnects, a lobby goes stale.** All lobby-state machine,
+    >   M2.5. Core has no memory between calls and no clock.
+    > - **Unknown player.** Core handles a null `mainRole` and that is all it needs to know. Creating the row,
+    >   fetching their rank, and seeding their rating is M1.5 and M2.4.
+    > - Persistence of the three splits (`splits` table, M1.5/M3.1), Discord embed layout (M3.0/M3.1), the
+    >   reroll button and route (M3.2), the tonight page (M3.4), and choosing `lastSplit` from history (M2.5).
+    > - Tuning any constant. `1.00 / 0.93 / 0.85`, `120`, `200` and `* 60` are decided in `01-architecture.md`
+    >   and `04-decisions.md`. Changing one is a decision row and a new task, not a commit.
+
 - [ ] **M1.5** `apps/web` API skeleton: companion token auth middleware, `POST /api/companion/lobby`, `POST /api/companion/game`, `POST /api/companion/rank`, all zod-validated, writing to Supabase with idempotency on `lcu_party_id` and `lcu_game_id`. Lazy player creation by PUUID.
 - [ ] **M1.6** `/admin`: Discord OAuth via Supabase Auth, `is_admin` gate. Pages to list players, set roles, link a Discord ID, mint and revoke companion tokens, edit `discord_config`, create a season. Seed the first admin by PUUID in a migration or env var.
 

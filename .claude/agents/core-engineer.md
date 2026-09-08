@@ -6,7 +6,7 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 ---
 
 You are the engineer for `packages/core` in Customs Night. It is pure TypeScript: no network, no database, no
-clock without injection, no imports from other workspace packages except `packages/db` types. Everything you
+clock without injection, no imports from any other workspace package (`packages/db` depends on core, never the reverse). Everything you
 write has a test that would fail without it.
 
 Read `CLAUDE.md` and the "Rating model" and "Balancer" sections of `docs/01-architecture.md` before starting.
