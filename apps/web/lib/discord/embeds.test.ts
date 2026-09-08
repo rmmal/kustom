@@ -114,6 +114,12 @@ describe('teamsEmbed, the worked example', () => {
     expect(embed?.url).toBe(SITE_URL);
     expect(teamsEmbed(workedTeamsInput({ url: undefined })).embeds[0]).not.toHaveProperty('url');
   });
+
+  it('stops promising a tonight page when the title is not a link', () => {
+    // A localhost origin is dropped by `tonightPageUrl`, and a footer that says "more on the
+    // tonight page" over an unlinked title tells a friend to tap something that is not there.
+    expect(teamsEmbed(workedTeamsInput({ url: undefined })).embeds[0]?.footer.text).toBe('Customs Night');
+  });
 });
 
 describe('teamsEmbed, the fields that only sometimes exist', () => {
@@ -160,7 +166,9 @@ describe('teamsEmbed, the fields that only sometimes exist', () => {
     ]);
   });
 
-  it('orders the fields Blue, Red, Sitting out, Seats, Lobby', () => {
+  it('puts the rotation above the teams: Sitting out, Seats, Blue, Red, Lobby', () => {
+    // `05-design.md`, revised 2026-09-09: the line that has to happen before anybody can play
+    // goes above the fold, and Blue/Red stay next to each other so Discord still pairs them.
     const embed = teamsEmbed(
       workedTeamsInput({
         sitOut: { names: ['Omar'], reason: 'most-games' },
@@ -168,12 +176,14 @@ describe('teamsEmbed, the fields that only sometimes exist', () => {
       }),
     ).embeds[0];
     expect(embed?.fields.map((field) => field.name)).toEqual([
-      'Blue · 7695',
-      'Red · 7595',
       'Sitting out',
       'Seats',
+      'Blue · 7695',
+      'Red · 7595',
       'Lobby',
     ]);
+    // Consecutive, and both inline: that is what makes them two columns rather than two rows.
+    expect(embed?.fields.slice(2, 4).map((field) => field.inline)).toEqual([true, true]);
   });
 
   it('marks an off-role line, so the fact survives being read on its own', () => {
@@ -350,5 +360,42 @@ describe('the small formatters', () => {
     expect(renderName('Hana')).toBe('Hana');
     expect(renderName('x'.repeat(40))).toBe(`${'x'.repeat(31)}…`);
     expect(renderName('x'.repeat(32))).toBe('x'.repeat(32));
+  });
+
+  it('escapes the markdown a Riot ID can carry, so a name is text and not markup', () => {
+    // One stray backtick closes the role's code span and swallows the rest of the field.
+    expect(renderName('a`b')).toBe('a\\`b');
+    expect(renderName('Dark_Wolf')).toBe('Dark\\_Wolf');
+    expect(renderName('*bold*')).toBe('\\*bold\\*');
+    expect(renderName('~x~')).toBe('\\~x\\~');
+    expect(renderName('a|b')).toBe('a\\|b');
+    expect(renderName('a\\b')).toBe('a\\\\b');
+  });
+
+  it('escapes last, so the escapes cannot be sliced away by the truncation', () => {
+    // 32 underscores: what a reader counts is still 31 characters and an ellipsis, and every
+    // backslash still has its character. Escaping first would cut one off mid-pair.
+    const rendered = renderName('_'.repeat(40));
+    expect(rendered).toBe(`${'\\_'.repeat(31)}…`);
+    expect(rendered.replace(/\\/g, '')).toBe(`${'_'.repeat(31)}…`);
+  });
+
+  it('escapes the name in every line that prints one', () => {
+    const base = workedTeamsInput({
+      sitOut: { names: ['Dark_Wolf'], reason: 'most-games' },
+      seats: [{ kind: 'swap', sitter: 'Dark_Wolf', mover: 'a`b' }],
+    });
+    const blue = base.blue.map((player, index) => (index === 0 ? { ...player, name: 'a`b' } : player));
+    const embed = teamsEmbed({ ...base, blue }).embeds[0];
+
+    expect(embed?.fields.find((field) => field.name === 'Sitting out')?.value).toBe(
+      'Sitting out: Dark\\_Wolf — most games tonight.',
+    );
+    expect(embed?.fields.find((field) => field.name === 'Seats')?.value).toBe(
+      'Swap: Dark\\_Wolf out, a\\`b in.',
+    );
+    expect(embed?.fields.find((field) => field.name.startsWith('Blue'))?.value.split('\n')[0]).toBe(
+      '`top` a\\`b · 1434',
+    );
   });
 });

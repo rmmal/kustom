@@ -153,9 +153,19 @@ No OAuth app exists yet. Once someone creates one:
    already in `packages/db/supabase/config.toml`; with the variables unset the CLI only warns,
    so everyone else's stack still starts.
    Hosted: Authentication → Providers → Discord, paste them there.
-5. Supabase → Authentication → URL Configuration: site URL and the allow-list must include the
-   app's own `/auth/callback` (`http://127.0.0.1:3000/auth/callback` locally; the local
-   `config.toml` already allows `127.0.0.1:3000`).
+5. Supabase → Authentication → URL Configuration: the **Site URL** is the deployment
+   (`https://kustom-delta.vercel.app`), and the redirect allow-list needs **exactly one entry per
+   environment, the app's own callback with no query string**:
+   - hosted: `https://kustom-delta.vercel.app/auth/callback`
+   - local: `http://127.0.0.1:3000/auth/callback` (the local `config.toml` already allows it)
+
+   No wildcard. Supabase matches `redirect_to` against that list as **exact URLs**, so
+   `…/auth/callback?next=/admin` matched nothing and the round trip fell back to the Site URL —
+   which is how a sign-in on the deployed site landed on somebody's `localhost:3000` (M1.11).
+   `/auth/signin` now sends the bare callback URL and remembers where to land in a 10-minute
+   HttpOnly `SameSite=Lax` cookie (`lib/authNext.ts`), which `/auth/callback` reads, validates as
+   a path on this site and clears. If a `**` wildcard entry was added while that was broken,
+   delete it: it is a live open-redirect allowance and nothing needs it any more.
 
 Scopes are Supabase's default, `identify email`. `identify` is what carries the snowflake the
 gate matches on; nothing else is needed.

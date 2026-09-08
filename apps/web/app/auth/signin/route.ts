@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { internalPathSchema } from '@/lib/admin/formValues';
+import { DEFAULT_NEXT_PATH, rememberNext, safeNextPath } from '@/lib/authNext';
 import { ServerEnvError } from '@/lib/env';
 import { jsonError } from '@/lib/http';
 import { siteOrigin } from '@/lib/siteUrl';
@@ -16,16 +16,18 @@ export const dynamic = 'force-dynamic';
  * `/admin/login` stays a plain form with no client JavaScript.
  *
  * POST only, because a GET would let any page on the internet bounce a visitor through Discord.
+ *
+ * `redirect_to` is the **bare** `<siteOrigin>/auth/callback`, with no query string of any kind:
+ * Supabase compares it against an allow-list of exact URLs, and a `?next=` on the end matched
+ * nothing, so the whole round trip fell back to the project's Site URL (M1.11). Where to land
+ * afterwards rides in a short-lived HttpOnly cookie instead — see `lib/authNext.ts`.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  let next = '/admin';
+  let next = DEFAULT_NEXT_PATH;
   try {
     const form = await request.formData();
     const candidate = form.get('next');
-    if (typeof candidate === 'string') {
-      const parsed = internalPathSchema.safeParse(candidate);
-      if (parsed.success) next = parsed.data;
-    }
+    next = (typeof candidate === 'string' ? safeNextPath(candidate) : null) ?? DEFAULT_NEXT_PATH;
   } catch {
     // No body is fine: /admin is the default.
   }
@@ -37,7 +39,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const client = createAuthClient(jar);
     const { data, error } = await client.auth.signInWithOAuth({
       provider: 'discord',
-      options: { redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}` },
+      options: { redirectTo: `${origin}/auth/callback` },
     });
 
     if (error !== null || !data.url) {
@@ -46,7 +48,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.redirect(loginUrl(origin, reason), 303);
     }
 
-    return jar.applyTo(NextResponse.redirect(data.url, 303));
+    return rememberNext(jar.applyTo(NextResponse.redirect(data.url, 303)), next, origin);
   } catch (error) {
     if (error instanceof ServerEnvError) {
       console.error(`sign-in: ${error.message}`);

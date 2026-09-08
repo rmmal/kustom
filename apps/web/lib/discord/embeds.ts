@@ -125,10 +125,13 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
   const blue = inLaneOrder(input.blue);
   const red = inLaneOrder(input.red);
 
-  const fields: EmbedField[] = [
-    { name: `Blue · ${sumRatings(blue)}`, value: blue.map(teamsLine).join('\n'), inline: true },
-    { name: `Red · ${sumRatings(red)}`, value: red.map(teamsLine).join('\n'), inline: true },
-  ];
+  // The rotation goes first (`05-design.md`, revised 2026-09-09): "Swap: Omar out, Nadia in."
+  // is the one line in the message that has to happen before anybody can play, and behind ten
+  // rating lines plus a wrapped explanation it was landing below the fold on a phone. Discord
+  // groups only *consecutive* inline fields, so a block field in front of Blue and Red does not
+  // break their pairing, and on a ten-person night neither field exists and the embed is
+  // byte-identical to what shipped.
+  const fields: EmbedField[] = [];
 
   if (input.sitOut !== null && input.sitOut.names.length > 0) {
     fields.push({ name: 'Sitting out', value: sitOutLine(input.sitOut.names, input.sitOut.reason) });
@@ -136,6 +139,11 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
   if (input.seats.length > 0) {
     fields.push({ name: 'Seats', value: input.seats.map(seatLine).join('\n') });
   }
+
+  fields.push(
+    { name: `Blue · ${sumRatings(blue)}`, value: blue.map(teamsLine).join('\n'), inline: true },
+    { name: `Red · ${sumRatings(red)}`, value: red.map(teamsLine).join('\n'), inline: true },
+  );
 
   const lobby = lobbyFieldValue(input.lobby);
   if (lobby !== null) fields.push({ name: 'Lobby', value: lobby });
@@ -148,7 +156,10 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
         ...(input.url === undefined ? {} : { url: input.url }),
         description: input.explanation,
         fields,
-        footer: { text: 'Customs Night · more on the tonight page' },
+        // With no url the title is not a link, so the footer must not promise one
+        // (`05-design.md`): telling a friend to tap something that is not there is worse than
+        // saying nothing.
+        footer: { text: teamsFooter(input.url) },
         timestamp: input.timestamp,
       },
     ],
@@ -234,11 +245,28 @@ export function formatDamage(damage: number): string {
  * The name as it is printed: the display name, truncated at 32 characters, or `Someone` for a
  * player the database has no name for yet (M3.10). The fallback is a rendering rule and
  * nothing else — it is never written to `players`.
+ *
+ * A name is **text, not markup**. Riot IDs carry underscores and asterisks, and one stray
+ * backtick closes the role's code span and swallows the rest of the field. So the markdown
+ * characters are backslash-escaped — **last**, on the already-truncated string, so an escape
+ * can never be sliced away from the character it belongs to and the 32 characters stay the 32
+ * characters a reader sees (`05-design.md`, 2026-09-09).
  */
 export function renderName(name: PlayerName): string {
   const trimmed = (name ?? '').trim();
   if (trimmed.length === 0) return NAMELESS_PLAYER;
-  return trimmed.length > MAX_NAME_LENGTH ? `${trimmed.slice(0, MAX_NAME_LENGTH - 1)}…` : trimmed;
+  const cut = trimmed.length > MAX_NAME_LENGTH ? `${trimmed.slice(0, MAX_NAME_LENGTH - 1)}…` : trimmed;
+  return escapeMarkdown(cut);
+}
+
+/** Backtick, `*`, `_`, `~`, `|` and the backslash itself. There is no name we want italicised. */
+function escapeMarkdown(value: string): string {
+  return value.replace(/([`*_~|\\])/g, '\\$1');
+}
+
+/** `Customs Night · more on the tonight page`, or just the name when there is no link. */
+function teamsFooter(url: string | undefined): string {
+  return url === undefined ? 'Customs Night' : 'Customs Night · more on the tonight page';
 }
 
 /** `Sara and Deniz`, `Sara, Deniz and Ali` (M2.15). */
