@@ -34,7 +34,26 @@ accused of stacking. New or rotating players make it worse because nobody agrees
    roles, win chance, and a one-line why. Voice channels split.
 4. Players switch to their side (companion can do it for them, see M4). Game starts.
 5. At end of game the companion captures the full stats block. Ratings move. Leaderboard updates.
-6. If more than ten showed up, the server posts who sits next game based on who sat last.
+6. If more than ten showed up, the server posts who sits: whoever has played most tonight, and between
+   equals whoever has gone longest without sitting. On the first game of a night nobody has done either, so
+   the post says as much — somebody has to be first — and from the second game on the rotation has real
+   history to work from.
+
+## The two things a person can change
+
+Everything else happens without anybody touching it. These two exist because the docs already accepted them,
+and both are one tap:
+
+- **Reroll** (M3.2, admins). Teams are posted and somebody wants a different night. One tap promotes the
+  second split, one more promotes the third, and then it stops: three splits come out of the balancer and
+  there is no fourth. A reroll posts a new message in Discord saying which reroll it is; it never edits the
+  old one, never changes who is playing, and never picks at random. When the list runs out, the way to get
+  different teams is to change who is in the lobby, which rebalances by itself.
+- **Role for tonight** (M3.6). A friend taps a role on the tonight page and the balancer treats it as their
+  main for the rest of the night, with their usual main as the backup. It is a preference, not a lock: the
+  teams can still put them somewhere else and the explanation line says so when they do. A tap after teams
+  are already posted is kept for the next game rather than redoing the teams people have already moved for —
+  the referee does not reopen a decision because one player changed their mind.
 
 ## Worked example
 

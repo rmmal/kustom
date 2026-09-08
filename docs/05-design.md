@@ -418,6 +418,14 @@ footer         Customs Night · more on the tonight page
 Budget: a side field is ~110 characters against a 1024 limit, so a name would have to be ~180 characters to
 threaten it. Truncate a display name at 32 characters with `…` at the source anyway; do not truncate the field.
 
+**The title on a reroll** (product, 2026-09-09, for M3.2). A reroll is a new message, never an edit of the
+old one, and the title says how far down the list the group has gone: `Teams are set · reroll 1 of 2` for
+split 2, `Teams are set · reroll 2 of 2` for split 3. Split 1 keeps the plain `Teams are set`, including when
+an admin promotes it back. Nothing else about the embed changes — same accent bar, the promoted split's
+explanation verbatim, the same ten. `of 2` is there so the second one reads as the last one without anybody
+having to be told there is no fourth split; the web strip carries the sentence for the friend who presses
+again (`No more splits. …`, above).
+
 **Names, in every line of both embeds.** One renderer (`renderName`): the newest display name we have,
 trimmed; `Someone` when we have none (M3.10); 31 characters and `…` when it is longer than 32. A blank-looking
 line in a five-line field reads as a bug, which is why the fallback is a word and not an empty string.
@@ -455,11 +463,24 @@ field 1 name   Sitting out
 field 1 value  Sitting out: Omar — most games tonight.
                (…and when everyone around has played the same number tonight, the clause is
                 `— longest since they last sat out.` Always "they".)
+               (…and when they are tied on games *and* nobody around has ever sat out — the
+                first balance of a night with a fresh group — the clause is
+                `— nobody has sat out before, so somebody had to be first.`)
 
 field 2 name   Seats
 field 2 value  Swap: Omar out, Nadia in.
                Yuki is playing — take the open slot.      [a mover with nobody to swap with]
 ```
+
+**Three reason clauses, not two** (product, 2026-09-09). `— longest since they last sat out.` is true on the
+first balance of a night — nobody has sat out, so everybody has been waiting the longest possible time — and
+vacuous, which is worse than useless: it states a fact about a history that does not exist, and the friend
+reading it goes looking for the night they sat out and cannot find it. What actually happens on game one is
+that everyone ties on games and on sit-outs and the comparator falls through to PUUID order, which is to say
+it is arbitrary. So the clause says that, in the words a friend would use: `nobody has sat out before, so
+somebody had to be first.` It does not say "random" or "the bot drew a name", because it is neither — the same
+person is picked every time until somebody plays a game, and a friend told it was a draw will ask for another
+one. From the second game of the night on, the two existing clauses are true and this one never appears again.
 
 The value repeats the field name (`Sitting out` / `Sitting out: Omar …`) and that repetition stays. Inline
 fields re-wrap and a field can be read alone, quoted alone, or screenshotted alone, so the sentence carries its
@@ -479,7 +500,7 @@ Filled in, eleven around, all tied at zero games tonight (this is the case
 > Even 50%. Everyone on a main role. Gap 0. Next best: swap Player4 and Player5, gap 0.
 >
 > **Sitting out**
-> Sitting out: Player0 — longest since they last sat out.
+> Sitting out: Player0 — nobody has sat out before, so somebody had to be first.
 >
 > **Seats**
 > Swap: Player0 out, Player10 in.
@@ -513,6 +534,10 @@ field 2      name "Red"    inline   five lines: new rating and delta
 footer       Season 1 · game 47                              ["Season 1" alone if the game cannot be counted]
 timestamp    game end
 ```
+
+`Season 1` alone in the footer is right and needs no apology (product, 2026-09-09): the game number is a
+count, and a count we could not take is simply not printed. Never `game ?`, never `game 0`, never a sentence
+explaining that something did not add up. Nobody reading a footer has asked a question yet.
 
 The embed exists only for a game the rating fold actually rated. A remake, a four-minute surrender, a
 scoreboard that is not five a side, the second companion's re-post: no message. There is no "no ratings this
@@ -566,11 +591,17 @@ starts the line — and sorts after the five who have one, so the known rows nev
 | duration | `m:ss`, and `h:mm:ss` once past the hour. No zero padding on the leading unit, no `min`, no `34m 12s`. | `34:12`, `1:02:03`, `0:59` |
 | delta | signed always, ASCII `+` / `-`, `+0` and `-0` for a change too small to round to a point | `(+43)`, `(-45)`, `(-0)` |
 | damage | one decimal and `k` from a thousand up, the plain integer below it | `47.3k`, `1.0k`, `940` |
-| odds | past tense, the favourite named, whole percent | `Blue was favored 54%.` `Red was favored 58%.` `Even 50%.` |
+| odds | past tense, the favourite named, whole percent; when nobody was favoured, no number | `Blue was favored 54%.` `Red was favored 58%.` `Neither side was favored.` |
 
-`Even 50%.` is core's phrasing from the explanation line, kept word for word so the two messages of one night
-do not describe the same coin flip in two ways. It is the one odds clause with no tense, which is right: an
-even game was never a prediction about anybody.
+The coin flip is the one clause that is **not** core's words. Core's explanation line says `Even 50%.` and
+that is right where it sits — first clause of a present-tense list, before the game, next to `Gap 0.` In the
+result embed the same fragment lands under the headline `Red wins · 34:12`, in a line whose other half is a
+full past-tense sentence, and it reads as a claim about the game that was just played rather than about the
+prediction: *even, 50%* beside *Red wins* is a scoreline until you read it twice. It is also the common case
+on the first night the group ever uses this — everyone unrated, every split gap 0 — so it is the first
+result sentence anybody reads. Product, 2026-09-09: the result embed says `Neither side was favored.` The
+number is dropped with it because 50% is what "neither" means and the percent was only ever there to carry
+the size of the claim. Core's `Even 50%.` in the teams explanation is unchanged and stays core's.
 
 **`-0` is a real value and it does not survive JSON.** `displayDelta` returns negative zero for a rating that
 fell by less than half a point, and `formatDelta` asks `Object.is` before it looks at the sign. Anything that

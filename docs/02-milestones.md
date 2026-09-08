@@ -1753,6 +1753,85 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > types to make this happen and nobody types after it.
 
 - [ ] **M3.2** Reroll: an admin route and a small button on the tonight page that promotes split 2 or 3 and reposts. No random reroll exists.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene.** Teams are posted, and somebody in voice says "nah, run it again". One person taps once.
+    > Within a second or two the channel has the second split and the page has changed under everybody. Nobody
+    > typed a command, nobody voted, and there are exactly two of these taps in a night's lobby before the
+    > answer is "play these".
+    >
+    > **Two pieces, two milestones.** The route ships now. The button ships with the tonight page (M3.4),
+    > because there is no page to put it on until then; its behavior is specified here so M3.4 has nothing to
+    > decide. An admin with no page can still reroll from the route, which is the whole reason the route goes
+    > first.
+    >
+    > **The route.** `POST /api/admin/lobbies/[lobbyId]/reroll`, admin session and `players.is_admin` like
+    > every other admin route, request and response through zod. The body names the split it means
+    > (`{ splitId }`) — never "next", never "random". Naming the target is what makes a double tap on a slow
+    > phone harmless.
+    >
+    > 1. Refuse unless the lobby's status is `balanced`. `in_game`, `finished`, `abandoned` and `open` all
+    >    answer 409 and change nothing: once the game has started, the teams on the rift are the teams.
+    > 2. The split must belong to this lobby, or 404.
+    > 3. Already `is_chosen`: 200, nothing promoted, **nothing posted**. Two taps produce one message.
+    > 4. Otherwise clear `is_chosen` on the lobby's chosen row and set it on the target — the same two
+    >    statements, in the same order, that `storeSplits` uses, because `splits_one_chosen_per_lobby_idx`
+    >    allows exactly one chosen row per lobby.
+    > 5. Then `postTeamsForSplit(client, splitId, { requestOrigin })`. The promotion stands whatever Discord
+    >    answers; the response says whether the post went out. A webhook that is down costs the group a
+    >    message, never the teams.
+    >
+    > **What the embed says.** The same teams embed, with the title carrying which reroll this is:
+    > `Teams are set · reroll 1 of 2` for split 2, `Teams are set · reroll 2 of 2` for split 3, plain
+    > `Teams are set` for split 1 including when an admin promotes it back. Description is the promoted
+    > split's stored explanation, verbatim, never recomposed (M3.7). Same ten, same sitters, same seat lines —
+    > `postTeamsForSplit` rebuilds them from the pool with the same pure functions M2.5 used, so a reroll never
+    > quietly changes who is playing. It is a new message, never an edit or a delete of the old one: two
+    > messages are the honest record of what happened, the newest is the one that counts, and the title says
+    > how far down the list the group has gone. Full copy is in `docs/05-design.md`, "Teams embed".
+    >
+    > **The third press.** There is no third press. Core returns three splits, so there are two rerolls. After
+    > split 3 is promoted the button is `disabled` and the strip beside it reads the copy that is already in
+    > `05-design.md`: `No more splits. Change who is in the lobby to rebalance, or play these.` A stale tab
+    > that posts anyway gets 409 and the same sentence in the response, and nothing is posted to Discord.
+    >
+    > **Edge cases.**
+    >
+    > - **Fewer than ten, more than ten.** Reroll never re-picks the ten. It promotes another arrangement of
+    >   the ten already chosen; who sits does not change, and the `Sitting out` and `Seats` fields say what
+    >   they said before because they are rebuilt from the same pool.
+    > - **Someone leaves mid-lobby.** Ingest puts the lobby back to `open` and the next balance inserts three
+    >   fresh splits and posts a new teams embed. A reroll aimed at a split whose ten are no longer all in the
+    >   lobby is refused with 409 before anything is promoted — check first, do not promote and then discover
+    >   it in `postTeamsForSplit` (which answers `skipped`, having already lost the old chosen row).
+    > - **Companion disconnects.** Nothing here needs it. The splits are stored and the webhook is the
+    >   server's.
+    > - **Unknown player.** Rendered `Someone` by `renderName` (M3.10) like everywhere else. No other
+    >   difference.
+    > - **Webhook missing or refusing.** Promotion stands, one log line, response says the post did not go
+    >   out, no retry loop.
+    > - **Signed in but not an admin.** 403, and the button is never rendered for them.
+    >
+    > **Acceptance check (product).**
+    >
+    > 1. A `balanced` lobby with three stored splits, rank 1 chosen. POST the rank 2 split: 200, `splits` has
+    >    exactly one chosen row and it is rank 2, and one new Discord message arrives titled
+    >    `Teams are set · reroll 1 of 2` whose description is rank 2's stored explanation string character for
+    >    character.
+    > 2. POST the same split id again: 200, no second message, still one chosen row.
+    > 3. POST the rank 3 split: title `Teams are set · reroll 2 of 2`. POST rank 1 after that: it is promoted
+    >    again and the title is the plain `Teams are set`.
+    > 4. Lobby `in_game` or `finished`: 409, nothing promoted, nothing posted.
+    > 5. A split id from another lobby: 404. No admin session: 403. Malformed body: 400.
+    > 6. With M3.4 landed: the tonight page's cards and explanation line become the promoted split's within a
+    >    few seconds, with no reload and no scroll jump, and after rank 3 the button is disabled with the
+    >    `No more splits.` sentence beside it.
+    >
+    > **Out of scope.** A random reroll, a fourth split, changing who plays or who sits, editing or deleting
+    > the earlier message, a Discord button or slash command, reroll for non-admins, reroll during a game, and
+    > the tonight page's layout (M3.4).
+
 - [x] **M3.3** On `finished`: result embed with winner, duration, top damage, rating deltas per player.
 
     > **Brief (product, 2026-09-08) — the two number rules**
@@ -1777,6 +1856,137 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > example.
 
 - [ ] **M3.4** `/` Tonight page: live via Supabase Realtime; phone-friendly; the link is what gets pasted in WhatsApp. Shows lobby members as they join, then teams, then result.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene.** Somebody pastes the link in WhatsApp at 21:40. A friend on a phone, in a dark room,
+    > taps it. Before they have finished reading the first line they know whether the night is happening,
+    > whether they are in it, and which side they are on. Then they put the phone down, and when the teams
+    > change the page changes by itself. There is no refresh button, no login wall, and nothing to type.
+    >
+    > **Which lobby the page is about.** The newest `lobbies` row of tonight that is not `abandoned`, where
+    > tonight is `nightStart(now, CUSTOMS_NIGHT_TZ)` — the same 06:00-to-06:00 night the sit-out rotation
+    > counts over (`lib/night.ts`), so at 01:30 the page still shows the game that started at 23:00. If the
+    > newest row of the night is `abandoned`, fall through to the next newest that is not; if there is none,
+    > the page is idle. One row is one game cycle, not one party (M2.14, migration 0003).
+    >
+    > **The states.** `docs/05-design.md`, "The tonight page's three states — one rule", is the layout and
+    > this brief does not get to invent a fourth. In product terms:
+    >
+    > - **Idle** (no lobby tonight, or the newest is `abandoned`). Header strip `Nothing tonight`. Body: the
+    >   M1.10 sentence, unchanged word for word, `When ten of you are in a custom lobby with the companion
+    >   running, the teams show up here.` and under it a link reading `Last night and the board`. The
+    >   placeholder page's own first fragment, `Nothing tonight yet.`, moves into the header strip and loses
+    >   the "yet" — the strip is a label, not a sentence, and the body must not say it twice.
+    > - **Filling** (`open`). Header `<n> in the lobby` with the live dot. The member list in join order,
+    >   oldest first, ten rows of height reserved from the first paint. Each row: name, main role and backup,
+    >   display rating. People past the ten (`is_spectator`) under the `Around` hairline. No teams, no
+    >   prediction, no countdown — nothing that guesses at what the balancer will do.
+    > - **Teams** (`balanced` and `in_game`, the identical block; only the header word and the dot differ).
+    >   Sit-out strip, then the two cards blue-first, then the explanation line verbatim from the promoted
+    >   split (`splits.is_chosen`), then the reroll control for an admin (M3.2). A lobby that goes
+    >   `balanced` → `in_game` must not re-render, re-fetch or fade the teams.
+    > - **Result** (`finished`). The result card: headline, duration, the honest prediction line, the two
+    >   teams with after-ratings and delta chips, top damage. The explanation line of the split they played
+    >   stays below it.
+    >
+    > **Every number, and where it comes from.** The page prints no number it computed a second way.
+    >
+    > - Filling and teams: display rating is `displayRating(mu)` of the player's `ratings` row for the active
+    >   season, seeded from rank in memory when there is no row — the same rule `loadPool` uses, which is what
+    >   the Discord embed printed. A page and an embed that disagree by one point is a ten-minute argument.
+    > - Result: the new rating is `displayRating(mu_after)` and the delta is
+    >   `displayRating(mu_after) - displayRating(mu_before)` from `game_players`, **computed where it is
+    >   rendered**. A delta is never carried through JSON: `-0` does not survive `JSON.stringify` and a row
+    >   that went down would print `(+0)` (`05-design.md`, "Rating delta").
+    > - **A player's rating appears once per screen.** The result card already contains both team cards with
+    >   the after numbers; do not render a second pair of cards with the before numbers underneath. Two
+    >   numbers for one player on one screen is a bug report waiting in voice. (The state table in
+    >   `05-design.md` reads as though the finished state has both; the "Result card" component is the one to
+    >   follow. Raised with the designer.)
+    >
+    > **The strip above the cards.** Sit-out copy is fixed in `05-design.md` and comes in two versions, the
+    > general one and the second-person one for a viewer who is signed in, linked and sitting. Nobody else's
+    > strip changes. When ten are around and nobody sits there is no strip at all.
+    >
+    > **`Someone`, and names that arrive late.** A player the database has no name for renders `Someone`
+    > (M3.10) and the team block carries one quiet line under it, once and never per row: `Names fill in after
+    > someone's first game.` M3.10 promises the name replaces itself live, and that does not come for free:
+    > `players` is service-role only and neither it nor `players_public` is in the `supabase_realtime`
+    > publication, so no name change will ever arrive as an event. While any row on screen reads `Someone`,
+    > re-read the name map every 60 seconds and on tab focus, and stop as soon as none are left. A name
+    > arriving must swap in place and move nothing.
+    >
+    > **No `settling` chip on this page.** The still-settling story is the leaderboard's (M3.8), exactly as it
+    > is kept out of the teams embed (M3.1). Ten chips beside ten names on the one screen people read in a
+    > hurry is noise, and this page never sorts anybody.
+    >
+    > **Live.** Supabase Realtime `postgres_changes` on `lobbies`, `lobby_members`, `splits`, `games` and
+    > `game_players` — all published in migration 0001 and all publicly readable. Names come from
+    > `players_public` (the base table has `discord_id` and no public policy). First paint is server-rendered
+    > with real content so the WhatsApp link never opens on a spinner; the subscription attaches after
+    > hydration and re-reads what it needs. If the socket drops, reconnect quietly and re-read once — no
+    > banner, no toast, no "reconnecting…" text. The page is public: no sign-in to read, ever.
+    >
+    > **The night's second lobby.** After a game finishes the same friends usually stay put and the companion
+    > opens the next cycle: a new `lobbies` row, same party id. The page follows the newest row, so the result
+    > of game 1 is replaced by the member list of game 2 as it fills. That is the right answer to "where are
+    > we now" and it means the tonight page is not where a finished game lives — Discord has the result embed
+    > and the leaderboard has what it did to everybody. No "last game" block ships in M3.4; if the first real
+    > night asks for one it is a task and a decision row, not a drive-by.
+    >
+    > **Edge cases.**
+    >
+    > - **Fewer than ten.** Filling, forever if need be. No teams, no message, no "waiting for 3 more" that
+    >   implies the group owes the page anything.
+    > - **More than ten.** Filling shows everyone, with the people in the spectator slot under `Around`. Who
+    >   sits is not known until the balance, so the page must not guess at it before `balanced`.
+    > - **Someone leaves mid-lobby.** The count drops and the row disappears with the standard fade; the list
+    >   does not reorder and the page does not scroll. If it drops below ten after teams were posted, ingest
+    >   returns the lobby to `open` and **the page goes backwards** — teams gone, member list back. That is
+    >   correct and it needs no explanation on the page: the header strip changed, which is the whole point of
+    >   it being always mounted.
+    > - **Companion disconnects.** Nothing changes and nothing is announced. The row simply stops updating; a
+    >   lobby nobody has posted about for two hours becomes `abandoned` by the sweep and the page goes idle by
+    >   itself. Until then a dissolved lobby keeps saying `7 in the lobby`, which is accepted: the sweep is the
+    >   fix and it already exists.
+    > - **Unknown player.** `Someone`, plus the one hint line. Everything else about the row is correct.
+    > - **A game whose lobby is `finished` but which the fold did not rate** (remake, short surrender). The
+    >   result card needs `game_players` ratings to exist; with none, show the teams block and the explanation
+    >   line with the header `Final` and no deltas. No "this game did not count" banner — Discord stays silent
+    >   about these too (M3.3) and the page has nothing more to say.
+    > - **Two tabs, two phones.** No shared state, no presence, nothing that counts viewers.
+    >
+    > **Acceptance check (product).**
+    >
+    > 1. Open `/` with no lobby tonight: header `Nothing tonight`, the M1.10 sentence verbatim, the
+    >    leaderboard link, nothing else. No spinner, no skeleton, no illustration.
+    > 2. Drive a lobby from 1 to 10 members with the page open on a phone: every join appears **within 5
+    >    seconds** with no reload, the newest row is appended at the bottom, and nothing above it moves. The
+    >    9→10 join in particular shifts no pixel of the page.
+    > 3. Balance the lobby: the page replaces the member list with the sit-out strip, the two cards and the
+    >    explanation line within 5 seconds of the Discord message, the explanation matching the embed's
+    >    description character for character, and the ten ratings matching the embed's ten.
+    > 4. `balanced` → `in_game`: only the header word and the live dot change. The cards do not fade,
+    >    re-order or re-fetch.
+    > 5. Finish the game: the result card replaces the teams block within 5 seconds. Every row's
+    >    rating and delta equal the result embed's for the same player, including a `(-0)` if one occurs.
+    > 6. Reroll (M3.2) while the page is open: cards and explanation become the promoted split's, in place,
+    >    with no scroll movement.
+    > 7. Eleven around: the sit-out strip is above the cards and reads the `05-design.md` copy verbatim; a
+    >    signed-in sitter sees the second-person version and nobody else's changes.
+    > 8. A member with null `display_name` and null `game_name`: the row reads `Someone` and one hint line
+    >    appears under the team block, once. Set the name in the database with the page still open: it appears
+    >    within a minute and nothing else moves.
+    > 9. Lighthouse or the browser's own layout-shift number on a mid-range phone: CLS stays effectively zero
+    >    across the whole night's transitions, and the first paint carries content, not a loading state.
+    > 10. With the anon key only (no session), every state above renders. Nothing on the page requires a
+    >    login, and `players.discord_id` is never on the wire.
+    >
+    > **Out of scope.** The leaderboard and player pages (M3.5), the role tap (M3.6, which lands its own
+    > control on this page), the still-settling chip (M3.8), voice (M4), any history of past games, filters,
+    > search, a theme toggle, notifications, and any surface that asks the reader for input.
+
 - [ ] **M3.5** `/leaderboard` and `/p/[puuid]` with rating history. Nightly leaderboard post to the webhook at a configured time.
 
     > **Brief (product, 2026-09-08) — the board shows two numbers**
@@ -1828,7 +2038,113 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > and duo stats (M5.4), any filter or search on the board, and pagination beyond what the group's size
     > needs.
 
-- [ ] **M3.6** Role override for tonight: a player taps their role on the tonight page (Discord login) or an admin sets it. Cleared when the lobby finishes.
+- [ ] **M3.6** Role override for tonight: a player taps their role on the tonight page (Discord login) or an admin sets it. Held for the rest of the night's lobby cycles and gone by the next night — the original "cleared when the lobby finishes" would mean re-tapping between every game (plan changed 2026-09-09; see the brief and `04-decisions.md`, and a new migration updates the comment on `lobby_members.role_override`).
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene.** Somebody says in voice "I'll jungle tonight". They open the page they already have open,
+    > tap `jungle` under their own name, and put the phone down. The next time the bot builds teams it treats
+    > jungle as their main and their usual main as the backup. Nobody typed a command, nobody asked an admin,
+    > and the friend who never taps anything is unaffected — this is an option, not a step in the loop.
+    >
+    > **What a tap means.** `lobby_members.role_override`, which core turns into the player's main with their
+    > declared main demoted to backup (`resolveRoles`). It is a **preference, not a lock**: the balancer can
+    > still put them somewhere else, and when it does the explanation line names them and the role, exactly as
+    > it does for anybody else off-role. The page must not promise more than that.
+    >
+    > **Who can set it.** The player themselves, or an admin on anybody. A player is identified the only way
+    > this project identifies one: Supabase session → `players.discord_id` → the player row → their
+    > `lobby_members` row in tonight's lobby. This is a **third route class** — a session with a linked
+    > player and no `is_admin` — and it is the first one; `04-decisions.md` records it. The route takes the
+    > lobby and the role (`null` clears), and a `puuid` naming somebody else is honoured **only** for an
+    > admin. A non-admin body that names another player is a 403, never a silent write to their own row.
+    >
+    > **When it counts.** At the next balance of that lobby, and never retroactively.
+    >
+    > - Lobby `open`: nothing to say. The tap is stored and the balance that fires when ten are stable uses
+    >   it.
+    > - Lobby `balanced` or `in_game`: the tap is **stored and the teams do not move.** No rebalance, no
+    >   repost, no swap. Two reasons, both worth saying out loud in voice: a rebalance on a role tap turns
+    >   the role control into an unlimited reroll that any one of ten people can pull, and by then people have
+    >   already moved to their side in the client. The control says so rather than pretending:
+    >   `Saved for the next game. Teams are already set.` The two doors that do change teams tonight are
+    >   Reroll (M3.2) and changing who is in the lobby, which rebalances by itself.
+    > - Lobby `finished` or `abandoned`, or no lobby at all: the control is not shown. There is nothing to
+    >   attach a choice to and a preference with no lobby is M5's problem, not this one.
+    >
+    > **How long it lasts — plan changed, 2026-09-09.** The task line and the column comment said "cleared
+    > when the lobby finishes". Since M2.14 (migration 0003) a `lobbies` row is one *game cycle*, so that rule
+    > means the choice dies after one game and every friend re-taps between games. That is a step added to the
+    > nightly loop, four or five times a night, which is exactly what this product does not do. **The choice
+    > lasts the night:** when lobby ingest opens a new cycle row for a party, it copies `role_override` from
+    > that player's row in the party's previous cycle, provided that row was created after `nightStart` for
+    > the current night. Nothing is cleared on `finished` — the closed row keeps what it had, as a record of
+    > what the teams were built from — and the first lobby of the next night simply has nothing to copy from.
+    > Ship a migration that updates the comment on `lobby_members.role_override` to say this; never edit 0001.
+    >
+    > **Copy (product, final; any change comes back here).**
+    >
+    > - Control heading, `t-xs` `dim` above the five role words: `Your role tonight`
+    > - Under the control, once: `The bot tries for this one. If the teams need it, you can still end up
+    >   somewhere else.`
+    > - After teams are posted: `Saved for the next game. Teams are already set.`
+    > - Signed out: `Sign in with Discord to pick your role.` on the control that starts the OAuth flow back
+    >   to `/`.
+    > - Signed in, Discord not linked to a player: `Signed in. This Discord account is not linked to a player
+    >   yet — ask whoever runs the bot to link it.`
+    >
+    > No toast, no confirmation dialog, no "saved!" flash. The role word turning `accent` is the receipt
+    > (`05-design.md`: realtime already changes the thing you are looking at).
+    >
+    > **The control itself.** Five role words in the design's mono lower case, each at least 44 × 44px,
+    > on the viewer's own row and — for an admin — on every row. Tapping the role that is already chosen
+    > clears the override and the player goes back to their profile's main and backup; that is the only way
+    > out and there is no separate Clear button. The choice renders as selected on every device the moment it
+    > lands, because the page is already subscribed to `lobby_members`.
+    >
+    > **Edge cases.**
+    >
+    > - **Not signed in.** The page reads exactly as it does today; only the control changes. Reading is never
+    >   gated.
+    > - **Signed in, no linked player.** One sentence, above. This is common on day one: `players.discord_id`
+    >   is only set from `/admin/players`, so somebody has to link each friend once.
+    > - **Signed in, linked, not in tonight's lobby.** No control. There is no row to write.
+    > - **A sitter taps.** Allowed. They are in `lobby_members`, they may well be in the next game, and their
+    >   choice counts at that balance.
+    > - **Fewer than ten around.** Stored, waiting. **More than ten:** unchanged — the override never affects
+    >   who plays, only where the balancer tries to put them.
+    > - **Someone leaves mid-lobby and comes back.** Their `lobby_members` row is what the ingest diff decides
+    >   (M2.9's freeze applies from `balanced` on); a row recreated within the same night's party gets the
+    >   carry-forward like any other.
+    > - **Companion disconnects.** No effect: overrides live on the server and the next balance reads them.
+    > - **Unknown player.** A linked player with no display name renders `Someone` and can still tap their own
+    >   row. Nothing about the override touches `players`.
+    > - **Tapping while the tenth player joins.** The realtime update must not move the page under the thumb
+    >   (`05-design.md`: state changes replace the primary block, they never scroll or re-order).
+    >
+    > **Acceptance check (product).**
+    >
+    > 1. Signed in as a linked player who is in an `open` lobby: tap `jungle` on your own row. The row shows
+    >    it as chosen, `lobby_members.role_override` is `jungle`, and the balance that follows puts jungle
+    >    first for that player (their old main is the backup) — verified against core's `resolveRoles`, not by
+    >    eyeballing the teams.
+    > 2. Tap `jungle` again: the override is `null` and the row shows the profile's roles again.
+    > 3. Tap a role while the lobby is `balanced`: 200, the override is stored, **no new Discord message and
+    >    no change to `splits`**, and the control shows `Saved for the next game. Teams are already set.`
+    > 4. Finish that game and let the companion open the night's next cycle: the new `lobby_members` row for
+    >    that player carries the same `role_override`, with no second tap, and the next balance uses it.
+    > 5. The first lobby of the next night (past 06:00 local) carries no override for anybody.
+    > 6. A non-admin posting a body that names another player's PUUID: 403, and neither row changes.
+    > 7. An admin taps a role on somebody else's row: it lands on that player's row, with the same rules.
+    > 8. Signed out, and signed in without a link: the two sentences above, and no control that writes
+    >    anything.
+    >
+    > **Out of scope.** Duo locks — `balanceLobby` still passes `duos: []` and there is no column, no control
+    > and no product decision for them; they are their own task, not a rider on this one. Also out: changing a
+    > player's profile `main_role`/`secondary_role` (that is `/admin/players`, M1.6), guaranteeing a role,
+    > remembering a preference across nights, role preferences in Discord, and any rebalance triggered by
+    > anything other than the lobby's membership changing.
+
 - [ ] **M3.7** Off-role clause end to end: the teams embed and the tonight page show the explanation line of whichever split is currently promoted, including after a reroll, with the off-role clause matching that split.
 
     > **Acceptance check (product).** Balance a lobby whose split 1 has `offRoleCount` 0 and whose split 2 has
@@ -1897,6 +2213,13 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > and every surface shows it with no other change.
     >
     > **Out of scope.** Fetching the name (M2.4). Discord display names (M4). Any change to `players`.
+
+- [ ] **M3.11** Result embed: the coin-flip clause becomes `Neither side was favored.` Product copy, 2026-09-09 (`05-design.md`, "The four number formats"): `Even 50%.` is core's present-tense fragment and under the headline `Red wins · 34:12` it reads as a claim about the game rather than the prediction — and on a first night, where every split is gap 0, it is the first result sentence the group ever sees. `favoredClause` in `apps/web/lib/discord/embeds.ts` is the only place it is composed. **Acceptance:** a rated game whose chosen split had `blue_win_prob` 0.5 posts the description `Neither side was favored. Top damage: …`; 54% and 58% cases are unchanged; the snapshot is updated in the same commit; core's explanation string is untouched.
+- [ ] **M3.12** Sit-out reason: a third clause for the first balance of a night. When everyone around is tied on games tonight **and** nobody around has a recorded sit-out, the comparator falls through to PUUID order — arbitrary — and today's clause, `— longest since they last sat out.`, states a fact about a history that does not exist. Copy (product, 2026-09-09, in `05-design.md`): `Sitting out: Player0 — nobody has sat out before, so somebody had to be first.` `SitOutReason` gains a third value; `assemble.ts` picks it when `tiedOnGames` and every pool member's `lastSitOutAt` is `null`. **Acceptance:** eleven around on a fresh database posts the new clause; run one game and balance again with eleven around and the clause is `— most games tonight.`; a pool tied on games where somebody has sat out before still reads `— longest since they last sat out.`; `discord.integration.test.ts`'s eleven-tied case is updated to the new string.
+- [ ] **M3.13** Teams embed field order: `Sitting out` and `Seats` go **before** `Blue` and `Red`. Decided 2026-09-09 (designer, M3.1 review; row in `04-decisions.md`) and written into `05-design.md`, but `embeds.ts` still pushes them after. **Acceptance:** with eleven around, the posted embed's fields are in the order `Sitting out`, `Seats`, `Blue`, `Red`, `Lobby`, and the two side fields still pair as inline neighbours; with ten around the JSON is byte-identical to what ships today.
+- [ ] **M3.14** `renderName` escapes Discord markdown. Decided 2026-09-09 (designer, M3.1 review) and in `05-design.md`; the shipped function truncates but does not escape, so a Riot ID with a backtick closes the role's code span and swallows the rest of the field. **Acceptance:** a display name containing `` ` ``, `*`, `_`, `~` and `|` renders as those characters in Discord, the other four lines of the field are intact, escaping happens after the 32-character cut, and a backslash is never left without the character it escapes.
+- [ ] **M3.15** `Someone` inside the stored explanation. `apps/web/lib/ingest/balance.ts` still names a nameless player `Unknown` (`UNKNOWN_PLAYER_NAME`) when it builds the balancer input, and core writes that string into `splits.explanation` — which both the embed and the tonight page print verbatim. So one message can read `Someone` on the line and `Next best: swap Unknown and Hana` in the sentence above it, and M3.10's "one agreed fallback on every surface" is broken in the one string nothing may recompose. **Acceptance:** balance a lobby containing a player with null `display_name` and null `game_name`; the stored explanation says `Someone` wherever it names them, the embed and the tonight page agree, and nothing is written to `players`.
+- [ ] **M3.16** Designer: reconcile the `finished` row of the tonight-page state table with the "Result card" component in `05-design.md`. The table lists team cards and the explanation line as a secondary block *under* the result card, and the result card already contains both team cards with after-ratings and deltas — read together they put two different ratings for the same player on one screen. Product's rule for M3.4 is one rating per player per screen (the result card's). **Acceptance:** `05-design.md` says once, in one place, what the finished state renders, and M3.4's brief and the built page agree with it.
 
 Acceptance: a full night with real players, teams posted within 15 seconds of the tenth join, results within 60 seconds of end of game, no human action beyond joining the lobby.
 
