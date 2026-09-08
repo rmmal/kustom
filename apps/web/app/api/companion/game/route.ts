@@ -1,4 +1,10 @@
-import { companionGamePayloadSchema } from '@customs/db/schemas';
+import { scrubRawEogBlock } from '@customs/db';
+import {
+  companionGamePayloadSchema,
+  companionGameResponseSchema,
+  hasWinningTeam,
+  NO_WINNING_TEAM_MESSAGE,
+} from '@customs/db/schemas';
 import { withCompanionAuth } from '@/lib/companionRoute';
 import { jsonError, jsonOk } from '@/lib/http';
 import {
@@ -8,7 +14,6 @@ import {
   isCustomGame,
   isParticipant,
 } from '@/lib/ingest/game';
-import { companionGameResponseSchema } from './schema';
 
 // node:crypto hashes the bearer token, so this route is not edge-compatible.
 export const runtime = 'nodejs';
@@ -19,13 +24,20 @@ export const dynamic = 'force-dynamic';
  * `eog` with the end-of-game block.
  *
  * `eog` is idempotent on `lcu_game_id`: everyone in the lobby who runs a companion posts the
- * same game, and only the first post writes anything.
+ * same block, and only the first post writes anything.
  *
  * Refused here, before anything is written:
  * - 422 when `gameType` is not `CUSTOM_GAME` — we only track our own customs;
+ * - 422 when no team won: a remake or a `TerminatedInError` block (M2.10, point 6). The
+ *   companion is not supposed to post one; if it does, nothing is written, nothing is rated
+ *   and no lobby moves. A lobby already at `in_game` stays there permanently — the 2-hour
+ *   sweep covers `open` and `balanced` only (M2.5) — and M5.5 lists it;
  * - 422 when the same PUUID appears twice on the scoreboard;
  * - 403 when the token's player is not on the scoreboard (architecture "Security": a
  *   companion may only report a game it was in).
+ *
+ * The raw block is scrubbed of its chat credentials before it goes anywhere near the database:
+ * `games.raw` is public-read under RLS (M2.10, point 11).
  */
 export const POST = withCompanionAuth(companionGamePayloadSchema, async (payload, { client, identity }) => {
   if (payload.phase === 'in_progress') {
@@ -44,6 +56,10 @@ export const POST = withCompanionAuth(companionGamePayloadSchema, async (payload
     return jsonError(422, `gameType must be ${CUSTOM_GAME_TYPE}`);
   }
 
+  if (!hasWinningTeam(payload)) {
+    return jsonError(422, NO_WINNING_TEAM_MESSAGE);
+  }
+
   const duplicate = findDuplicateParticipant(payload);
   if (duplicate !== null) {
     return jsonError(422, 'the same puuid appears twice in participants');
@@ -53,7 +69,7 @@ export const POST = withCompanionAuth(companionGamePayloadSchema, async (payload
     return jsonError(403, 'a companion may only report a game its own player was in');
   }
 
-  const result = await ingestEogGame(client, payload);
+  const result = await ingestEogGame(client, { ...payload, raw: scrubRawEogBlock(payload.raw) });
 
   return jsonOk(companionGameResponseSchema, {
     ok: true,

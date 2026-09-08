@@ -1,8 +1,7 @@
-import { companionLobbyPayloadSchema } from '@customs/db/schemas';
+import { companionLobbyPayloadSchema, companionLobbyResponseSchema } from '@customs/db/schemas';
 import { withCompanionAuth } from '@/lib/companionRoute';
 import { jsonError, jsonOk } from '@/lib/http';
 import { ingestLobby, mayReportLobby } from '@/lib/ingest/lobby';
-import { companionLobbyResponseSchema } from './schema';
 
 // node:crypto hashes the bearer token, so this route is not edge-compatible.
 export const runtime = 'nodejs';
@@ -20,8 +19,23 @@ export const dynamic = 'force-dynamic';
  *
  * From `in_game` on the roster is frozen (M2.9): the post still answers 200 and the lobby
  * name and password still refresh, but no `lobby_members` row is added, removed or changed.
+ *
+ * The answer carries two things the companion acts on besides the ids: `ranksNeeded`, the
+ * PUUIDs on this list whose rank is missing or over a week old (M2.4), and `recheckInMs`,
+ * which is `null` until M2.5 measures the ten-second stability window on it (M2.2).
+ *
+ * Bot and placeholder entries are dropped by the payload schema before any of this, so an old
+ * companion that posts a bot loses the bot and keeps its nine friends (M2.10, point 4). The
+ * M1.8 caller check below therefore runs on the filtered list, which is the order the brief
+ * asks for.
  */
 export const POST = withCompanionAuth(companionLobbyPayloadSchema, async (payload, { client, identity }) => {
+  if (payload.droppedMembers > 0) {
+    console.warn(
+      `companion lobby ${payload.partyId}: dropped ${payload.droppedMembers} bot or placeholder member(s)`,
+    );
+  }
+
   if (!(await mayReportLobby(client, payload, identity))) {
     return jsonError(403, 'a companion may only report a lobby it is in');
   }
@@ -35,5 +49,9 @@ export const POST = withCompanionAuth(companionLobbyPayloadSchema, async (payloa
     created: result.created,
     memberCount: result.memberCount,
     rosterFrozen: result.rosterFrozen,
+    // The stability clock is M2.5's; until it lands there is never anything to knock about,
+    // and a companion built against this contract needs no change when it does (M2.2).
+    recheckInMs: null,
+    ranksNeeded: result.ranksNeeded,
   });
 });

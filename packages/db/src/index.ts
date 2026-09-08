@@ -11,6 +11,7 @@ import type { Tables, TablesInsert, TablesUpdate } from './types';
 
 export * from './rosterKey';
 export * from './schemas/index';
+export * from './scrub';
 export type { Database, Enums, Json, Tables, TablesInsert, TablesUpdate } from './types';
 export { Constants } from './types';
 

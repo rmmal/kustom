@@ -8,7 +8,8 @@
 |  packages/lcu        |   POST /api/companion/lobby        |  Next.js route handlers   |
 |  lobby watcher       |   POST /api/companion/game         |  packages/core (balance,  |
 |  eog capture         |   POST /api/companion/rank         |    rating)                |
-|  rank sync           |   GET  /api/companion/commands     |  Supabase client          |
+|  rank sync           |   GET  /api/companion/me           |  Supabase client          |
+|                      |   GET  /api/companion/commands     |                           |
 |  lobby automation    | <-------------------------------- |                           |
 +----------------------+   (create lobby, invite, switch)   +------------+--------------+
         |  local HTTPS + WSS                                             |
@@ -95,7 +96,8 @@ Rules:
 - `ratings` is per season. A new season copies `mu` and resets `sigma` to the starting value. `ordinal` is a
   stored generated column so the leaderboard sorts in one index scan and SQL cannot disagree with
   `packages/core` about the formula; `packages/core` stays the only place that computes a rating.
-- `games.raw` keeps the full end-of-game block. Every derived column can be recomputed from it.
+- `games.raw` keeps the full end-of-game block, with `mucJwtDto` and `multiUserChatPassword` replaced by
+  `"[redacted]"` (M2.10). Every derived column can be recomputed from it.
 - `game_players` rating columns are nullable: the API inserts the game and its ten players, then rates, and a
   rebuild (M5.2) overwrites them.
 - `splits` keeps the top three for every balance run so the explanation and reroll are reproducible. A rebalance
@@ -214,6 +216,10 @@ watching: on lobby event -> POST /api/companion/lobby
     replaces the roster, so without this one stale companion could delete another lobby's members. The
     `reported_by_player_id` fallback is what lets the companion that owns the lobby post the "everyone left"
     empty list, which by definition cannot contain the caller.
+- The end-of-game block carries the post-game chat room's credentials and `games` is public-read, so the API
+  redacts `mucJwtDto` and `multiUserChatPassword` before the insert (`scrubRawEogBlock`, M2.10). The
+  companion may redact them too; the server is the one that has to, because old companion binaries keep
+  running for months.
 - Supabase Row Level Security: public read on `seasons`, `ratings`, `lobbies`, `lobby_members`, `splits`, `games`
   and `game_players`, plus `players` through the `players_public` view. `companion_tokens`,
   `companion_commands` and `discord_config` have no read policy at all. Writes only through the service role

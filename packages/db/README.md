@@ -128,6 +128,95 @@ and then `active_season_id()` is null and every `games` insert fails on its not-
 - `public.set_active_season(id)` — move the active flag to an existing season. Used by the web
   integration tests to hand the shared local database back with Season 1 active.
 
+## The companion wire contract (M2.10)
+
+`src/schemas/companion.ts` is the **wire contract** for the three bodies the companion POSTs, and
+`src/schemas/companionResponses.ts` is what the routes answer. Both are imported by
+`apps/web/app/api/companion/*` and by `apps/companion`, so there is exactly one definition per
+payload. Neither file knows anything about the League client: the raw-client-to-payload mapper
+lives in `packages/lcu`, and what it must produce is written field by field, as commented code,
+in `src/schemas/companion.contract.test.ts` — which reads `packages/lcu/fixtures/16.17/*.json`
+from disk rather than importing `@customs/lcu` (the dependency runs `lcu -> db`, never back).
+**If a mapping rule is wrong, fix it in that test first, then in the mapper.**
+
+Shapes are the real 16.17 ones, verified against the fixtures (`docs/03-lcu-reference.md`).
+
+### `POST /api/companion/lobby`
+
+| field | from the client | rule |
+|---|---|---|
+| `partyId` | `lobby.partyId` | Stable across invite, join and spectate (three captures, same id 35 minutes apart), so it is the dedupe key `lobbies.lcu_party_id`. |
+| `lobbyName` | `gameConfig.customLobbyName` | Optional. |
+| `lobbyPassword` | not in the response | `null` unless the companion created the lobby itself (M4). |
+| `members[].puuid` | `members[].puuid` | The identity. Empty and all-zero are refused by `puuidSchema`. |
+| `members[].summonerId` | `members[].summonerId`, a JSON **number** | Number or digit string in, decimal string out (`players.summoner_id` is `text`). Not 32-bit: an invitee's read `2686822975473024`. `0`/`""`/absent -> `null`. |
+| `members[].gameName` / `tagLine` | **nothing** | The lobby response has no Riot ID and `summonerName` is `""`. Both are `null` unless the companion already had a name. **Posting a lobby never waits on a name lookup.** |
+| `members[].side` | `gameConfig.customTeam100` / `customTeam200` membership | Never `members[].teamId`, which is always `0`. `null` = spectator or not yet placed; both are valid. |
+| `members[].isSpectator` | `members[].isSpectator` | A spectator stays in `members[]` **and** appears in `customSpectators` (M2.13). `side: null` + `isSpectator: true`. |
+
+Bots never reach `members[]` on 16.17 (they sit in the team arrays with `isBot: true`,
+`puuid: ""`); the mapper filters them anyway, and the payload schema **drops** any member with a
+placeholder puuid rather than refusing the roster, counting them in `droppedMembers` for the
+route to log. `invitations[]` is not a roster: a `Pending` invitee is not a member and is not
+posted. `lobbyPassword` has no source in the client and stays null until M4.1 creates lobbies
+itself.
+
+The **answer** carries two fields the companion acts on, besides `lobbyId`, `status`, `created`,
+`memberCount` and `rosterFrozen` (M2.9):
+
+| field | meaning |
+|---|---|
+| `recheckInMs: number \| null` | Knock again after this many milliseconds with the *identical* payload, unless a real lobby event produced a newer one first. This is how "the roster has not changed for ten seconds" is measured on a server with no timers (M2.5); `null` means do nothing. **M2.10 ships the field, M2.5 fills it — it is always `null` today.** |
+| `ranksNeeded: string[]` | PUUIDs among the members just posted whose `players` row has no `rank_updated_at`, one older than `RANK_STALE_MS` (7 days), or no row at all. Spectators included; posted member order. Hand it to the rank sweep (M2.4). This is the whole of "once, then weekly": the companion keeps no schedule, only an in-process de-duplicator. |
+
+### `POST /api/companion/game`
+
+Two phases in one union. `phase: 'in_progress'` carries `gameId` (from
+`gameflow-session.gameData.gameId`, **read from `GameStart` onward only** — in phase `Lobby` the
+session still holds the previous game's id) and the moment it was observed. `phase: 'eog'` carries
+the end-of-game block:
+
+| field | from the block | rule |
+|---|---|---|
+| `gameId` | `gameId` | Dedupe key `games.lcu_game_id`. |
+| `startedAt` | **derived** | The observed `InProgress` moment; otherwise `endOfGameTimestamp - gameLength * 1000` (epoch ms minus seconds-as-ms). The fallback is not optional. |
+| `durationS` | `gameLength` (seconds) | |
+| `winningSide` | `teams[].teamId` where `isWinningTeam` | Required, nullable. `null` -> **422 `no winning team; remake or terminated`**, nothing written. |
+| `gameType` | `gameType` | Anything but `CUSTOM_GAME` -> 422. There is **no `queueId`** in the block. |
+| `participants[].side` | the team's `teamId` | Not anything on the player row. |
+| `participants[].role` | `detectedTeamPosition` | `TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY` -> `top/jungle/mid/adc/support`; anything else `null`. Never inferred from the champion. |
+| `participants[]` stats | uppercase keys | `CHAMPIONS_KILLED`, `NUM_DEATHS`, `ASSISTS`, `GOLD_EARNED`, `TOTAL_DAMAGE_DEALT_TO_CHAMPIONS`, `WIN` (0/1); `cs` = `MINIONS_KILLED` + `NEUTRAL_MINIONS_KILLED`. A missing key is 0. |
+| `participants[].gameName` / `tagLine` | `riotIdGameName` / `riotIdTagLine` | The block is where a player first seen in a lobby finally gets a name. |
+| `raw` | the whole block | Stored in `games.raw`, **scrubbed** first. |
+
+Bot players (`botPlayer: true`, the all-zero puuid) are dropped by the mapper; one that reaches
+the schema is refused. Fewer than ten participants is not an error — M2.5's gate stores the game
+and does not rate it.
+
+`scrubRawEogBlock` (`src/scrub.ts`) replaces `mucJwtDto` and `multiUserChatPassword` with
+`"[redacted]"` at any depth before insert. `games` is public-read under RLS and the block carries
+live chat credentials, so this is a leak fix, not hygiene; it runs in the route **and** in
+`ingestEogGame`, and it is idempotent.
+
+### `POST /api/companion/rank`
+
+`{ puuid, tier, division, lp, queue, gameName?, tagLine? }`. Unranked is `tier: ""` with
+`division: "NA"` on 16.17; both normalise to `null`, and a null tier forces a null division and a
+null `lp`. **`wins` and `losses` are not in this payload and must not be added** — `losses` reads
+`0` for every player but the local one. Wins and losses come from our own `games` rows.
+
+`gameName`/`tagLine` come from `GET /lol-summoner/v2/summoners/puuid/{puuid}` and ride along
+because the sweep visits exactly the PUUIDs whose name we are missing (M2.4) — a lobby member
+carries no Riot ID at all. `ingestRank` hands them to `ensurePlayers`, so `display_name` follows
+the Riot ID while it is automatic and an admin's override is never touched (M1.7). They are
+applied even for a queue we do not seed a rating from: a name is a name.
+
+### `GET /api/companion/me`
+
+`{ ok: true, puuid, playerId, displayName }`. No body, no writes: the bearer token decides the
+identity, and the companion calls it on first run so a mistyped token is a sentence on the
+friend's screen instead of a silent 401 on the first lobby of the night.
+
 ## Reading data: RLS
 
 - **Public (anon and authenticated) read:** `seasons`, `ratings`, `lobbies`, `lobby_members`,
