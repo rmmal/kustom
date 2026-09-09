@@ -26,3 +26,24 @@ export function displayDelta(muBefore: number, muAfter: number): number {
   const delta = displayRating(muAfter) - displayRating(muBefore);
   return delta === 0 && muAfter < muBefore ? -0 : delta;
 }
+
+/**
+ * The delta as the **web** prints it: `+43`, `−45`, `+0`, `−0`.
+ *
+ * `05-design.md`, "Rating delta": always signed, and U+2212 for the minus, which is the width
+ * of `+` in Plex Mono so a column of ten stays a column. Discord gets ASCII from `formatDelta`
+ * in `lib/discord/embeds.ts` instead, because it has no font control and its lines get
+ * copy-pasted. One number from {@link displayDelta}, two glyphs.
+ *
+ * `-0 >= 0` is true in JavaScript, so the negative zero is asked about by identity first.
+ * `(0)` never appears on any surface.
+ */
+export function formatWebDelta(delta: number): string {
+  if (Object.is(delta, -0)) return '−0';
+  return delta >= 0 ? `+${delta}` : `−${Math.abs(delta)}`;
+}
+
+/** A gain is `text` at 600, a loss is `dim` at 400. Never coloured by sign (05-design.md). */
+export function isGain(delta: number): boolean {
+  return !Object.is(delta, -0) && delta >= 0;
+}

@@ -1,0 +1,120 @@
+import type { LobbyStatusValue, RoleValue, SideValue } from '@customs/db';
+
+/**
+ * What the tonight page knows (M3.4). One snapshot, loaded on the server for the first paint
+ * and re-loaded by the browser on every Realtime event, so both sides render from the same
+ * shape and there is no second code path for "after an update".
+ *
+ * **No number in here has been formatted.** Display ratings are `displayRating(mu)` because
+ * that is what the embed printed and the two must agree; a rating *change* is carried as the
+ * two mu values it comes from and is turned into a delta where it is rendered. `-0` does not
+ * survive `JSON.stringify` (05-design.md, "Rating delta"), and this object crosses the wire
+ * twice — once in the RSC payload, once from PostgREST.
+ */
+
+/** A display name we have, or `null` for a player the database has never been told about. */
+export type PlayerName = string | null;
+
+export interface MemberView {
+  puuid: string;
+  name: PlayerName;
+  mainRole: RoleValue | null;
+  secondaryRole: RoleValue | null;
+  roleOverride: RoleValue | null;
+  /** Beyond the ten a custom lobby can seat. Rendered under the `Around` hairline. */
+  isSpectator: boolean;
+  /** `displayRating(mu)` for the active season, seeded from rank when there is no row. */
+  rating: number;
+}
+
+/** One of the ten in the promoted split. */
+export interface SeatView {
+  puuid: string;
+  name: PlayerName;
+  role: RoleValue;
+  rating: number;
+  /** Core's `isOffRole`, never a re-derived `role !== mainRole`. */
+  offRole: boolean;
+}
+
+/** One of the lobby's stored splits, as the reroll control needs it. */
+export interface SplitChoice {
+  id: string;
+  rank: number;
+  isChosen: boolean;
+}
+
+export interface TeamsView {
+  splitId: string;
+  /** `splits.explanation` of the promoted split, verbatim. Never recomposed (M3.7). */
+  explanation: string;
+  blue: SeatView[];
+  red: SeatView[];
+  /** Everyone around who is not one of the ten. Empty when exactly ten are around. */
+  sitters: MemberView[];
+  blueWinProb: number;
+  /** Every stored split of this lobby, best first: what a reroll can promote. */
+  splits: SplitChoice[];
+}
+
+/** One row of the result card. The two mu values, not a delta: see the note at the top. */
+export interface ResultSeatView {
+  puuid: string;
+  name: PlayerName;
+  role: RoleValue | null;
+  side: SideValue;
+  muBefore: number | null;
+  muAfter: number | null;
+}
+
+export interface ResultView {
+  winningSide: SideValue;
+  durationS: number;
+  /** The chosen split's odds, or `null` when the game was played without a stored split. */
+  blueWinProb: number | null;
+  topDamage: { name: PlayerName; damage: number } | null;
+  blue: ResultSeatView[];
+  red: ResultSeatView[];
+  /**
+   * True when every row carries both mu values. A remake or a short surrender leaves them
+   * null: the page then shows the teams and the explanation under the header `Final`, with no
+   * deltas and no banner explaining itself (M3.4, "a game whose lobby is finished but which
+   * the fold did not rate").
+   */
+  rated: boolean;
+}
+
+export interface LobbyView {
+  id: string;
+  status: LobbyStatusValue;
+  /** In join order, oldest first. Newest is appended; the list never reorders. */
+  members: MemberView[];
+  /** The promoted split, when there is one. */
+  teams: TeamsView | null;
+  /** The lobby's game, when it has finished one. */
+  result: ResultView | null;
+}
+
+export interface TonightSnapshot {
+  /**
+   * The newest non-`abandoned` lobby of tonight, or `null` — which is the idle page. Tonight
+   * is 06:00 to 06:00 in `CUSTOMS_NIGHT_TZ`; the boundary is computed on the server by
+   * `lib/night.ts` and travels in `nightStart` so the browser never re-derives it.
+   */
+  lobby: LobbyView | null;
+  /** ISO 8601. The start of the night this snapshot was taken for. */
+  nightStart: string;
+  /** False prints `NO_ACTIVE_SEASON_MESSAGE`, the same sentence `/admin` and the API use. */
+  seasonActive: boolean;
+}
+
+/**
+ * The one primary block the page renders (05-design.md, "The tonight page's three states —
+ * one rule"). Derived from `lobbies.status` and nothing else, so a fourth state cannot be
+ * invented by a component.
+ */
+export type TonightState =
+  | { kind: 'idle' }
+  | { kind: 'filling'; lobby: LobbyView }
+  | { kind: 'teams'; lobby: LobbyView; teams: TeamsView }
+  | { kind: 'result'; lobby: LobbyView; result: ResultView; teams: TeamsView | null };

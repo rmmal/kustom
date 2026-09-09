@@ -1,0 +1,133 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { createPublicClient } from '@/lib/publicClient';
+import { loadTonight } from '@/lib/tonight/load';
+import { hasNamelessRow, tonightState } from '@/lib/tonight/state';
+import type { TonightSnapshot } from '@/lib/tonight/types';
+import { TonightView } from './TonightView';
+
+/**
+ * The live half of the tonight page (M3.4).
+ *
+ * The server rendered the first paint with real content, so the WhatsApp link never opens on a
+ * spinner. This attaches after hydration, subscribes to `postgres_changes` on the six
+ * published tables, and re-reads the same snapshot the server built whenever one of them
+ * moves. React then replaces the primary block in place: no append, no scroll, no refetch of
+ * anything the reader is not looking at.
+ *
+ * **Every event re-reads; no event is trusted to carry state.** A `postgres_changes` payload
+ * is one row of one table, and every state on this page is five joins wide — the newest lobby,
+ * its members, its promoted split, its game. Re-reading is one round trip on a page nobody is
+ * scrolling, and it means the live path and the first paint can never disagree.
+ *
+ * If the socket drops, `supabase-js` reconnects by itself and we re-read once on the way back
+ * up. No banner, no toast, no "reconnecting…": the design has no toasts, and a page that
+ * shouts at 1 a.m. about a socket is worse than a page that is quietly a few seconds stale.
+ */
+
+/** Published in migration 0001, and publicly readable. `players` is in neither list. */
+const LIVE_TABLES = ['lobbies', 'lobby_members', 'splits', 'games', 'game_players', 'ratings'] as const;
+
+/** Ten members joining at once is one re-read, not ten. */
+const COALESCE_MS = 120;
+
+/**
+ * How often the page re-reads names while any row says `Someone`.
+ *
+ * `players` is service-role only and is in no Realtime publication, so a name arriving is the
+ * one change that will never turn up as an event (M3.10 promises it replaces itself live).
+ * The timer stops as soon as no row is nameless.
+ */
+const NAME_REREAD_MS = 60_000;
+
+export interface TonightLiveProps {
+  initial: TonightSnapshot;
+  viewerPuuid: string | null;
+  isAdmin: boolean;
+}
+
+export function TonightLive({ initial, viewerPuuid, isAdmin }: TonightLiveProps) {
+  const [snapshot, setSnapshot] = useState(initial);
+  const refresh = useRef<() => void>(() => {});
+  const nightStart = initial.nightStart;
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    let again = false;
+    const client = createPublicClient();
+
+    const schedule = (): void => {
+      if (cancelled || timer !== null) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void run();
+      }, COALESCE_MS);
+    };
+
+    const run = async (): Promise<void> => {
+      // One read at a time. Events that land while one is in flight collapse into a single
+      // follow-up, so a burst of ten inserts cannot queue ten round trips.
+      if (inFlight) {
+        again = true;
+        return;
+      }
+      inFlight = true;
+      try {
+        const next = await loadTonight(client, { nightStart: new Date(nightStart) });
+        if (!cancelled) setSnapshot(next);
+      } catch (error) {
+        // The last snapshot stays on the screen. A failed read is not something to announce.
+        console.error('tonight: re-reading the page failed', error);
+      } finally {
+        inFlight = false;
+        if (again && !cancelled) {
+          again = false;
+          schedule();
+        }
+      }
+    };
+
+    refresh.current = schedule;
+
+    const channel = client.channel('tonight');
+    for (const table of LIVE_TABLES) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, schedule);
+    }
+    channel.subscribe((status) => {
+      // The first subscribe and every reconnect land here: re-read once, say nothing.
+      if (status === 'SUBSCRIBED') schedule();
+    });
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) clearTimeout(timer);
+      void client.removeChannel(channel);
+    };
+  }, [nightStart]);
+
+  const nameless = hasNamelessRow(tonightState(snapshot));
+
+  useEffect(() => {
+    if (!nameless) return;
+
+    const reread = (): void => refresh.current();
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') reread();
+    };
+
+    const interval = setInterval(reread, NAME_REREAD_MS);
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [nameless]);
+
+  return <TonightView snapshot={snapshot} viewerPuuid={viewerPuuid} isAdmin={isAdmin} />;
+}

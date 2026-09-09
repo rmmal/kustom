@@ -1,0 +1,117 @@
+/*
+ * The design system's tokens (docs/05-design.md, "Tokens as CSS custom properties").
+ *
+ * Seven colours per theme and everything else derived from them with color-mix(), so there is
+ * no eighth colour to keep in step. Dark is the default, not the alternate: the page is opened
+ * from a WhatsApp link in a dark room. `color-scheme: dark light` makes the pre-paint
+ * background, the scrollbars and every form control follow the same choice, so there is no
+ * white flash on the way in.
+ *
+ * There is no theme toggle in M3. `prefers-color-scheme` is the whole switch.
+ *
+ * The admin area deliberately does NOT adopt these (05-design.md, "The admin area stays
+ * plain"): `app/admin/admin.css` keeps `color-scheme: light dark` and `.admin { font-family:
+ * system-ui }`, which is what stops the `body` rule below reaching it.
+ */
+
+:root {
+  color-scheme: dark light;
+
+  --cn-bg: #12151a;
+  --cn-surface: #1b2027;
+  --cn-text: #e7eaef;
+  --cn-dim: #97a0ad;
+  --cn-blue: #6ba5f7;
+  --cn-red: #ea6f69;
+  --cn-accent: #e0a33e;
+
+  --cn-hairline: color-mix(in srgb, var(--cn-text) 14%, transparent);
+  --cn-blue-tint: color-mix(in srgb, var(--cn-blue) 7%, var(--cn-surface));
+  --cn-red-tint: color-mix(in srgb, var(--cn-red) 7%, var(--cn-surface));
+  --cn-accent-tint: color-mix(in srgb, var(--cn-accent) 10%, var(--cn-surface));
+  --cn-pressed: color-mix(in srgb, var(--cn-text) 8%, var(--cn-surface));
+
+  --cn-sp-1: 0.25rem;
+  --cn-sp-2: 0.5rem;
+  --cn-sp-3: 0.75rem;
+  --cn-sp-4: 1rem;
+  --cn-sp-5: 1.5rem;
+  --cn-sp-6: 2rem;
+  --cn-sp-7: 3rem;
+  --cn-sp-8: 4rem;
+
+  --cn-t-xs: 0.75rem;
+  --cn-t-sm: 0.875rem;
+  --cn-t-base: 1.0625rem;
+  --cn-t-md: 1.25rem;
+  --cn-t-lg: 1.625rem;
+  --cn-t-xl: 2.25rem;
+
+  --cn-radius: 6px;
+  --cn-radius-chip: 3px;
+
+  /*
+   * The generated `next/font` variables carry one family each. The fallback stack lives here
+   * rather than only in the `fallback` array so a blocked Google Fonts request lands on
+   * Helvetica and Menlo rather than on Times (05-design.md, "Fonts").
+   */
+  --cn-font-sans: var(--cn-font-archivo), "Helvetica Neue", Arial, system-ui, sans-serif;
+  --cn-font-mono: var(--cn-font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --cn-bg: #f3f4f6;
+    --cn-surface: #ffffff;
+    --cn-text: #161a20;
+    --cn-dim: #5b6573;
+    --cn-blue: #1f5fc4;
+    --cn-red: #b4302b;
+    --cn-accent: #8e5b0e;
+  }
+}
+
+/* `t-xl` is the only size that changes across breakpoints, and only upward. */
+@media (min-width: 720px) {
+  :root {
+    --cn-t-xl: 2.75rem;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--cn-bg);
+  color: var(--cn-text);
+  font-family: var(--cn-font-sans);
+  font-size: var(--cn-t-base);
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * Every rating, delta, gap, percentage, duration, rank number and role label. If it is a
+ * number or a role it is mono; if it is a person or a sentence it is Archivo.
+ */
+.cn-num {
+  font-family: var(--cn-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Not `display: none`: the sums, the off-role marker and the live dot all need a word. */
+.cn-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

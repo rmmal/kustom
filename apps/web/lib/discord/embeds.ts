@@ -364,8 +364,12 @@ function lobbyFieldValue(lobby: { name: string | null; password: string | null }
  * everyone unrated and every split gap 0, it is the first result sentence the group ever
  * reads. The number goes with it, because 50 is what "neither" means. Core's fragment in the
  * teams explanation is untouched and stays core's.
+ *
+ * Exported because the tonight page's result card prints the same sentence (M3.4): the page
+ * and the message must not invent a fifth number format between them (`05-design.md`, "The
+ * four number formats").
  */
-function favoredClause(blueWinProb: number | null): string | null {
+export function favoredClause(blueWinProb: number | null): string | null {
   if (blueWinProb === null) return null;
   const percent = Math.round(blueWinProb * 100);
   if (percent > 50) return `Blue was favored ${percent}%.`;
