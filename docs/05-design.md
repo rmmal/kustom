@@ -125,8 +125,9 @@ and the group say them in lower case).
   it centres.
 - Gap between blocks `sp-5`. Gap between rows inside a card `0` — rows are separated by a hairline, not space.
 - Radius: `6px` on cards and strips, `3px` on chips, `0` on hairline dividers. Nothing is a pill.
-- Every tappable thing is at least **44 × 44px**, including the role-override taps (M3.6) and the reroll
-  button.
+- Every tappable thing is at least **44 × 44px**, including the role-override taps (M3.6), the reroll button
+  and the idle page's `Last night and the board` link — a bare inline anchor is about 26px tall and is the one
+  tappable thing on the whole idle screen.
 - Motion: one transition, `opacity 150ms ease`. New rows fade in. Nothing slides, nothing scales, nothing
   pulses more than a 2s opacity cycle on the single live dot. Honour `prefers-reduced-motion: reduce` by
   dropping to no transition at all. The page must never move under a thumb that is about to tap.
@@ -139,13 +140,22 @@ and the group say them in lower case).
   ten 3px bars, `sp-1` apart, filled ones `accent`, empty ones hairline. That row is the whole status at
   arm's length: you can count it without reading.
 - One row per member, in join order, oldest first. Newest is appended, not prepended — a list that reorders
-  under a thumb is worse than a list you scroll.
-- Row (min-height 44px, hairline between): name `t-md` 600 · main role `t-xs` mono `dim`, secondary role
-  after a `/` also `dim` · display rating right-aligned, `t-md` mono tabular.
-- A member who joined in the last 3s carries a 2px `accent` left border, then it fades.
-- The signed-in viewer's own row: 2px `accent` left border, permanent. Finding yourself is job one.
-- **Reserve ten rows' height from the start.** Going from 9 to 10 must not shift the page while someone is
-  reading it.
+  under a thumb is worse than a list you scroll. Everyone in the **same** companion post arrived at the same
+  instant and has no join order between them: break that tie on the **name**, not on a database id, so a first
+  post of seven reads as a list rather than as a shuffle.
+- Row (exactly 44px tall, hairline between): name `t-md` 600 · main role `t-xs` mono `dim`, secondary role
+  after a `/` also `dim` · display rating right-aligned, `t-md` mono tabular. A member with no role declared
+  reads `flexible` in that column, in the same mono `t-xs` `dim` — it is what the balancer will treat them as,
+  and a blank there reads as missing data.
+- A member who joined in the last 3s carries a 2px `accent` left rule, then it fades out on the page's one
+  150ms opacity transition. Draw it as an element that is always there and only changes opacity, never as a
+  border that appears: a row that gains a border gains 2px of width under a thumb.
+- The signed-in viewer's own row: 2px `accent` left rule, permanent, drawn as an inset shadow so it adds no
+  width. Finding yourself is job one.
+- **Reserve ten rows' height from the start**, and reserve it in the row's own units: `10 × 44px` plus the
+  nine hairlines between them. Going from 9 to 10 must not shift the page while someone is reading it, and a
+  reserved height that was guessed from the font instead of the row is a shift of about thirty pixels at the
+  exact moment everybody is looking.
 - People beyond the ten (`is_spectator`) sit under a hairline labelled `Around` in `t-xs` `dim`.
 - Empty: `Nobody in the lobby yet.` in `dim`. Not an illustration, not a spinner.
 
@@ -210,9 +220,19 @@ and the group say them in lower case).
   `dim`: `34:12`.
 - Second line, `t-base` `dim`: the prediction, kept honest — `Blue was favored 54%.` The bot said a number
   before the game; it does not get to quietly drop it after.
-- Then the two team cards again, unchanged in structure, with each row's rating replaced by the **after**
-  rating and a delta chip. The card for the winning side keeps its 3px top rule; the losing side's rule drops
-  to hairline `dim`. That is the only difference between them.
+- Then the two team cards again, with each row's rating replaced by the **after** rating and a delta chip. The
+  card for the winning side keeps its 3px top rule; the losing side's rule drops to hairline `dim`.
+- **These are the only team cards on the finished screen.** The explanation line of the split they played sits
+  under them; nothing renders a second pair with the before numbers (M3.16, and the state table above).
+- **Same five positions as the teams block, lane order, top to support.** "My row" has to be where it was
+  twenty minutes ago, and the result embed already sorts this way. A player the scoreboard has no role for is
+  printed without one and sorts after the five who have one.
+- **No side sums in the result card's headers.** The sum answers "are these teams even?", which is a question
+  the game has just answered, and a reader who saw `6000` before the game and `6465` after has computed a team
+  total of deltas by subtraction — the one number this page must not put on screen (below). The header of a
+  result card is the side name alone.
+- The off-role marker is **not** repeated here. It described a decision, and the decision has been played; the
+  stored explanation under the cards still names the player and the role in words.
 - One line under the cards, `t-base`: `Top damage: Lena, 47.3k.` with the number in `accent`.
 - No wash of colour over the page, no banner, no confetti. The result is a fact, not an event.
 - **Never print a team total of deltas.** The two sides do not sum to zero — different sigmas and rounding —
@@ -767,7 +787,20 @@ M3.4 does not get to invent its own state model. The page renders **exactly one 
 | `open` | `<n> in the lobby`, live dot | Lobby member list | — |
 | `balanced` | `Teams set`, live dot | Sit-out notice, team cards, explanation line | — |
 | `in_game` | `In game`, live dot | Sit-out notice, team cards, explanation line | — |
-| `finished` | `Final` | Result card | Team cards and the explanation line, unchanged |
+| `finished` | `Final` | Result card: headline, prediction line, the two team cards with **after** ratings and deltas, top damage | The explanation line of the split they played |
+
+**The finished state, said once (M3.16, designer, 2026-09-09).** An earlier version of this row listed
+"team cards and the explanation line" as a secondary block *under* the result card, and the "Result card"
+component already puts both team cards inside the result card with the after ratings. Read together they put
+two ratings for the same player on one screen, which is a bug report waiting in voice. Product's rule for M3.4
+is **one rating per player per screen**, and the result card's is the one. So: the finished state renders the
+result card and, under it, the explanation line of the split they played — and nothing else. There is no
+second pair of team cards, before or after. The built page (M3.4) took this answer; this file now says the
+same thing in both places.
+
+A `finished` lobby whose game the rating fold did not rate — a remake, a four-minute surrender — has no result
+card to draw: the header reads `Final`, the teams block and the explanation line stay up as they were, and
+there are no deltas. No banner apologising for it; Discord stays silent about these games too.
 
 Idle copy (product, 2026-09-08 — final), the same sentence the placeholder page already carries from M1.10 so
 the wording does not change under people when M3.4 lands: `When ten of you are in a custom lobby with the
