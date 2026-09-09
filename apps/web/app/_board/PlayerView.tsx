@@ -3,6 +3,7 @@ import type { RoleValue } from '@customs/db';
 import Link from 'next/link';
 import {
   gamesLabel,
+  LOST,
   NO_GAMES_YET,
   NO_SEASON_BOARD,
   NOT_RATED,
@@ -12,6 +13,7 @@ import {
   RECENT_GAMES_HEADING,
   RECENT_RATING_LEGEND,
   ROLE_RECORD_HEADING,
+  WON,
   winLossLabel,
 } from '@/lib/board/copy';
 import type { PlayerBoardView, PlayerSeasonView, RecentGame, RecentTeammate } from '@/lib/board/types';
@@ -43,21 +45,18 @@ import { RatingChart } from './RatingChart';
  * page does not carry two ways to one place (`05-design.md`, settled with M3.18's shell).
  */
 
-/**
- * This player's own result, not the winning side's: the page is about them, and `Red wins`
- * beside their own delta would make a reader work out which side they were on first.
- * New copy, 2026-09-09, recorded in `04-decisions.md`.
- */
-const WON = 'Won';
-const LOST = 'Lost';
-
 export interface PlayerViewProps {
   player: PlayerBoardView;
-  /** The signed-in viewer's puuid: their own row in a lineup gets the `brand` rule. */
-  viewerPuuid: string | null;
 }
 
-export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
+/**
+ * **Nothing on this page depends on who is looking.** A lineup marks the player whose page it
+ * is, and only them: marking the viewer as well put the `brand` rule on two of five rows on
+ * every night the viewer played beside the person they are reading about (the designer,
+ * 2026-09-10), which is two answers to "which one is my row" on a page that is not about the
+ * viewer at all.
+ */
+export function PlayerView({ player }: PlayerViewProps) {
   return (
     <main className="cn-page">
       <header className="cn-strip">
@@ -77,14 +76,14 @@ export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
       {player.kind === 'no-season' ? (
         <p className="cn-notice">{NO_SEASON_BOARD}</p>
       ) : (
-        <PlayerSeason player={player} viewerPuuid={viewerPuuid} />
+        <PlayerSeason player={player} />
       )}
     </main>
   );
 }
 
 /** The page proper: the two numbers, the chart, the record and the last few games. */
-function PlayerSeason({ player, viewerPuuid }: { player: PlayerSeasonView; viewerPuuid: string | null }) {
+function PlayerSeason({ player }: { player: PlayerSeasonView }) {
   const nameless =
     isNameless(player.name) || player.recent.some((game) => game.team.some((seat) => isNameless(seat.name)));
   /** M3.23: the sentence is printed once, and only while a row on the page reads `not rated`. */
@@ -119,12 +118,18 @@ function PlayerSeason({ player, viewerPuuid }: { player: PlayerSeasonView; viewe
              * The board prints it on every row and this page — the one place a friend goes to
              * read about themselves — did not, so `28 games · 13W 15L` had to be counted off
              * the chart. It counts the **rated** games, the ones the fold counted (M3.23).
+             *
+             * At zero games there is no record to print: `0 games · 0W 0L` is three zeros
+             * saying what `No games this season yet.` says underneath in words (the designer,
+             * 2026-09-10).
              */}
-            <p className="cn-row-meta">
-              <span className="cn-num">{gamesLabel(player.games)}</span>
-              {' · '}
-              <span className="cn-num">{winLossLabel(player.wins, player.losses)}</span>
-            </p>
+            {player.games === 0 ? null : (
+              <p className="cn-row-meta">
+                <span className="cn-num">{gamesLabel(player.games)}</span>
+                {' · '}
+                <span className="cn-num">{winLossLabel(player.wins, player.losses)}</span>
+              </p>
+            )}
           </div>
 
           {/*
@@ -171,12 +176,7 @@ function PlayerSeason({ player, viewerPuuid }: { player: PlayerSeasonView; viewe
             </header>
             <ul className="cn-games">
               {player.recent.map((game) => (
-                <RecentGameView
-                  key={game.gameId}
-                  game={game}
-                  puuid={player.puuid}
-                  viewerPuuid={viewerPuuid}
-                />
+                <RecentGameView key={game.gameId} game={game} puuid={player.puuid} />
               ))}
             </ul>
           </section>
@@ -206,12 +206,10 @@ function PlayerSeason({ player, viewerPuuid }: { player: PlayerSeasonView; viewe
 function RecentGameView({
   game,
   puuid,
-  viewerPuuid,
 }: {
   game: RecentGame;
   /** Whose page this is: their own row in the lineup is plain text, and carries the rule. */
   puuid: string;
-  viewerPuuid: string | null;
 }) {
   const rating = game.muAfter === null ? null : displayRating(game.muAfter);
   const delta =
@@ -252,12 +250,7 @@ function RecentGameView({
       </p>
       <ul className="cn-lineup">
         {game.team.map((seat) => (
-          <li
-            key={seat.puuid}
-            className={
-              seat.puuid === puuid || seat.puuid === viewerPuuid ? 'cn-lineup-row cn-you' : 'cn-lineup-row'
-            }
-          >
+          <li key={seat.puuid} className={seat.puuid === puuid ? 'cn-lineup-row cn-you' : 'cn-lineup-row'}>
             {seat.role === null ? <span className="cn-num cn-lineup-role" /> : <RoleName role={seat.role} />}
             <LineupName seat={seat} viewed={seat.puuid === puuid} />
           </li>

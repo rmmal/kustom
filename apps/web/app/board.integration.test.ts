@@ -240,7 +240,7 @@ if (stack === null) {
 
     it('renders a nameless teammate as `Someone` and never a puuid', async () => {
       const player = seasonPlayer(await loadPlayerBoard(anon, puuid.zoe));
-      const html = renderToStaticMarkup(createElement(PlayerView, { player, viewerPuuid: null }));
+      const html = renderToStaticMarkup(createElement(PlayerView, { player }));
 
       const text = textOf(html);
       expect(text).toContain('Someone');

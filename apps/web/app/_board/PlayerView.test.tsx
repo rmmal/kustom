@@ -27,8 +27,8 @@ import { PlayerView } from './PlayerView';
  * a delta that adds up, the five in lane order, and the chip and its sentence.
  */
 
-function draw(player: PlayerBoardView = workedPlayer(), viewerPuuid: string | null = null) {
-  return render(<PlayerView player={player} viewerPuuid={viewerPuuid} />);
+function draw(player: PlayerBoardView = workedPlayer()) {
+  return render(<PlayerView player={player} />);
 }
 
 describe('the two numbers', () => {
@@ -103,6 +103,8 @@ describe('the rating history chart', () => {
     expect(screen.getByText(NO_GAMES_YET)).toBeInTheDocument();
     // The chart's own `<svg>`: the role icons beside a lane word are `<svg>` too (M3.19).
     expect(container.querySelector('.cn-chart-svg')).not.toBeInTheDocument();
+    // And no `0 games · 0W 0L`: the sentence under it is the record (the designer, 2026-09-10).
+    expect(container.querySelector('.cn-row-meta')).not.toBeInTheDocument();
   });
 
   /**
@@ -204,6 +206,20 @@ describe('the recent games', () => {
     const mine = lineup.filter((row) => row.classList.contains('cn-you'));
     expect(mine).toHaveLength(1);
     expect(within(mine[0] as HTMLElement).getByText('Hana')).toBeInTheDocument();
+  });
+
+  /**
+   * **One marked row, whoever is looking** (the designer, 2026-09-10). The page is about one
+   * person; marking the signed-in viewer as well put the `brand` rule on two of five rows on
+   * every night the two of them played together, which is two answers to "which one is mine".
+   */
+  it('marks the page own player and nobody else, on a night the viewer also played', () => {
+    const { container } = draw();
+
+    const marked = [...container.querySelectorAll('.cn-lineup-row.cn-you')];
+    expect(marked).toHaveLength(1);
+    // Iris is in this lineup and could be the viewer; her row is a plain link like the rest.
+    expect(within(marked[0] as HTMLElement).queryByText('Iris')).not.toBeInTheDocument();
   });
 
   it('says whether this player won, not which side did', () => {
@@ -388,6 +404,15 @@ describe('the four teammates', () => {
       `/p/${workedPuuid('Theo')}`,
     ]);
     expect(within(lineup[0] as HTMLElement).getByText('Hana').tagName).toBe('SPAN');
+  });
+
+  /** A phone has no hover, so the affordance cannot live only in one (the designer, 2026-09-10). */
+  it('are dressed as links at rest, and the viewed player is not', () => {
+    const { container } = draw();
+
+    for (const link of container.querySelectorAll('.cn-lineup-name')) {
+      expect(link.classList.contains('cn-lineup-link')).toBe(link.tagName === 'A');
+    }
   });
 });
 

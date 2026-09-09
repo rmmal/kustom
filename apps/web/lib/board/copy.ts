@@ -131,6 +131,20 @@ export const ROLE_RECORD_HEADING = 'By role';
 export const RECENT_GAMES_HEADING = 'Recent games';
 
 /**
+ * A recent game's result on `/p/[puuid]`: **this player's own**, not the winning side's
+ * (product, 2026-09-09).
+ *
+ * The page is about them, and `Red wins` beside their own delta would make a reader work out
+ * which side they were on before they could read their own row. Past tense rather than the
+ * `13W 15L` letters, because the line is one game that happened and not a tally.
+ *
+ * They lived in `app/_board/PlayerView.tsx` until M3.19; the copy table in `05-design.md` has
+ * one code half, and this is it.
+ */
+export const WON = 'Won';
+export const LOST = 'Lost';
+
+/**
  * The tonight page's rail card at ≥1080px (`05-design.md`, "Breakpoints and the desktop grid").
  * The board's first five rows, under the doc's own name for them — not a fourth word for the
  * destination the nav tab, the heading and the embed all call `Leaderboard`, because this card

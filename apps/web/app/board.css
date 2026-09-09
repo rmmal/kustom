@@ -320,13 +320,18 @@
   border-top: 1px solid var(--cn-line);
 }
 
+/*
+ * **The side is the rule, and only the rule** (the designer, 2026-09-10). The 10% tint that the
+ * team cards carry says *this is one team's card*; here it sits behind a row that already says
+ * `Won` or `Lost`, so a red wash behind `Won` reads as a loss and a blue one behind `Lost`
+ * reads as a win. The 3px leading rule answers "which side was I on" without arguing with the
+ * word beside it.
+ */
 .cn-game-blue {
-  background: var(--cn-blue-tint);
   border-inline-start-color: var(--cn-blue);
 }
 
 .cn-game-red {
-  background: var(--cn-red-tint);
   border-inline-start-color: var(--cn-red);
 }
 
@@ -403,18 +408,23 @@
 }
 
 /*
- * The four teammates open their own pages; the player whose page this is stays plain text (the
- * designer's M3.5 review). The link is dressed as the name it is — the row is already 44px, so
- * it buys no extra height — and says it is a link on hover and to a keyboard.
+ * The four teammates open their own pages; the player whose page this is stays plain text and
+ * unadorned (the designer's M3.5 review).
+ *
+ * **A phone has no hover**, so the link cannot save its only affordance for one: at rest it
+ * carries a `line`-coloured underline — visible enough to say "tappable", quiet enough not to
+ * turn a column of five names into five links shouting — and the underline comes up to
+ * `currentColor` on hover and on focus. The row is already 44px, so the link buys no height.
  */
 .cn-lineup-link {
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: var(--cn-line);
+  text-underline-offset: 3px;
 }
 
 .cn-lineup-link:hover,
 .cn-lineup-link:focus-visible {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration-color: currentColor;
 }
 
 /* ---------------------------------------------------------------------------
