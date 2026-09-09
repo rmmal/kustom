@@ -134,6 +134,9 @@ function notBalancedMessage(status: LobbyStatusValue): string {
     case 'open':
       return 'that lobby has no teams yet; it balances by itself once the roster holds still';
     case 'in_game':
+    // A `dropped` lobby is one whose game started and whose result never arrived (M5.11).
+    // The same sentence is still the true one, and the admin page gains no new word for it.
+    case 'dropped':
       return 'the game has started, so the teams on the rift are the teams';
     case 'finished':
       return 'that game is over';

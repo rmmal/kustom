@@ -11,7 +11,12 @@ import type { ServiceClient } from './supabase';
 /** How long the roster must not change before the lobby balances. */
 export const ROSTER_STABLE_MS = 10_000;
 
-/** An `open` or `balanced` lobby nobody has posted about for this long is `abandoned`. */
+/**
+ * How long a lobby may go unmentioned before the sweep gives up on it: two hours for an
+ * `open` or `balanced` lobby (`abandoned`) and the same two hours for an `in_game` one
+ * (`dropped`, M5.11) — no game of League runs two hours, so an `in_game` row that has not
+ * moved in that long has lost its end-of-game block.
+ */
 export const IDLE_ABANDON_MS = 7_200_000;
 
 /** A game shorter than this is a remake or a four-minute surrender, and is never rated. */
@@ -37,15 +42,28 @@ export const PLAYERS_PER_GAME = 10;
  * | `in_game` | `finished` | the `eog` post for this lobby |
  * | `open`/`balanced` | `finished` | the same eog, when the `in_progress` post never arrived |
  * | `open`/`balanced` | `abandoned` | the idle sweep |
+ * | `in_game` | `dropped` | the idle sweep: two hours and no result (M5.11) |
+ * | `dropped` | `finished` | an eog block that arrives days late still closes its own lobby |
  *
- * `finished` and `abandoned` are terminal, and **`in_game` never ages out**: `abandoned`
- * keeps the M2.9 replace semantics, so sweeping a lobby whose game was dropped would unfreeze
- * the record of who played. M5.5 is the surface that lists it.
+ * `finished` and `abandoned` are terminal. **`dropped` is terminal in every way that matters**
+ * — its roster is frozen for good and it is outside the live set, so the party's next post
+ * starts a clean cycle — but it keeps the one door to `finished`, because a companion whose
+ * queue file drains a week later is still telling the truth about that game, and the row then
+ * leaves M5.5's missed list by itself.
+ *
+ * **`in_game` does age out, and only into `dropped`** (M5.11). It must never become
+ * `abandoned`: `abandoned` keeps the M2.9 replace semantics, so it would unfreeze the record
+ * of who played, and it means "dissolved before it ever started", which is the opposite of
+ * what happened. Before M5.11 `in_game` was swept nowhere at all, and because
+ * `lobbies_active_party_idx` allows one live row per party and the client keeps one party id
+ * all night (M2.14), one missed end-of-game block cost the group every later game of that
+ * night.
  */
 export const LOBBY_TRANSITIONS: Readonly<Record<LobbyStatusValue, readonly LobbyStatusValue[]>> = {
   open: ['open', 'balanced', 'in_game', 'finished', 'abandoned'],
   balanced: ['open', 'balanced', 'in_game', 'finished', 'abandoned'],
-  in_game: ['finished'],
+  in_game: ['finished', 'dropped'],
+  dropped: ['finished'],
   finished: [],
   abandoned: [],
 };
@@ -140,11 +158,21 @@ export async function moveLobbyLogged(
 }
 
 /**
- * The idle sweep, run at the start of every companion lobby and game post: one statement over
- * the partial index `lobbies_open_idx`.
+ * The idle sweep, run at the start of every companion lobby and game post and by
+ * `GET /api/cron/sweep`: two statements, both over the partial index `lobbies_open_idx`.
  *
- * `in_game` is deliberately not swept (see the table above). Returns how many lobbies were
- * given up on, for the log.
+ * 1. `open` or `balanced` and two hours unmentioned -> `abandoned`. It never started, so its
+ *    roster is not history and the replace semantics survive (M2.9).
+ * 2. `in_game` and two hours unmentioned -> `dropped` (M5.11). No game runs two hours, so
+ *    this row has lost its end-of-game block; the roster stays frozen and the party's next
+ *    post starts the night's next cycle instead of landing on a frozen row forever.
+ *
+ * The clock for both is the row's own `updated_at`, which the `in_progress` post moved when
+ * it set `in_game` and which any later write to that row (a renamed lobby) moves again — so a
+ * companion that is still reporting the party cannot have its game dropped out from under it
+ * before the two hours are up.
+ *
+ * Returns how many lobbies were given up on, either way, for the log and for the cron route.
  */
 export async function sweepIdleLobbies(client: ServiceClient, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - IDLE_ABANDON_MS).toISOString();
@@ -157,9 +185,29 @@ export async function sweepIdleLobbies(client: ServiceClient, now: Date = new Da
     .select('id');
   if (error) throw new Error(`sweepIdleLobbies: ${error.message}`);
 
-  const swept = (data ?? []).length;
-  if (swept > 0) console.info(`lobby sweep: ${swept} lobby(ies) idle for over two hours -> abandoned`);
-  return swept;
+  const abandoned = (data ?? []).length;
+  if (abandoned > 0) {
+    console.info(`lobby sweep: ${abandoned} lobby(ies) idle for over two hours -> abandoned`);
+  }
+
+  const { data: stuck, error: stuckError } = await client
+    .from('lobbies')
+    .update({ status: 'dropped' })
+    .eq('status', 'in_game')
+    .lt('updated_at', cutoff)
+    .select('id');
+  if (stuckError) throw new Error(`sweepIdleLobbies: dropping stuck games failed: ${stuckError.message}`);
+
+  const dropped = (stuck ?? []).length;
+  if (dropped > 0) {
+    // Worth a line each: this is a night whose result nobody will ever see, and M5.5 is the
+    // page that lists them.
+    for (const row of stuck ?? []) {
+      console.warn(`lobby sweep: lobby ${row.id} was in_game for over two hours with no result -> dropped`);
+    }
+  }
+
+  return abandoned + dropped;
 }
 
 export interface RecheckInput {

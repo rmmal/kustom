@@ -188,11 +188,13 @@ if (stack === null) {
       },
     );
 
-    it.each([['finished'], ['abandoned']])(
-      "allows the night's next cycle once the previous row is %s (M2.14)",
+    it.each([['dropped'], ['finished'], ['abandoned']])(
+      "allows the night's next cycle once the previous row is %s (M2.14, M5.11)",
       async (status) => {
         // The client keeps one party id all night. `lobbies_active_party_idx` is partial, so a
-        // closed row does not block the next game: `0003_lobby_cycles.sql`.
+        // closed row does not block the next game: `0003_lobby_cycles.sql`. `dropped`
+        // (`0005_lobby_dropped.sql`) is in that list because a game whose result never landed
+        // must not swallow the rest of the night's posts (M5.11).
         const party = `${runId}-cycle-next-${status}`;
         const first = await insert('lobbies', { lcu_party_id: party, status });
         expect(first.status).toBe(201);

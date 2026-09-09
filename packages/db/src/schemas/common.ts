@@ -81,11 +81,20 @@ export const roleSchema = z.enum(ROLES);
 /** Team side, matching the League client: 100 blue, 200 red. */
 export const sideSchema = z.union([z.literal(100), z.literal(200)]);
 
-/** Every lobby status, in lifecycle order. Pinned against `LobbyStatus` from core. */
+/**
+ * Every lobby status, in lifecycle order — the same order as the `lobby_status` enum in the
+ * database, so `Constants.public.Enums.lobby_status` and this array read alike. Pinned
+ * against `LobbyStatus` from core.
+ *
+ * `dropped` (M5.11, `0005_lobby_dropped.sql`) sits between `in_game` and `finished` because
+ * that is where it happens: reached `in_game`, no result, roster frozen for good, and out of
+ * the live set so the party's next post starts the night's next cycle.
+ */
 export const LOBBY_STATUSES = [
   'open',
   'balanced',
   'in_game',
+  'dropped',
   'finished',
   'abandoned',
 ] as const satisfies readonly LobbyStatus[];

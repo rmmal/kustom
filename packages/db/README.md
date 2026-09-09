@@ -144,7 +144,7 @@ of the night is ever balanced.
   this party" lookup a late end-of-game block resolves through.
 
 The ingest side is `apps/web/lib/ingest/lobby.ts`: `selectActiveLobby` (a lobby post lands on
-the live row, and starts a new one when the last cycle is `finished` or `abandoned`) and
+the live row, and starts a new one when the last cycle is `finished`, `dropped` or `abandoned`) and
 `selectLatestLobby` (a game post lands on the newest row that already existed when the game
 started, so a late block stays on the lobby it was played from). Nothing is rewritten and
 nothing is deleted: the closed row keeps its frozen members and its `games` link.

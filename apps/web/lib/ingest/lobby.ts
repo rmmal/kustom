@@ -28,7 +28,8 @@ import { SelectionError } from './selection';
  *
  * A lobby row is **one game cycle, not one party** (M2.14). The client keeps the same
  * `partyId` all night, so a post resolves to the party's *live* row — `open`, `balanced` or
- * `in_game` — and starts a new row when the latest one is `finished` or `abandoned`.
+ * `in_game` — and starts a new row when the latest one is `dropped`, `finished` or
+ * `abandoned`.
  * Migration `0003` is the other half: the partial unique index that allows exactly one live
  * row per party and any number of closed ones.
  *
@@ -79,8 +80,12 @@ const UNIQUE_VIOLATION = '23505';
 
 /**
  * The statuses a lobby row can still be posted to (M2.14). A party has at most one row in
- * one of these — `lobbies_active_party_idx` enforces it — and `finished` and `abandoned` are
- * terminal, so the next post for that party starts the night's next cycle.
+ * one of these — `lobbies_active_party_idx` enforces it — and `dropped`, `finished` and
+ * `abandoned` are outside the set, so the next post for that party starts the night's next
+ * cycle.
+ *
+ * `dropped` leaving the set is the point of M5.11: it is how a stuck `in_game` row stops
+ * swallowing the rest of the night's posts.
  */
 export const ACTIVE_LOBBY_STATUSES: readonly LobbyStatusValue[] = ['open', 'balanced', 'in_game'];
 
@@ -94,10 +99,13 @@ export function isActiveLobbyStatus(status: LobbyStatusValue): boolean {
  * on, who was in the lobby is what M2.7 matches tonight's ten against and what M5.5 lists,
  * so a late or partial post must not be able to rewrite it.
  *
- * `abandoned` is deliberately not here: a lobby that dissolves without ever starting keeps
- * the normal replace semantics (M2.9 brief, "Edge cases").
+ * `dropped` is here (M5.11) and `abandoned` is not, and that is the whole difference between
+ * the two: a game that started and lost its result keeps the record of who played it, while a
+ * lobby that dissolves without ever starting keeps the normal replace semantics (M2.9 brief,
+ * "Edge cases"). Neither is in {@link ACTIVE_LOBBY_STATUSES}, so a post for that party starts
+ * the night's next cycle rather than landing here at all.
  */
-const ROSTER_FROZEN_STATUSES: readonly LobbyStatusValue[] = ['in_game', 'finished'];
+const ROSTER_FROZEN_STATUSES: readonly LobbyStatusValue[] = ['in_game', 'dropped', 'finished'];
 
 /** True when later posts may no longer add, remove or change a `lobby_members` row. */
 export function isRosterFrozen(status: LobbyStatusValue): boolean {
@@ -511,7 +519,11 @@ function toExistingLobby(row: {
 /**
  * The party's **live** row: `open`, `balanced` or `in_game`, newest first (M2.14). `null`
  * means this party has no open cycle — either it has never been seen, or its last cycle is
- * `finished`/`abandoned` and the next post starts a new row.
+ * `dropped`/`finished`/`abandoned` and the next post starts a new row.
+ *
+ * The `dropped` case is M5.11's whole fix: the two-hour sweep takes a lobby whose game never
+ * landed out of the live set, and this lookup then answers `null` for the party the way it
+ * would after a finished game.
  *
  * There can be at most one such row (`lobbies_active_party_idx`); the ordering is belt and
  * braces for a database that somehow holds two.

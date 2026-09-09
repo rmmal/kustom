@@ -8,7 +8,7 @@ import { selectLastSplit } from '@/lib/ingest/balance';
 import { clearLobbyHooks, registerLobbyHook } from '@/lib/ingest/hooks';
 import { ingestLobby } from '@/lib/ingest/lobby';
 import { ensurePlayers } from '@/lib/ingest/players';
-import { ROSTER_STABLE_MS, sweepIdleLobbies } from '@/lib/lobbyState';
+import { IDLE_ABANDON_MS, ROSTER_STABLE_MS, sweepIdleLobbies } from '@/lib/lobbyState';
 import { nightStart } from '@/lib/night';
 import { eogBody, testGameId, testPuuids } from '@/lib/testing/fixtures';
 import { resolveLocalStack } from '@/lib/testing/localStack';
@@ -41,6 +41,8 @@ if (stack === null) {
 
   const { POST: postLobby } = await import('./lobby/route');
   const { POST: postGame } = await import('./game/route');
+  // M5.11 acceptance (4): the sweep with no companion post at all.
+  const { GET: getSweep } = await import('../cron/sweep/route');
 
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -136,6 +138,58 @@ if (stack === null) {
     const { data, error } = await db.from('lobbies').select('status').eq('id', lobbyId).single();
     if (error) throw new Error(error.message);
     return data.status;
+  }
+
+  /** The puuids stored for a lobby, sorted, so a frozen roster can be compared to the cast. */
+  async function memberPuuids(lobbyId: string): Promise<string[]> {
+    const { data, error } = await db
+      .from('lobby_members')
+      .select('players!inner(puuid)')
+      .eq('lobby_id', lobbyId);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row) => row.players.puuid).sort();
+  }
+
+  /**
+   * A lobby that reached `in_game` and has not been written to since: M5.11's stuck row.
+   *
+   * Inserted rather than driven there, because `lobbies_set_updated_at` is a `before update`
+   * trigger — the clock can only be set on the way in. That matters more than it looks: it
+   * lets every case below sweep with the **real** `now`, so nothing here can touch a row that
+   * is not genuinely two hours stale, on a local stack other agents are using.
+   */
+  async function stuckInGame(
+    partyId: string,
+    cast: readonly string[],
+    idleMs: number,
+    ageMs: number = idleMs,
+  ): Promise<string> {
+    const now = Date.now();
+    const { data, error } = await db
+      .from('lobbies')
+      .insert({
+        lcu_party_id: partyId,
+        status: 'in_game',
+        reported_by_player_id: ownerPlayerId,
+        lobby_name: 'customs night',
+        created_at: new Date(now - ageMs).toISOString(),
+        updated_at: new Date(now - idleMs).toISOString(),
+      })
+      .select('id')
+      .single();
+    if (error) throw new Error(error.message);
+
+    const rows = await Promise.all(
+      cast.map(async (puuid, index) => ({
+        lobby_id: data.id,
+        player_id: await playerIdOf(puuid),
+        side: index < 5 ? 100 : 200,
+        is_spectator: false,
+      })),
+    );
+    const { error: memberError } = await db.from('lobby_members').insert(rows);
+    if (memberError) throw new Error(memberError.message);
+    return data.id;
   }
 
   async function playerIdOf(puuid: string): Promise<string> {
@@ -822,7 +876,7 @@ if (stack === null) {
   });
 
   describe('the idle sweep', () => {
-    it('abandons an open lobby two hours idle, keeps a fresh one, and never touches in_game', async () => {
+    it('abandons an idle lobby, keeps a fresh one, and drops a three-hour-old game', async () => {
       const now = Date.now();
       const stale = party('stale');
       const fresh = party('fresh');
@@ -859,12 +913,140 @@ if (stack === null) {
 
       expect(await lobbyStatus(idOf.get(stale) ?? '')).toBe('abandoned');
       expect(await lobbyStatus(idOf.get(fresh) ?? '')).toBe('balanced');
-      // `in_game` is deliberately never swept: its roster is frozen and must stay that way.
-      expect(await lobbyStatus(idOf.get(playing) ?? '')).toBe('in_game');
+      // `in_game` is never `abandoned` — that would unfreeze the record of who played — but
+      // it does age out, into `dropped` (M5.11): three hours is not a game, it is a game
+      // whose end-of-game block never arrived.
+      expect(await lobbyStatus(idOf.get(playing) ?? '')).toBe('dropped');
     });
 
     it('sweeps nothing when nothing is stale', async () => {
       expect(await sweepIdleLobbies(db, new Date())).toBe(0);
+    });
+  });
+
+  /**
+   * M5.11. The client keeps one party id all night (M2.14) and
+   * `lobbies_active_party_idx` allows one live row per party, so an `in_game` row that never
+   * got its end-of-game block used to answer every later post of that night with
+   * `rosterFrozen: true`, `balanced: null`, `recheckInMs: null` — no teams, no split, and
+   * nothing to see from inside Discord. `dropped` is the door out.
+   */
+  describe('a lobby stuck at in_game (M5.11)', () => {
+    it('is dropped two hours on, and the party gets a clean cycle with its own teams', async () => {
+      const cast = await freshCast('stuck');
+      const id = party('stuck');
+      const token = await mintToken(cast[0] ?? '');
+      const stuckId = await stuckInGame(id, cast, IDLE_ABANDON_MS + 60_000);
+
+      // The night's next lobby post, through the route: the sweep runs first, so this lands
+      // on a party with no live row and opens one.
+      const response = await postLobby(request(body(id, onTeams(cast)), token));
+      expect(response.status).toBe(200);
+      const opened = (await response.json()) as { lobbyId: string };
+      expect(opened).toMatchObject({ created: true, status: 'open', memberCount: 10, rosterFrozen: false });
+      expect(opened.lobbyId).not.toBe(stuckId);
+
+      // The stuck row left the live set and took nothing with it: the ten who played that
+      // game are still on it, exactly as `in_game` froze them.
+      expect(await lobbyStatus(stuckId)).toBe('dropped');
+      expect(await memberPuuids(stuckId)).toEqual([...cast].sort());
+      expect(await splitRows(stuckId)).toHaveLength(0);
+
+      // And the new cycle behaves like any other: ten stable members, three splits, one chosen.
+      const balanced = await ingest(id, onTeams(cast), await clockAt(opened.lobbyId, ROSTER_STABLE_MS));
+      expect(balanced).toMatchObject({ lobbyId: opened.lobbyId, status: 'balanced', memberCount: 10 });
+      const splits = await splitRows(opened.lobbyId);
+      expect(splits).toHaveLength(3);
+      expect(splits.filter((row) => row.is_chosen === true)).toHaveLength(1);
+    });
+
+    it('changes nothing for a game that is still being played, at one hour fifty-nine', async () => {
+      const cast = await freshCast('inflight');
+      const id = party('inflight');
+      const token = await mintToken(cast[0] ?? '');
+      const liveId = await stuckInGame(id, cast, IDLE_ABANDON_MS - 60_000);
+
+      // A companion that reconnects mid-game and posts three members: the M2.9 answer,
+      // unchanged. Two hours is two hours, not "any long game".
+      const response = await postLobby(request(body(id, onTeams(cast.slice(0, 3))), token));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        lobbyId: liveId,
+        status: 'in_game',
+        created: false,
+        rosterFrozen: true,
+        memberCount: 10,
+        recheckInMs: null,
+      });
+      expect(await lobbyStatus(liveId)).toBe('in_game');
+      expect(await memberPuuids(liveId)).toEqual([...cast].sort());
+    });
+
+    it('still closes the dropped lobby when the block finally arrives, and rates it', async () => {
+      const cast = await freshCast('late');
+      const id = party('late-eog');
+      const token = await mintToken(cast[0] ?? '');
+      const lcuGameId = gameNumber();
+      // Opened ten minutes before the game started; nothing written to it since it went
+      // `in_game`. That ordering is what makes the block resolve to this row and not to the
+      // cycle the group opened afterwards.
+      const stuckId = await stuckInGame(id, cast, IDLE_ABANDON_MS + 60_000, IDLE_ABANDON_MS + 11 * 60_000);
+      const startedAt = new Date(Date.now() - (IDLE_ABANDON_MS + 5 * 60_000)).toISOString();
+
+      const opened = (await (await postLobby(request(body(id, onTeams(cast)), token))).json()) as {
+        lobbyId: string;
+      };
+      expect(await lobbyStatus(stuckId)).toBe('dropped');
+
+      const response = await postGame(
+        request(
+          eogBody({ gameId: lcuGameId, puuids: cast, partyId: id, durationS: 1_500, startedAt }),
+          token,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const json = (await response.json()) as { lobbyId: string; gameId: string };
+      expect(json).toMatchObject({ ok: true, created: true, participants: 10, rated: true });
+      // The cycle it was played from, closed by the block that was days late.
+      expect(json.lobbyId).toBe(stuckId);
+      expect(await lobbyStatus(stuckId)).toBe('finished');
+      // The night's next cycle is not touched by a block from the last one.
+      expect(await lobbyStatus(opened.lobbyId)).toBe('open');
+
+      const { data } = await db.from('game_players').select('mu_after').eq('game_id', json.gameId);
+      expect(data).toHaveLength(10);
+      expect(data?.every((row) => row.mu_after !== null)).toBe(true);
+    });
+
+    it('is dropped by GET /api/cron/sweep alone, with no companion post', async () => {
+      const cast = await freshCast('cron');
+      const id = party('cron-sweep');
+      const stuckId = await stuckInGame(id, cast, IDLE_ABANDON_MS + 60_000);
+      const secret = `sweep-${runId}`;
+      const saved = process.env.CRON_SECRET;
+      process.env.CRON_SECRET = secret;
+
+      try {
+        const response = await getSweep(
+          new Request('http://localhost/api/cron/sweep', {
+            headers: { authorization: `Bearer ${secret}` },
+          }),
+        );
+
+        expect(response.status).toBe(200);
+        const json = (await response.json()) as { ok: boolean; swept: number };
+        expect(json.ok).toBe(true);
+        expect(json.swept).toBeGreaterThanOrEqual(1);
+      } finally {
+        if (saved === undefined) delete process.env.CRON_SECRET;
+        else process.env.CRON_SECRET = saved;
+      }
+
+      // Nobody posted anything: the scheduler alone is enough to unblock the party, which is
+      // the case that matters — everyone closed the client with the game unreported.
+      expect(await lobbyStatus(stuckId)).toBe('dropped');
+      expect(await memberPuuids(stuckId)).toEqual([...cast].sort());
     });
   });
 }

@@ -98,13 +98,18 @@ so two companions posting the same lobby produce one transition. An illegal move
 - **Discord** is not here. `lib/ingest/hooks.ts` is the seam; `lib/discord` (below) is what
   listens on it. With that one import removed, everything above behaves identically.
 - **The sweep.** An `open` or `balanced` lobby nobody has posted about for two hours becomes
-  `abandoned`. It runs at the start of every companion lobby and game post, and on demand:
+  `abandoned`, and an `in_game` one becomes `dropped` — no game runs two hours, so that row
+  lost its end-of-game block (M5.11). It runs at the start of every companion lobby and game
+  post, and on demand:
 
   ```
   curl -H "authorization: Bearer $CRON_SECRET" https://<host>/api/cron/sweep
   ```
 
-  With `CRON_SECRET` unset the route answers 503 and sweeps nothing. `in_game` is never swept.
+  With `CRON_SECRET` unset the route answers 503 and sweeps nothing. A `dropped` lobby keeps
+  its frozen roster and is out of the live set, so the party's next post opens a clean cycle
+  instead of landing on the stuck row all night; a block that arrives days late still moves it
+  `dropped -> finished`.
   An end-of-game block whose party resolves only to an `abandoned` row is stored with
   `lobby_id: null` and still rated: the sweep gave up on that lobby, so linking a real game to
   it would be a lie. A move that claims nothing because the lobby is already terminal is one

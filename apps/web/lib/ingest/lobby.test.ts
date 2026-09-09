@@ -47,6 +47,13 @@ describe('isRosterFrozen', () => {
     expect(isRosterFrozen('finished')).toBe(true);
   });
 
+  it('keeps the roster of a game whose result never arrived (M5.11)', () => {
+    // `dropped` is the whole point of the status: the row leaves the party's live set so the
+    // night can carry on, and the record of who played that game is kept exactly as frozen as
+    // `in_game` left it.
+    expect(isRosterFrozen('dropped')).toBe(true);
+  });
+
   it('leaves an abandoned lobby on the normal replace semantics', () => {
     // M2.9 brief: a lobby that dissolves without ever starting is not history worth keeping.
     expect(isRosterFrozen('abandoned')).toBe(false);
