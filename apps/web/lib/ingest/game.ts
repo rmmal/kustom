@@ -11,7 +11,10 @@ import { selectLatestLobby } from './lobby';
 import { ensurePlayers } from './players';
 
 /**
- * Game ingest from an end-of-game block.
+ * Game ingest from an end-of-game block, live (`source: 'eog'`) or walked out of match history
+ * months later (`source: 'backfill'`, M5.1). One writer, because the row is the same row: the
+ * differences are that a backfilled game is linked to no lobby and is not rated inline, and
+ * both of those are decided by the caller and the two lines below.
  *
  * Deliberately not here: `rateGame` and the `ratings` update (`rating.ts`) and moving the lobby
  * to `finished` (`lobbyState.ts`, from the game route). This writes `games` and `game_players`
@@ -19,7 +22,9 @@ import { ensurePlayers } from './players';
  * from — including a rebuild (M5.2) that replays the fold from scratch.
  *
  * Idempotency is on `lcu_game_id`: two companions in the same game both post, and the second
- * post changes no rows.
+ * post changes no rows. That is also what makes an eog row win over a backfill of the same
+ * game — `ignoreDuplicates` means not one column of the stored row changes, whichever arrived
+ * first (M5.1).
  */
 
 /** The only `gameType` we ingest. Anything else is not our night (`M2.5`). */
@@ -65,7 +70,14 @@ export async function ingestEogGame(
   client: ServiceClient,
   payload: CompanionGameEogPayloadWithWinner,
 ): Promise<GameIngestResult> {
-  const lobbyId = await findLobbyId(client, payload.partyId ?? null, payload.startedAt);
+  // A backfilled game belongs to no lobby (M5.1). The contract says the body carries no
+  // `partyId` at all, and this is the belt to that braces: a months-old game must never be
+  // linked to a lobby cycle the party id happens to still match, and `games.lobby_id` being
+  // null is already a rated-eligible state (M2.5).
+  const lobbyId =
+    payload.source === 'backfill'
+      ? null
+      : await findLobbyId(client, payload.partyId ?? null, payload.startedAt);
 
   const insert: GameInsert = {
     lcu_game_id: payload.gameId,
@@ -91,7 +103,7 @@ export async function ingestEogGame(
   const game = inserted ?? (await selectGame(client, payload.gameId));
   const created = inserted !== null;
 
-  await upsertGamePlayers(client, game.id, payload);
+  await upsertGamePlayers(client, game.id, payload, created);
 
   return {
     gameId: game.id,
@@ -153,12 +165,26 @@ export async function findLobbyId(
  *
  * The `mu_*`/`sigma_*` columns are left null on purpose: rating happens a step later (M2.5)
  * and a rebuild (M5.2) rewrites them.
+ *
+ * **Names, and the one rule backfill breaks** (M5.1 review). An end-of-game block is a report
+ * of who these people are *now*, so it refreshes `game_name`, `tag_line` and the automatic
+ * `display_name`. A match detail is a report of who they were **when the game was played**, and
+ * the walker reads history newest-first, so letting it refresh would settle everybody's name on
+ * the oldest game in the batch and do it again the next time a friend backfills the same
+ * nights. So a backfill post is `fillOnly`: it can give a name to a PUUID the database has
+ * never met — the commonest good outcome of backfill — and it can never change one it has.
+ * When the game was already stored, it does not even claim a name: nothing about a re-post of
+ * a game we have is news about anybody.
  */
 async function upsertGamePlayers(
   client: ServiceClient,
   gameId: string,
   payload: CompanionGameEogPayloadWithWinner,
+  created: boolean,
 ): Promise<void> {
+  const backfill = payload.source === 'backfill';
+  const withNames = !backfill || created;
+
   // The end-of-game block is the only place the client gives us a Riot ID for someone we have
   // only ever seen in a lobby (lobby members carry no `gameName`/`tagLine` at all, M2.10 point
   // 2), so the names go in with the players.
@@ -166,10 +192,11 @@ async function upsertGamePlayers(
     client,
     payload.participants.map((participant) => ({
       puuid: participant.puuid,
-      summonerId: participant.summonerId,
-      gameName: participant.gameName,
-      tagLine: participant.tagLine,
+      summonerId: withNames ? participant.summonerId : null,
+      gameName: withNames ? participant.gameName : null,
+      tagLine: withNames ? participant.tagLine : null,
     })),
+    { fillOnly: backfill },
   );
 
   const rows: GamePlayerInsert[] = [];

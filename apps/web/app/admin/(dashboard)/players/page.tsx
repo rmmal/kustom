@@ -5,7 +5,7 @@ import { type AdminPlayerRow, listAdminPlayers } from '@/lib/admin/players';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
-import { Empty, Notices, RoleSelect, type SearchParams } from '../../_components/ui';
+import { Empty, formatDay, Notices, RoleSelect, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,8 +15,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Every player, with the four things only an admin can change: the name the group uses, roles,
- * the Discord link and the admin flag.
+ * Every player, with the five things only an admin can change: the name the group uses, roles,
+ * the Discord link, the admin flag and backfill approval (M5.1).
  *
  * Read with the service-role client, so `discord_id` is visible — `players_public` (what every
  * public page reads) does not carry it.
@@ -35,6 +35,12 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
         {season === null ? ' (none active)' : ` (${season.name})`}. A row appears on its own the first time a
         PUUID shows up in a lobby, a game or a rank report — there is no "add player". A name follows the Riot
         ID until you set one here; clear the field to put it back on automatic.
+      </p>
+      {/* Product's copy, verbatim (M5.1): the decision an admin is being asked to make is
+          "whose PC is this", and nothing else on this page says it. */}
+      <p className="admin-muted">
+        Backfill lets a player&apos;s companion send past customs from their client&apos;s match history. Turn
+        it on once you know whose PC it is.
       </p>
 
       <Notices params={params} />
@@ -57,6 +63,7 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
                 <th>Roles</th>
                 <th>Discord</th>
                 <th>Admin</th>
+                <th>Backfill</th>
               </tr>
             </thead>
             <tbody>
@@ -143,8 +150,31 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
           </button>
         </form>
       </td>
+      <td>
+        {/* Three states in one cell, then the one control (M5.1). `asked` is the companion
+            having knocked at `/api/companion/backfill/scan` and been told no — the marker is
+            there so an admin knows somebody is waiting rather than having to be asked. */}
+        <form method="post" action="/api/admin/players">
+          <input type="hidden" name="action" value="set-backfill" />
+          <input type="hidden" name="playerId" value={player.id} />
+          <input
+            type="hidden"
+            name="approved"
+            value={player.backfillApprovedAt === null ? 'true' : 'false'}
+          />
+          <span>{formatBackfill(player)}</span>{' '}
+          <button type="submit">{player.backfillApprovedAt === null ? 'Allow' : 'Revoke'}</button>
+        </form>
+      </td>
     </tr>
   );
+}
+
+/** `off` / `asked <date>` / `on since <date>`, exactly the three states the brief names. */
+function formatBackfill(player: AdminPlayerRow): string {
+  if (player.backfillApprovedAt !== null) return `on since ${formatDay(player.backfillApprovedAt)}`;
+  if (player.backfillRequestedAt !== null) return `asked ${formatDay(player.backfillRequestedAt)}`;
+  return 'off';
 }
 
 function formatRank(player: AdminPlayerRow): string {

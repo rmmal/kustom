@@ -33,6 +33,13 @@ export interface AdminPlayerRow {
   rankTier: string | null;
   rankDivision: string | null;
   rankLp: number | null;
+  /**
+   * Backfill approval (M5.1). Three states, and the page renders them as three: both null is
+   * `off`, a request with no approval is `asked <date>`, an approval is `on since <date>`.
+   * Revoking clears `backfillApprovedAt` and leaves the request standing.
+   */
+  backfillRequestedAt: string | null;
+  backfillApprovedAt: string | null;
   /** The active season's rating, or null when the player has never been rated. */
   rating: AdminRating | null;
 }
@@ -49,7 +56,7 @@ export async function listAdminPlayers(
   const query = client
     .from('players')
     .select(
-      'id, puuid, display_name, game_name, tag_line, discord_id, is_admin, main_role, secondary_role, rank_tier, rank_division, rank_lp, ratings(season_id, mu, sigma, games, wins)',
+      'id, puuid, display_name, game_name, tag_line, discord_id, is_admin, main_role, secondary_role, rank_tier, rank_division, rank_lp, backfill_requested_at, backfill_approved_at, ratings(season_id, mu, sigma, games, wins)',
     )
     .order('display_name', { ascending: true, nullsFirst: false })
     .order('puuid', { ascending: true });
@@ -72,6 +79,8 @@ export async function listAdminPlayers(
       rankTier: row.rank_tier,
       rankDivision: row.rank_division,
       rankLp: row.rank_lp,
+      backfillRequestedAt: row.backfill_requested_at,
+      backfillApprovedAt: row.backfill_approved_at,
       rating:
         rating === null
           ? null
@@ -222,6 +231,41 @@ export async function setPlayerAdmin(
     .maybeSingle();
 
   if (error) throw new Error(`setPlayerAdmin failed: ${error.message}`);
+  if (data === null) return writeFailed(404, 'no such player');
+  return writeOk(data.id);
+}
+
+export interface SetPlayerBackfillInput {
+  playerId: string;
+  /** The target state, not a toggle: two tabs cannot flip each other's answer. */
+  approved: boolean;
+  /** Injected so the integration tests can pin the timestamp. */
+  now?: Date;
+}
+
+/**
+ * Allow or revoke backfill for one player (M5.1).
+ *
+ * Approving stamps `backfill_approved_at`; revoking sets it back to null and the next
+ * `POST /api/companion/backfill/scan` answers `approved: false`. The request timestamp is
+ * never touched here — it is the record of when that friend's PC first asked, and an admin who
+ * revokes has not un-asked anything.
+ *
+ * Re-approving an already-approved player moves the date. That is deliberate and harmless: the
+ * column is a note for a human, and nothing reads it but "is it null".
+ */
+export async function setPlayerBackfill(
+  client: ServiceClient,
+  input: SetPlayerBackfillInput,
+): Promise<AdminWriteResult<string>> {
+  const { data, error } = await client
+    .from('players')
+    .update({ backfill_approved_at: input.approved ? (input.now ?? new Date()).toISOString() : null })
+    .eq('id', input.playerId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) throw new Error(`setPlayerBackfill failed: ${error.message}`);
   if (data === null) return writeFailed(404, 'no such player');
   return writeOk(data.id);
 }

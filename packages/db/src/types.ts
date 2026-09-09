@@ -389,6 +389,8 @@ export type Database = {
       }
       players: {
         Row: {
+          backfill_approved_at: string | null
+          backfill_requested_at: string | null
           created_at: string
           discord_id: string | null
           display_name: string | null
@@ -406,6 +408,8 @@ export type Database = {
           tag_line: string | null
         }
         Insert: {
+          backfill_approved_at?: string | null
+          backfill_requested_at?: string | null
           created_at?: string
           discord_id?: string | null
           display_name?: string | null
@@ -423,6 +427,8 @@ export type Database = {
           tag_line?: string | null
         }
         Update: {
+          backfill_approved_at?: string | null
+          backfill_requested_at?: string | null
           created_at?: string
           discord_id?: string | null
           display_name?: string | null
@@ -638,6 +644,8 @@ export type Database = {
       bootstrap_admin: {
         Args: { p_puuid: string }
         Returns: {
+          backfill_approved_at: string | null
+          backfill_requested_at: string | null
           created_at: string
           discord_id: string | null
           display_name: string | null

@@ -17,14 +17,24 @@ pnpm --filter web dev         http://localhost:3000
 pnpm --filter web test        vitest; the integration tests skip without the local stack
 pnpm --filter web build
 pnpm --filter web mint-token <puuid> [label]   # /admin/tokens does this with a button now
+pnpm --filter web rebuild-ratings [--dry-run] [--force] [--prune] [--season <id>]
+                              # M5.2: refold a season from seeds. Run it after a backfill batch;
+                              # the guard counts a game that landed in the last 15 minutes, so
+                              # straight after a batch it needs --force (or a 15-minute wait).
 ```
+
+`rebuild-ratings` runs under `tsx`, not plain `node`: it imports `rateGame` from
+`@customs/core`, and Node's type stripping cannot resolve that package's extensionless relative
+imports. `mint-token` gets away with plain `node` because everything it imports across a package
+boundary is a type (`04-decisions.md`).
+
 
 Environment: copy the `apps/web` block of the repo's `.env.example` into `apps/web/.env.local`.
 `supabase status -o env` (from `packages/db`) prints the local URL and keys.
 
 ## The companion API
 
-Four routes, all bearer-token gated by `withCompanionAuth` / `withCompanionIdentity`
+Five routes, all bearer-token gated by `withCompanionAuth` / `withCompanionIdentity`
 (`lib/companionRoute.ts`), which resolves the identity from the token **before** it parses the
 body. The token decides who the caller is; nothing in a payload does.
 
@@ -34,6 +44,9 @@ POST /api/companion/lobby   the whole member list, every time it changes. Idempo
                             runs the state machine; answers ranksNeeded[] (M2.4) and recheckInMs (M2.5).
 POST /api/companion/game    phase in_progress | eog. Idempotent on gameId; eog runs the rating fold.
 POST /api/companion/rank    one queue's rank reading for one puuid.
+POST /api/companion/backfill/scan
+                            M5.1: { gameIds } -> { approved, unknown }. Whether this player may send
+                            match history at all, and which of those ids we do not already have.
 ```
 
 Request **and** response schemas live in `@customs/db/schemas` (`companion.ts`,
@@ -42,6 +55,20 @@ definitions — see "The companion wire contract" in `packages/db/README.md` for
 rules and where each value comes from in the client. Refusals before any write: 403 for a lobby or
 game the caller was not in, 422 for a non-custom game, a block nobody won (a remake or
 `TerminatedInError`) or a duplicated participant, 400 for a body that does not parse.
+
+**Backfill (M5.1).** A game posted with `source: 'backfill'` is the same body walked out of match
+history: the participant check has **no** lobby fallback (the token's player must be on the
+scoreboard), the game is linked to no lobby, nothing is posted to Discord, and the rating fold does
+not run — the answer is `{ rated: false, reason: 'backfill' }` and
+`pnpm --filter web rebuild-ratings` is what turns a batch into ratings. Whether a companion may
+send them at all is `players.backfill_approved_at`, flipped by an admin on `/admin/players` and
+read by the scan route.
+
+Names from a backfill post **fill but never patch**: a match detail reports who somebody was when
+the game was played, and the walker reads newest-first, so refreshing from one would roll every
+display name back to the oldest game in the batch. `ensurePlayers(..., { fillOnly: true })` creates
+a row for a PUUID we have never met — still the commonest good outcome of backfill — and leaves
+every existing row's name columns alone.
 
 ## The lobby state machine (M2.5)
 

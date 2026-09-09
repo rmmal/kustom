@@ -70,6 +70,17 @@ export function Empty({ children }: { children: ReactNode }): ReactNode {
   return <p className="admin-empty">{children}</p>;
 }
 
+/**
+ * `2026-09-08`, the day only. For a column where the minute is noise: when backfill was asked
+ * for or allowed (M5.1) is a fact about a day, and the row is narrow enough already.
+ */
+export function formatDay(value: string | null): string {
+  if (value === null) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().slice(0, 10);
+}
+
 /** `2026-09-08 19:04 UTC`. Fixed format, so server and client agree and sorting reads right. */
 export function formatTimestamp(value: string | null): string {
   if (value === null) return '—';

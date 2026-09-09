@@ -149,6 +149,30 @@ the live row, and starts a new one when the last cycle is `finished` or `abandon
 started, so a late block stays on the lobby it was played from). Nothing is rewritten and
 nothing is deleted: the closed row keeps its frozen members and its `games` link.
 
+## What 0004_backfill_approval.sql adds (M5.1)
+
+Two columns on `players`, and nothing else:
+
+```sql
+alter table public.players
+  add column backfill_requested_at timestamptz,
+  add column backfill_approved_at  timestamptz;
+```
+
+Backfill is the one exception to "a companion may only report what it was in"
+(`01-architecture.md`, "Security"), so it is admin-approved once per player. Three states:
+
+| columns | `/admin/players` says | the scan answers |
+|---|---|---|
+| both null | `off` | `{ approved: false, unknown: [] }` |
+| requested set, approved null | `asked <date>` | `{ approved: false, unknown: [] }` |
+| approved set | `on since <date>` | `{ approved: true, unknown: [...] }` |
+
+`backfill_requested_at` is set by `POST /api/companion/backfill/scan` the first time an
+unapproved companion asks and is **never moved again**; `Revoke` clears `backfill_approved_at`
+and deliberately leaves the request standing. No RLS change: `players` is service-role only and
+`players_public` does not select these columns.
+
 ## The companion wire contract (M2.10)
 
 `src/schemas/companion.ts` is the **wire contract** for the three bodies the companion POSTs, and
@@ -231,6 +255,18 @@ because the sweep visits exactly the PUUIDs whose name we are missing (M2.4) —
 carries no Riot ID at all. `ingestRank` hands them to `ensurePlayers`, so `display_name` follows
 the Riot ID while it is automatic and an admin's override is never touched (M1.7). They are
 applied even for a queue we do not seed a rating from: a name is a name.
+
+### `POST /api/companion/backfill/scan`
+
+`{ gameIds: number[] }` (1 to 100 positive ints) -> `{ ok: true, approved, unknown }`. The whole
+contract — including that "not approved" is `approved: false` **or** an HTTP 403 and that any
+other non-2xx means "try again in ten minutes", never a refusal — is the doc comment on
+`companionBackfillScanRequestSchema` in `src/schemas/companionResponses.ts`, which the route and
+`apps/companion/src/backfill.ts` both implement and neither restates.
+
+The games themselves go to `POST /api/companion/game` as the unchanged `phase: 'eog'` body with
+`source: 'backfill'`, no `partyId` and `role: null` on every participant. Such a game is stored
+and **not rated inline**; `pnpm --filter web rebuild-ratings` (M5.2) folds it into the ratings.
 
 ### `GET /api/companion/me`
 
