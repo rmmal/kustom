@@ -508,3 +508,69 @@ export type Lobby = z.infer<typeof LobbySchema>;
 
 /** `OnJsonApiEvent` for `/lol-lobby/v2/lobby/members`: the members array on its own. Verified 16.17 (5 events). */
 export const LobbyMembersSchema = z.array(LobbyMemberSchema);
+
+/**
+ * One entry of a custom-game subcategory's `mutators[]` (`LolGameQueuesQueueGameTypeConfig` in the 16.17
+ * schema). The client's Create Custom dialog lists these as the "champion select" choices and sends the chosen
+ * `id` as both `customGameLobby.configuration.mutators.id` and the top-level `queueId` of
+ * `POST /lol-lobby/v2/lobby`. **Unverified (no fixture yet):** the shape is from the client's own OpenAPI
+ * document for 16.17.812.4632 (dysolix dump), read 2026-09-10; `verify-commands` saves the first fixture.
+ * `name` and `pickMode` were empty on the queue the client itself used (id 19 for queue 3100), so nothing
+ * here may assume a name.
+ */
+export const CustomGameMutatorSchema = z.looseObject({
+  id: z.number().int(),
+  name: z.string().optional(),
+  pickMode: z.string().optional(),
+  banMode: z.string().optional(),
+  numPlayersPerTeamOverride: z.number().int().optional(),
+});
+export type CustomGameMutator = z.infer<typeof CustomGameMutatorSchema>;
+
+/** One map/mode the dialog offers (`LolGameQueuesQueueCustomGameSubcategory`). Unverified, see above. */
+export const CustomGameSubcategorySchema = z.looseObject({
+  mapId: z.number().int(),
+  gameMode: z.string(),
+  mutators: z.array(CustomGameMutatorSchema),
+  numPlayersPerTeam: z.number().int().optional(),
+  maximumParticipantListSize: z.number().int().optional(),
+  queueAvailability: z.string().optional(),
+  customSpectatorPolicies: z.array(z.string()).optional(),
+});
+export type CustomGameSubcategory = z.infer<typeof CustomGameSubcategorySchema>;
+
+/** `GET /lol-game-queues/v1/custom` (`LolGameQueuesQueueCustomGame`). Unverified, see `CustomGameMutatorSchema`. */
+export const CustomGameQueuesSchema = z.looseObject({
+  subcategories: z.array(CustomGameSubcategorySchema),
+  queueAvailability: z.string().optional(),
+  spectatorPolicies: z.array(z.string()).optional(),
+  spectatorSlotLimit: z.number().int().optional(),
+  gameServerRegions: z.array(z.string()).optional(),
+});
+export type CustomGameQueues = z.infer<typeof CustomGameQueuesSchema>;
+
+/**
+ * One entry of `GET /lol-game-queues/v1/queues` (`LolGameQueuesQueue`), the fields that name a custom queue
+ * and its game-type config. The shape is also what the client logs as `UpdateQueueData` (this Mac's
+ * `LeagueClient.log`, 16.17, 2026-09-08: queue 3100 "SR Blind Pick Custom", CLASSIC, map 11, `isCustom`,
+ * `gameTypeConfig { id: 19, name: "", pickMode: "" }`; queue 3220 ARAM custom, `gameTypeConfig { id: 21,
+ * name: "GAME_CFG_TEAM_BUILDER_RANDOM", pickMode: "AllRandomPickStrategy" }`). Unverified by GET.
+ */
+export const GameQueueSchema = z.looseObject({
+  id: z.number().int(),
+  name: z.string().optional(),
+  gameMode: z.string().optional(),
+  mapId: z.number().int().optional(),
+  isCustom: z.boolean().optional(),
+  category: z.string().optional(),
+  gameTypeConfig: z
+    .looseObject({
+      id: z.number().int(),
+      name: z.string().optional(),
+      pickMode: z.string().optional(),
+      banMode: z.string().optional(),
+    })
+    .optional(),
+});
+export type GameQueue = z.infer<typeof GameQueueSchema>;
+export const GameQueuesSchema = z.array(GameQueueSchema);

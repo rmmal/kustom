@@ -1,8 +1,10 @@
 /**
  * The command runner (M4.1) against the fake API and a fake League client that plays a lobby: a lobby that
- * exists after `POST /lol-lobby/v2/lobby`, an invitation row after `POST .../invitations`, a side that toggles
- * after switch-teams. **Every write answer the fake gives is an assumption** (the community shape, not a
- * capture); the test names say so. The reads (`lobby`, `gameflow-phase`) are the 16.17 fixtures.
+ * exists after `POST /lol-lobby/v2/lobby`, an invitation row after `POST .../invitations`, a side that moves
+ * after `POST .../team/TEAM1|TEAM2`. **Every write answer the fake gives is an assumption** (the shape read
+ * from the 16.17 client's own UI code, not a capture); the test names say so. The reads (`lobby`,
+ * `gameflow-phase`) are the 16.17 fixtures; the Create Custom dialog data (`/lol-game-queues/v1/custom`) is
+ * assumed too (no fixture yet): a nameless blind entry 19 like the client's own, a named draft entry 20.
  *
  * The numbered comments are the M4.1 brief's acceptance checks, companion half (7 to 12), plus the gate,
  * the poll cadence and expiry.
@@ -55,7 +57,27 @@ const NOW = Date.parse('2026-09-09T20:00:00.000Z');
 const ID_A = '3f1e2d4c-5b6a-4798-8c9d-0e1f2a3b4c5d';
 const ID_B = '3f1e2d4c-5b6a-4798-8c9d-0e1f2a3b4c5e';
 const LOBBY_PASSWORD = '4821';
-const READ_PATHS = ['/lol-lobby/v2/lobby', '/lol-gameflow/v1/gameflow-phase'];
+const READ_PATHS = ['/lol-lobby/v2/lobby', '/lol-gameflow/v1/gameflow-phase', '/lol-game-queues/v1/custom'];
+/** Assumed: the dialog data for 16.17 (shape per the client's OpenAPI document). */
+const ASSUMED_CUSTOM_QUEUES = {
+  queueAvailability: 'Available',
+  subcategories: [
+    {
+      mapId: 11,
+      gameMode: 'CLASSIC',
+      numPlayersPerTeam: 5,
+      mutators: [
+        { id: 19, name: '', pickMode: '', banMode: '' },
+        {
+          id: 20,
+          name: 'GAME_CFG_DRAFT_STD',
+          pickMode: 'DraftModeSinglePickStrategy',
+          banMode: 'StandardBanStrategy',
+        },
+      ],
+    },
+  ],
+};
 
 function fixtureBody(id: string): unknown {
   const read = readFixture(PATCH, id);
@@ -80,12 +102,14 @@ function pendingPuuid(lobby: Lobby): string {
 interface LobbyWorld {
   lobby: Lobby | null;
   phase: string;
-  /** Which switch-teams paths exist. Default v1 only. */
-  switchPaths: readonly string[];
+  /** Status the team path answers. Default 204. */
+  switchStatus: number;
   /** Answer for `[{ toSummonerId }]` invites. Default 200. */
   inviteBySummonerIdStatus: number;
-  /** Whether switch-teams actually moves the local player. Default true. */
+  /** Whether the team path actually moves the local player. Default true. */
   switchMoves: boolean;
+  /** What `/lol-game-queues/v1/custom` answers. Default the assumed dialog data. */
+  customQueues: unknown;
   createStatus: number;
   /** How many lobby GETs after a successful create are dropped (the client dying right after the POST). */
   dropLobbyReadsAfterCreate: number;
@@ -111,6 +135,9 @@ function lobbyHandler(world: LobbyWorld): (request: RecordedRequest) => CannedRo
   return (request) => {
     if (request.method === 'GET' && request.path === '/lol-gameflow/v1/gameflow-phase') {
       return { status: 200, body: JSON.stringify(world.phase), contentType: 'application/json' };
+    }
+    if (request.method === 'GET' && request.path === '/lol-game-queues/v1/custom') {
+      return { status: 200, body: world.customQueues };
     }
     if (request.method === 'GET' && request.path === '/lol-lobby/v2/lobby') {
       if (world.lobby?.partyId === 'party-created-0001' && world.dropLobbyReadsAfterCreate > 0) {
@@ -174,29 +201,31 @@ function lobbyHandler(world: LobbyWorld): (request: RecordedRequest) => CannedRo
       // Assumed: a 200 with an array of the invitations just sent.
       return { status: 200, body: rows };
     }
-    if (request.path.endsWith('/lobby/custom/switch-teams')) {
-      if (!world.switchPaths.includes(request.path)) {
+    if (request.path.startsWith('/lol-lobby/v2/lobby/team/')) {
+      if (world.switchStatus !== 204) {
         return {
-          status: 404,
-          body: { errorCode: 'RESOURCE_NOT_FOUND', httpStatus: 404, message: 'Invalid URI format' },
+          status: world.switchStatus,
+          body: { errorCode: 'RPC_ERROR', httpStatus: world.switchStatus, message: 'assumed refusal' },
         };
       }
       if (!world.lobby) {
         return notFound;
       }
-      if (world.switchMoves) {
+      const target = request.path.endsWith('/TEAM1') ? 100 : request.path.endsWith('/TEAM2') ? 200 : null;
+      if (target !== null && world.switchMoves) {
         const { customTeam100, customTeam200 } = world.lobby.gameConfig;
         const me =
           customTeam100.find((entry) => entry.puuid === ME) ??
           customTeam200.find((entry) => entry.puuid === ME);
         if (me) {
-          const onBlue = customTeam100.includes(me);
+          const others100 = customTeam100.filter((entry) => entry !== me);
+          const others200 = customTeam200.filter((entry) => entry !== me);
           world.lobby = {
             ...world.lobby,
             gameConfig: {
               ...world.lobby.gameConfig,
-              customTeam100: onBlue ? customTeam100.filter((entry) => entry !== me) : [...customTeam100, me],
-              customTeam200: onBlue ? [...customTeam200, me] : customTeam200.filter((entry) => entry !== me),
+              customTeam100: target === 100 ? [...others100, me] : others100,
+              customTeam200: target === 200 ? [...others200, me] : others200,
             },
           };
         }
@@ -266,9 +295,10 @@ async function setup(
   const world: LobbyWorld = {
     lobby: null,
     phase: 'None',
-    switchPaths: ['/lol-lobby/v1/lobby/custom/switch-teams'],
+    switchStatus: 204,
     inviteBySummonerIdStatus: 200,
     switchMoves: true,
+    customQueues: ASSUMED_CUSTOM_QUEUES,
     createStatus: 200,
     dropLobbyReadsAfterCreate: 0,
     ...options.world,
@@ -466,23 +496,30 @@ describe('CommandRunner: create_lobby', () => {
     await h.runner.pollNow();
     expect(h.lcuRequests().map((request) => `${request.method} ${request.path}`)).toEqual([
       'GET /lol-lobby/v2/lobby',
+      'GET /lol-game-queues/v1/custom',
       'POST /lol-lobby/v2/lobby',
       'GET /lol-lobby/v2/lobby',
     ]);
+    // The 16.17 client dialog's body, draft (docs/04, 2026-09-09), ids from the dialog data: never isCustom.
     expect(JSON.parse(h.lcuPosts()[0]?.body ?? '')).toEqual({
       customGameLobby: {
         configuration: {
           gameMode: 'CLASSIC',
-          mapId: 11,
-          mutators: { id: 1 },
-          spectatorPolicy: 'AllAllowed',
-          teamSize: 5,
+          gameMutator: '',
           gameServerRegion: '',
+          mapId: 11,
+          mutators: { id: 20 },
+          spectatorPolicy: 'AllAllowed',
+          spectatorDelayEnabled: true,
+          teamSize: 5,
+          hidePublicly: false,
+          aramMapMutator: 'NONE',
         },
         lobbyName: 'Customs 09 Sep #1',
+        hidePublicly: false,
         lobbyPassword: LOBBY_PASSWORD,
       },
-      isCustom: true,
+      queueId: 20,
     });
     expectAck(h, ID_A, { partyId: 'party-created-0001', lobbyName: 'Customs 09 Sep #1' });
     expect(h.runner.passwordFor('party-created-0001')).toBe(LOBBY_PASSWORD);
@@ -504,6 +541,43 @@ describe('CommandRunner: create_lobby', () => {
     expect(
       h.logger.lines.some((line) => line.level === 'debug' && JSON.stringify(line).includes(LOBBY_PASSWORD)),
     ).toBe(true);
+  });
+
+  it('nacks client_rejected with the dialog list, and posts nothing, when the dialog names no draft entry', async () => {
+    const h = await setup({
+      world: {
+        customQueues: {
+          subcategories: [{ mapId: 11, gameMode: 'CLASSIC', mutators: [{ id: 19 }, { id: 20 }] }],
+        },
+      },
+      apiRoutes: {
+        [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([createLobby()]), empty],
+        [`POST ${commandNackPath(ID_A)}`]: [okAck],
+      },
+    });
+    await h.runner.pollNow();
+    expect(h.lcuPosts()).toEqual([]);
+    expectNack(
+      h,
+      ID_A,
+      "client_rejected: /lol-game-queues/v1/custom lists no draft entry for Summoner's Rift (it has: 19, 20); no lobby created",
+    );
+    expect(h.world.lobby).toBeNull();
+
+    const noRift = await setup({
+      world: { customQueues: { subcategories: [] } },
+      apiRoutes: {
+        [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([createLobby()]), empty],
+        [`POST ${commandNackPath(ID_A)}`]: [okAck],
+      },
+    });
+    await noRift.runner.pollNow();
+    expect(noRift.lcuPosts()).toEqual([]);
+    expectNack(
+      noRift,
+      ID_A,
+      "client_rejected: /lol-game-queues/v1/custom lists no Summoner's Rift classic subcategory",
+    );
   });
 
   it('nacks already_in_lobby with the partyId and never dissolves the lobby (check 9)', async () => {
@@ -535,6 +609,7 @@ describe('CommandRunner: create_lobby', () => {
     await h.runner.pollNow();
     expect(h.lcuRequests().map((request) => `${request.method} ${request.path}`)).toEqual([
       'GET /lol-lobby/v2/lobby',
+      'GET /lol-game-queues/v1/custom',
       'POST /lol-lobby/v2/lobby',
       'GET /lol-lobby/v2/lobby',
       'GET /lol-lobby/v2/lobby',
@@ -877,7 +952,7 @@ describe('CommandRunner: invite', () => {
 });
 
 describe('CommandRunner: switch_side', () => {
-  it('reads the side, POSTs v1 with no body, re-reads and acks the new side (assumed: v1 answers 204 and toggles)', async () => {
+  it('reads the side, POSTs the team path for the target with no body, re-reads and acks the new side (assumed: 204 and it moves)', async () => {
     const h = await setup({
       world: { lobby: lobbyFixture('lobby'), phase: 'Lobby' },
       apiRoutes: {
@@ -887,26 +962,24 @@ describe('CommandRunner: switch_side', () => {
     });
     await h.runner.pollNow();
     expect(h.lcuPosts().map((request) => [request.path, request.body])).toEqual([
-      ['/lol-lobby/v1/lobby/custom/switch-teams', ''],
+      ['/lol-lobby/v2/lobby/team/TEAM2', ''],
     ]);
     expectAck(h, ID_A, { side: 200 });
     expect(h.world.lobby?.gameConfig.customTeam200.map((entry) => entry.puuid)).toEqual([ME]);
   });
 
-  it('uses the v2 path when v1 is 404 (assumed), and nacks client_rejected when the toggle answers but nobody moved', async () => {
-    const h = await setup({
-      world: { lobby: lobbyFixture('lobby'), switchPaths: ['/lol-lobby/v2/lobby/custom/switch-teams'] },
+  it('nacks client_rejected when the team path refuses, and when it answers but nobody moved', async () => {
+    const refused = await setup({
+      world: { lobby: lobbyFixture('lobby'), switchStatus: 404 },
       apiRoutes: {
         [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([switchSide(200)]), empty],
-        [`POST ${commandAckPath(ID_A)}`]: [okAck],
+        [`POST ${commandNackPath(ID_A)}`]: [okAck],
       },
     });
-    await h.runner.pollNow();
-    expect(h.lcuPosts().map((request) => request.path)).toEqual([
-      '/lol-lobby/v1/lobby/custom/switch-teams',
-      '/lol-lobby/v2/lobby/custom/switch-teams',
-    ]);
-    expectAck(h, ID_A, { side: 200 });
+    await refused.runner.pollNow();
+    expect(refused.lcuPosts().map((request) => request.path)).toEqual(['/lol-lobby/v2/lobby/team/TEAM2']);
+    expectNack(refused, ID_A, 'client_rejected: /lol-lobby/v2/lobby/team/TEAM2 answered 404 assumed refusal');
+    expect(refused.world.lobby?.gameConfig.customTeam100.map((entry) => entry.puuid)).toEqual([ME]);
 
     const stuck = await setup({
       world: { lobby: lobbyFixture('lobby'), switchMoves: false },
@@ -919,7 +992,7 @@ describe('CommandRunner: switch_side', () => {
     expectNack(
       stuck,
       ID_A,
-      'client_rejected: /lol-lobby/v1/lobby/custom/switch-teams answered 204 but the local player is still on 100',
+      'client_rejected: /lol-lobby/v2/lobby/team/TEAM2 answered 204 but the local player is still on 100',
     );
   });
 
@@ -1007,7 +1080,7 @@ describe('CommandRunner: switch_side', () => {
 });
 
 describe('the Riot line (check 11)', () => {
-  it('across this whole file the client saw no POST outside the allow-list and no GET outside the two reads', () => {
+  it('across this whole file the client saw no POST outside the allow-list and no GET outside the three reads', () => {
     for (const request of allLcuRequests) {
       if (request.method === 'POST') {
         expect(LOBBY_WRITE_PATHS, `POST ${request.path}`).toContain(request.path);

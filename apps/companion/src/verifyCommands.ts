@@ -2,32 +2,50 @@
  * `--verify-commands` (M4.1): the human-run, live verification of the three lobby writes, and the **only**
  * code allowed to POST to the League client while their rows in docs/03-lcu-reference.md are `unverified`.
  *
+ * Second edition (2026-09-10), after the first live run on 16.17 refused the community create body with
+ * `500 INVALID_LOBBY` and so never had a lobby to invite into or switch in. Everything it sends now comes
+ * from the 16.17 client's own lobby UI and OpenAPI document (see `packages/lcu/src/writes.ts`).
+ *
  * Run with the client up, in no lobby (or a lobby you are happy to replace), and one friend online:
- *  1. create — `POST /lol-lobby/v2/lobby` with the reference body (blind, `customs-verify`, `1234`);
- *     optionally again with `mutators.id: 2` to learn which number is draft;
+ *  1. create — reads `GET /lol-game-queues/v1/custom` (what the client's Create Custom dialog lists) and
+ *     `GET /lol-game-queues/v1/queues` (names for the ids), saves both as fixtures, prints the Summoner's Rift
+ *     entries, then `POST /lol-lobby/v2/lobby` with the ranked candidate bodies from `createLobbyCandidates`
+ *     in order, stopping at the first 2xx; every attempt is a fixture; then, opt-in, the accepted shape again
+ *     with the dialog's draft entry;
  *  2. invite — the friend's Riot ID -> puuid -> summonerId (verified GETs), then
  *     `POST /lol-lobby/v2/lobby/invitations` with `[{ toSummonerId }]`, and `[{ toPuuid }]` on any 4xx;
- *  3. switch — `POST /lol-lobby/v1/lobby/custom/switch-teams` with no body, the v2 path on a 404; then,
+ *  3. switch — `POST /lol-lobby/v2/lobby/team/TEAM1|TEAM2` (the side you are not on) with no body; then,
  *     optionally, the same POST against a full target side.
  *
- * It prompts before every probe, prints each request, status and body shape, saves each answer as a fixture
- * (`packages/lcu/fixtures/<patch>/` when run from the repo, else `<configDir>/fixtures/<patch>/`) scrubbed
- * like every other fixture, and writes `<configDir>/verify-commands-<patch>-<date>.txt` for the person to paste
- * back. It makes no API call, needs no token, and every POST goes through `@customs/lcu`'s allow-list.
- * The engineer then writes the rows and flips `LOBBY_WRITE_VERIFICATION`; nothing here flips anything.
+ * It prompts before every write step, prints each request, status and body shape, saves each answer as a
+ * fixture (`packages/lcu/fixtures/<patch>/` when run from the repo, else `<configDir>/fixtures/<patch>/`)
+ * scrubbed like every other fixture, and writes `<configDir>/verify-commands-<patch>-<date>.txt` for the
+ * person to paste back. It makes no API call, needs no token, and every POST goes through `@customs/lcu`'s
+ * allow-list. It never deletes the lobby it made (`DELETE /lol-lobby/v2/lobby` is not a listed-safe path):
+ * close it from the client afterwards. The engineer then writes the rows and flips
+ * `LOBBY_WRITE_VERIFICATION`; nothing here flips anything.
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AliasLookupSchema,
-  CUSTOM_LOBBY_MUTATOR_ID,
+  type CreateLobbyAttempt,
+  type CustomGameQueues,
+  CustomGameQueuesSchema,
+  type CustomGameSubcategory,
+  type CustomLobbyIds,
+  chooseCustomLobbyMutator,
+  createLobbyBodyVariant,
+  createLobbyCandidates,
+  describeMutators,
   describeWriteResponse,
   discoverLockfile,
   FIXTURES_DIR,
   type FixtureEnvelope,
   fillPath,
   GameflowPhaseSchema,
+  GameQueuesSchema,
   GameVersionSchema,
   LcuClient,
   type Lobby,
@@ -35,13 +53,16 @@ import {
   type LobbyWrite,
   type LockfileDiscoveryOptions,
   patchFromVersion,
-  postCreateLobby,
+  postCreateLobbyCandidates,
   postInvite,
-  postSwitchTeams,
+  postSwitchSide,
   readEndpoint,
   SummonerSchema,
   scrubValue,
+  summonersRiftSubcategory,
+  switchSidePath,
   type TlsMode,
+  WRITE_ENDPOINTS,
   writeFixture,
 } from '@customs/lcu';
 import { ACTIONABLE_PHASES, sideOf } from './commandRunner.js';
@@ -57,6 +78,8 @@ const GAMEFLOW_PHASE_PATH = readEndpoint('gameflow-phase').path;
 const LOBBY_PATH = readEndpoint('lobby').path;
 const ALIAS_LOOKUP_PATH = readEndpoint('alias-lookup').path;
 const SUMMONER_BY_PUUID_PATH = readEndpoint('summoner-by-puuid').path;
+const CUSTOM_GAME_QUEUES = readEndpoint('custom-game-queues');
+const GAME_QUEUES = readEndpoint('game-queues');
 
 export interface VerifyCommandsOptions {
   readonly configDir: string;
@@ -98,6 +121,16 @@ export function reportPath(configDir: string, patch: string, date: string): stri
   return join(configDir, `${VERIFY_REPORT_PREFIX}${patch}-${date}.txt`);
 }
 
+/** A typed id, or null: what a person typed at an "id [default]" prompt. */
+export function parseIdAnswer(answer: string, fallback: number | null): number | null {
+  const trimmed = answer.trim();
+  if (trimmed === '') {
+    return fallback;
+  }
+  const value = Number(trimmed);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
 class Report {
   readonly lines: string[] = [];
   constructor(private readonly io: PromptIo) {}
@@ -126,6 +159,10 @@ function summariseLobby(lobby: Lobby, localPuuid: string): string {
   ].join(' ');
 }
 
+function describeSubcategory(index: number, entry: CustomGameSubcategory): string {
+  return `    #${index} map ${entry.mapId} ${entry.gameMode} ${entry.numPlayersPerTeam ?? '?'}v${entry.numPlayersPerTeam ?? '?'} ${entry.queueAvailability ?? ''} mutators: ${describeMutators(entry) || '(none)'}`;
+}
+
 export async function runVerifyCommands(options: VerifyCommandsOptions): Promise<number> {
   const { io } = options;
   const now = options.now ?? (() => new Date());
@@ -134,12 +171,15 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
   const fixturesDir = resolveFixturesDir(options.configDir, options.fixturesDir);
   const written: string[] = [];
 
-  report.say(`verify-commands ${date}: the M4.1 live verification of the three lobby writes.`);
   report.say(
-    'It POSTs only to /lol-lobby/v2/lobby, /lol-lobby/v2/lobby/invitations and the two switch-teams paths,',
+    `verify-commands ${date} (second edition): the M4.1 live verification of the three lobby writes.`,
   );
-  report.say('prompts before each one, and never touches champion select, matchmaking or a game.');
+  report.say(
+    `It POSTs only to ${WRITE_ENDPOINTS.createLobby.path}, ${WRITE_ENDPOINTS.invite.path} and ${WRITE_ENDPOINTS.switchSide.template},`,
+  );
+  report.say('prompts before each write step, and never touches champion select, matchmaking or a game.');
   report.say('Answer Enter to run a probe, s to skip it. Nothing here talks to the Kustom API.');
+  report.say('It does not close the lobby it makes: close it from the client when you are done.');
   report.say();
 
   const discovered = await discoverLockfile({
@@ -188,6 +228,12 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
     report.say(`gameflow phase ${phase.json}`);
     report.say();
 
+    const saveEnvelope = (envelope: FixtureEnvelope): void => {
+      const path = writeFixture(envelope, fixturesDir);
+      written.push(path);
+      report.say(`  fixture: ${path}`);
+    };
+
     const save = (id: string, write: LobbyWrite, note?: string): void => {
       const { response } = write;
       if (!response.ok && response.reason === 'network') {
@@ -206,19 +252,41 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
         ...(write.body === undefined ? {} : { request: scrubValue(write.body) }),
         ...(note ? { note } : {}),
       };
-      const envelope: FixtureEnvelope =
+      saveEnvelope(
         !response.ok && response.reason === 'malformed'
           ? { ...base, bodyText: response.text.slice(0, 4000) }
-          : { ...base, body: scrubValue(response.json) };
-      const path = writeFixture(envelope, fixturesDir);
-      written.push(path);
-      report.say(`  fixture: ${path}`);
+          : { ...base, body: scrubValue(response.json) },
+      );
+    };
+
+    /** A verified-style GET fixture for the two dialog reads, whatever they answered (except no answer). */
+    const saveRead = (id: string, path: string, response: Awaited<ReturnType<LcuClient['get']>>): void => {
+      if (!response.ok && response.reason === 'network') {
+        report.say(`  (no fixture for ${id}: the client gave no HTTP answer)`);
+        return;
+      }
+      const base = {
+        id,
+        method: 'GET',
+        path,
+        status: response.status,
+        capturedAt: now().toISOString(),
+        patch,
+        clientVersion: version.json,
+        contentType: null,
+        note: '--verify-commands',
+      };
+      saveEnvelope(
+        !response.ok && response.reason === 'malformed'
+          ? { ...base, bodyText: response.text.slice(0, 4000) }
+          : { ...base, body: scrubValue(response.json) },
+      );
     };
 
     const describe = (label: string, write: LobbyWrite): void => {
       report.say(`  ${label}: ${write.method} ${write.path}`);
       if (write.body !== undefined) {
-        report.say(`  request: ${JSON.stringify(write.body)}`);
+        report.say(`  request: ${JSON.stringify(scrubValue(write.body))}`);
       }
       const { response } = write;
       report.say(`  answer: ${describeWriteResponse(response)}`);
@@ -251,40 +319,134 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
     // --- 1. create ---------------------------------------------------------------------------------------
     report.say('1. Create custom lobby');
     const existing = await readLobby();
+
+    // What the client's own Create Custom dialog would send: read, print, save.
+    const dialog = await client.get(CUSTOM_GAME_QUEUES.path, CustomGameQueuesSchema);
+    report.say(
+      `  GET ${CUSTOM_GAME_QUEUES.path} -> ${dialog.ok ? `200 ${dialog.json.subcategories.length} subcategories` : describeWriteResponse(dialog)}`,
+    );
+    saveRead(CUSTOM_GAME_QUEUES.id, CUSTOM_GAME_QUEUES.path, dialog);
+    let rift: CustomGameSubcategory | null = null;
+    if (dialog.ok) {
+      dialog.json.subcategories.forEach((entry, index) => {
+        report.say(describeSubcategory(index, entry));
+      });
+      rift = summonersRiftSubcategory(dialog.json as CustomGameQueues);
+      report.say(
+        rift === null
+          ? "  no Summoner's Rift CLASSIC subcategory in the dialog data"
+          : `  Summoner's Rift entries: ${describeMutators(rift) || '(none)'}`,
+      );
+    }
+    const queues = await client.get(GAME_QUEUES.path, GameQueuesSchema);
+    report.say(
+      `  GET ${GAME_QUEUES.path} -> ${queues.ok ? `200 ${queues.json.length} queues` : describeWriteResponse(queues)}`,
+    );
+    saveRead(GAME_QUEUES.id, GAME_QUEUES.path, queues);
+    if (queues.ok) {
+      for (const queue of queues.json.filter((entry) => entry.isCustom === true)) {
+        report.say(
+          `    custom queue ${queue.id} "${queue.name ?? ''}" ${queue.gameMode ?? ''} map ${queue.mapId ?? '?'} gameTypeConfig ${queue.gameTypeConfig?.id ?? '?'} "${queue.gameTypeConfig?.name ?? ''}" pick=${queue.gameTypeConfig?.pickMode ?? ''}`,
+        );
+      }
+    }
+
+    const autoBlind = rift === null ? null : chooseCustomLobbyMutator(rift, 'blind');
+    const autoDraft = rift === null ? null : chooseCustomLobbyMutator(rift, 'draft');
+    report.say(
+      `  auto-picked dialog entries: blind ${autoBlind === null ? 'none' : autoBlind.id}, draft ${autoDraft === null ? 'none' : autoDraft.id}`,
+    );
+
     let runCreate = true;
     if (existing !== null) {
       runCreate = await optIn(
         `  You are already in a lobby (${existing.partyId}). Creating one REPLACES it. Create anyway?`,
       );
-    } else {
-      runCreate = await wants(
-        `  POST ${'/lol-lobby/v2/lobby'} (blind, mutators.id ${CUSTOM_LOBBY_MUTATOR_ID.blind}, name ${VERIFY_LOBBY_NAME}, password ${VERIFY_LOBBY_PASSWORD})?`,
-      );
     }
+    let acceptedAttempt: CreateLobbyAttempt | null = null;
     if (runCreate) {
-      const write = await postCreateLobby(client, {
+      const blindId = parseIdAnswer(
+        await io.ask(
+          `  Dialog entry id for the first create (blind; see the list above) [${autoBlind === null ? 'none: known pair only' : autoBlind.id}]: `,
+        ),
+        autoBlind === null ? null : autoBlind.id,
+      );
+      const live: CustomLobbyIds | null = blindId === null ? null : { queueId: blindId, mutatorId: blindId };
+      const candidates = createLobbyCandidates({
         lobbyName: VERIFY_LOBBY_NAME,
         lobbyPassword: VERIFY_LOBBY_PASSWORD,
-        mutatorId: CUSTOM_LOBBY_MUTATOR_ID.blind,
+        live,
       });
-      describe('create (blind)', write);
-      save('create-lobby', write, 'mutators.id 1; --verify-commands');
-      const after = await readLobby();
-      if (after !== null) {
-        const shown = (
-          await io.ask('  Does the client lobby screen show the password 1234? [y/n/?] ')
-        ).trim();
-        report.say(`  password visible in the client: ${shown || '?'}`);
-      }
-      if (await optIn('  Also probe draft (mutators.id 2)? This replaces the lobby again.')) {
-        const draft = await postCreateLobby(client, {
-          lobbyName: VERIFY_LOBBY_NAME,
-          lobbyPassword: VERIFY_LOBBY_PASSWORD,
-          mutatorId: CUSTOM_LOBBY_MUTATOR_ID.draft,
+      report.say(`  ${candidates.length} candidate bodies, best evidence first:`);
+      candidates.forEach((candidate, index) => {
+        report.say(`    ${index + 1}. ${candidate.id}: ${candidate.evidence}`);
+      });
+      if (
+        await wants(
+          `  POST ${WRITE_ENDPOINTS.createLobby.path} with them in order, stopping at the first 2xx (name ${VERIFY_LOBBY_NAME}, password ${VERIFY_LOBBY_PASSWORD})?`,
+        )
+      ) {
+        const result = await postCreateLobbyCandidates(client, candidates, async (attempt) => {
+          describe(`create (${attempt.candidate.id})`, attempt.write);
+          save(
+            `create-lobby--${attempt.candidate.id}`,
+            attempt.write,
+            `${attempt.candidate.evidence}; --verify-commands`,
+          );
+          await readLobby();
         });
-        describe('create (draft)', draft);
-        save('create-lobby--draft', draft, 'mutators.id 2; --verify-commands');
-        await readLobby();
+        acceptedAttempt = result.accepted;
+        if (acceptedAttempt !== null) {
+          report.say(
+            `  ACCEPTED: ${acceptedAttempt.candidate.id} (${acceptedAttempt.candidate.variant} shape, queueId ${acceptedAttempt.candidate.ids.queueId}, mutators.id ${acceptedAttempt.candidate.ids.mutatorId})`,
+          );
+          save(
+            'create-lobby',
+            acceptedAttempt.write,
+            `accepted candidate ${acceptedAttempt.candidate.id}; --verify-commands`,
+          );
+          const shown = (
+            await io.ask(
+              `  Does the client lobby screen show the password ${VERIFY_LOBBY_PASSWORD}? [y/n/?] `,
+            )
+          ).trim();
+          report.say(`  password visible in the client: ${shown || '?'}`);
+          const draftId = parseIdAnswer(
+            await io.ask(
+              `  Also probe draft with the accepted shape? Dialog entry id for draft [${autoDraft === null ? 'skip' : autoDraft.id}]: `,
+            ),
+            autoDraft === null ? null : autoDraft.id,
+          );
+          if (
+            draftId !== null &&
+            (await optIn(`  Create the draft lobby with id ${draftId}? This replaces the lobby.`))
+          ) {
+            const draftBody = createLobbyBodyVariant(acceptedAttempt.candidate.variant, {
+              lobbyName: VERIFY_LOBBY_NAME,
+              lobbyPassword: VERIFY_LOBBY_PASSWORD,
+              ids: { queueId: draftId, mutatorId: draftId },
+            });
+            const draft = await postCreateLobbyCandidates(client, [
+              {
+                id: `draft-${draftId}`,
+                variant: acceptedAttempt.candidate.variant,
+                ids: { queueId: draftId, mutatorId: draftId },
+                evidence: `the accepted shape with the dialog's draft entry ${draftId}`,
+                body: draftBody,
+              },
+            ]);
+            const attempt = draft.attempts[0];
+            if (attempt !== undefined) {
+              describe('create (draft)', attempt.write);
+              save('create-lobby--draft', attempt.write, `dialog entry ${draftId}; --verify-commands`);
+              await readLobby();
+            }
+          }
+        } else {
+          report.say('  NONE ACCEPTED: every candidate was refused; paste the fixtures back.');
+        }
+      } else {
+        report.say('  skipped');
       }
     } else {
       report.say('  skipped');
@@ -309,7 +471,7 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
         report.say(`  friend puuid ${friendPuuid}, summonerId ${summonerId ?? '(lookup failed)'}`);
         if (
           summonerId !== null &&
-          (await wants(`  POST /lol-lobby/v2/lobby/invitations with [{ toSummonerId: ${summonerId} }]?`))
+          (await wants(`  POST ${WRITE_ENDPOINTS.invite.path} with [{ toSummonerId: ${summonerId} }]?`))
         ) {
           const first = await postInvite(client, { method: 'summonerId', summonerId });
           describe('invite (toSummonerId)', first);
@@ -347,45 +509,52 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
     // --- 3. switch ---------------------------------------------------------------------------------------
     report.say('3. Switch side');
     const before = await readLobby();
+    const sideBefore = before === null ? null : sideOf(before, localPuuid);
     if (before === null) {
       report.say('  no lobby; skipped');
-    } else if (await wants('  POST /lol-lobby/v1/lobby/custom/switch-teams with no body (v2 on a 404)?')) {
-      const sent = await postSwitchTeams(client);
-      for (const attempt of sent.attempts) {
-        describe(`switch (${attempt.path.includes('/v1/') ? 'v1' : 'v2'})`, attempt);
-        save(
-          attempt.path.includes('/v1/') ? 'switch-teams-v1' : 'switch-teams-v2',
-          attempt,
-          'no body; --verify-commands',
-        );
-      }
-      const after = await readLobby();
-      const sideBefore = sideOf(before, localPuuid);
-      const sideAfter = after === null ? null : sideOf(after, localPuuid);
-      report.say(
-        `  local side before ${sideBefore ?? 'none'}, after ${sideAfter ?? 'none'}: ${sideBefore !== sideAfter ? 'MOVED' : 'did not move'}`,
-      );
-      if (
-        sent.used.response.ok ||
-        (sent.used.response.reason === 'http' && sent.used.response.status !== 404)
-      ) {
-        if (
-          await optIn(
-            '  Fill the side you would move to (the friend plus bots, five in all), then probe the full-side answer?',
-          )
-        ) {
-          const full = await readLobby();
-          const again = await postSwitchTeams(client);
-          describe('switch (full target side)', again.used);
-          save('switch-teams--full-side', again.used, 'target side holding five; --verify-commands');
-          const afterFull = await readLobby();
-          report.say(
-            `  local side before ${full === null ? 'none' : (sideOf(full, localPuuid) ?? 'none')}, after ${afterFull === null ? 'none' : (sideOf(afterFull, localPuuid) ?? 'none')}`,
-          );
-        }
-      }
+    } else if (sideBefore === null) {
+      report.say('  you are on neither side (spectator?); move to a team in the client first. skipped');
     } else {
-      report.say('  skipped');
+      const target = sideBefore === 100 ? 200 : 100;
+      const path = switchSidePath(target);
+      if (await wants(`  POST ${path} with no body (moves you from ${sideBefore} to ${target})?`)) {
+        const sent = await postSwitchSide(client, target);
+        describe(`switch (${target === 100 ? 'TEAM1' : 'TEAM2'})`, sent);
+        save('lobby-team', sent, `no body, target ${target}; --verify-commands`);
+        const after = await readLobby();
+        const sideAfter = after === null ? null : sideOf(after, localPuuid);
+        report.say(
+          `  local side before ${sideBefore}, after ${sideAfter ?? 'none'}: ${sideBefore !== sideAfter ? 'MOVED' : 'did not move'}`,
+        );
+        if (sent.response.ok || (sent.response.reason === 'http' && sent.response.status !== 404)) {
+          if (
+            await optIn(
+              '  Fill the side you would move to next (the friend plus bots, five in all), then probe the full-side answer?',
+            )
+          ) {
+            const full = await readLobby();
+            const sideNow = full === null ? null : sideOf(full, localPuuid);
+            if (sideNow === null) {
+              report.say('  you are on neither side; skipped');
+            } else {
+              const nextTarget = sideNow === 100 ? 200 : 100;
+              const again = await postSwitchSide(client, nextTarget);
+              describe('switch (full target side)', again);
+              save(
+                'lobby-team--full-side',
+                again,
+                `target side ${nextTarget} holding five; --verify-commands`,
+              );
+              const afterFull = await readLobby();
+              report.say(
+                `  local side before ${sideNow}, after ${afterFull === null ? 'none' : (sideOf(afterFull, localPuuid) ?? 'none')}`,
+              );
+            }
+          }
+        }
+      } else {
+        report.say('  skipped');
+      }
     }
     report.say();
 
@@ -400,6 +569,7 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
     if (written.length === 0) {
       io.say('  (none written: every probe was skipped or the client gave no answer)');
     }
+    io.say('The lobby this made is still open: close it from the client.');
     io.say(
       'The engineer writes the reference rows and flips the per-kind gate from them; this tool changes nothing else.',
     );

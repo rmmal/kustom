@@ -18,6 +18,10 @@
  *  7. **Read before write.** Every executor GETs `/lol-lobby/v2/lobby` and compares: a second `create_lobby`
  *     finds a lobby and nacks `already_in_lobby`; a second `invite` finds the invitee and acks `done` without a
  *     POST; a second `switch_side` finds the player already there and acks `done` without a POST.
+ *  8. **Ids from the client, never constants.** `create_lobby` reads `/lol-game-queues/v1/custom` and takes
+ *     the draft entry of the Summoner's Rift subcategory as the body's `queueId`/`mutators.id`, exactly as the
+ *     client's own dialog does; when the dialog lists no entry it can name as draft, the command is
+ *     `client_rejected` with the list in the nack, and nothing is posted.
  *
  * Polling: every `nextPollInMs` (5 s) while the client is connected, every `DISCONNECTED_POLL_INTERVAL_MS`
  * (60 s) with `clientConnected=false` while it is not (the answer is empty by contract, so the slower cadence
@@ -44,6 +48,10 @@ import {
   type SwitchSideCommandResult,
 } from '@customs/db/schemas';
 import {
+  CustomGameQueuesSchema,
+  type CustomLobbyMode,
+  customLobbyIdsFor,
+  describeMutators,
   describeWriteResponse,
   GameflowPhaseSchema,
   inviteWithFallback,
@@ -54,8 +62,9 @@ import {
   LobbySchema,
   type LobbyWriteKind,
   postCreateLobby,
-  postSwitchTeams,
+  postSwitchSide,
   readEndpoint,
+  summonersRiftSubcategory,
 } from '@customs/lcu';
 import { type ApiClient, failureFields } from './api.js';
 import type { CompanionHooks, ConnectedContext } from './connection.js';
@@ -66,6 +75,10 @@ import { type CompanionLogger, createMemoryLogger, errorFields } from './log.js'
 export const COMMANDS_API_PATH = '/api/companion/commands';
 export const LOBBY_PATH = readEndpoint('lobby').path;
 export const GAMEFLOW_PHASE_PATH = readEndpoint('gameflow-phase').path;
+/** Where a create body's `queueId` / `mutators.id` come from: the client's own Create Custom dialog data. */
+export const CUSTOM_GAME_QUEUES_PATH = readEndpoint('custom-game-queues').path;
+/** The pick mode a `create_lobby` opens (docs/04-decisions.md, 2026-09-09: the group plays draft). */
+export const CREATE_LOBBY_MODE: CustomLobbyMode = 'draft';
 /** The poll while the client is away: the answer is empty by contract, so this is a heartbeat, not a queue. */
 export const DISCONNECTED_POLL_INTERVAL_MS = 60_000;
 /** The only phases a command runs in. Anything else is `wrong_phase`. */
@@ -442,13 +455,37 @@ export class CommandRunner {
       // Never dissolve a lobby somebody is standing in.
       return failed('already_in_lobby', `partyId=${before.lobby.partyId}`);
     }
+    const dialog = await context.client.get(CUSTOM_GAME_QUEUES_PATH, CustomGameQueuesSchema);
+    if (!dialog.ok) {
+      if (dialog.reason === 'network') {
+        return failed('not_connected', describeWriteResponse(dialog), true);
+      }
+      return failed(
+        'client_rejected',
+        `${CUSTOM_GAME_QUEUES_PATH} answered ${describeWriteResponse(dialog)}; no lobby created`,
+      );
+    }
+    const ids = customLobbyIdsFor(dialog.json, CREATE_LOBBY_MODE);
+    if (ids === null) {
+      const rift = summonersRiftSubcategory(dialog.json);
+      return failed(
+        'client_rejected',
+        rift === null
+          ? `${CUSTOM_GAME_QUEUES_PATH} lists no Summoner's Rift classic subcategory; no lobby created`
+          : `${CUSTOM_GAME_QUEUES_PATH} lists no ${CREATE_LOBBY_MODE} entry for Summoner's Rift (it has: ${describeMutators(rift)}); no lobby created`,
+      );
+    }
     log.debug('creating a custom lobby', {
       lobbyName: payload.lobbyName,
       lobbyPassword: payload.lobbyPassword,
+      mode: CREATE_LOBBY_MODE,
+      queueId: ids.queueId,
+      mutatorId: ids.mutatorId,
     });
     const write = await postCreateLobby(context.client, {
       lobbyName: payload.lobbyName,
       lobbyPassword: payload.lobbyPassword,
+      ids,
     });
     if (!write.response.ok) {
       return failed('client_rejected', `${write.path} answered ${describeWriteResponse(write.response)}`);
@@ -576,22 +613,19 @@ export class CommandRunner {
     if (target.length >= MAX_TEAM_SIZE) {
       return failed('side_full', `side ${payload.targetSide} holds ${target.length}`);
     }
-    const sent = await postSwitchTeams(context.client);
-    if (!sent.used.response.ok) {
-      const answers = sent.attempts
-        .map((attempt) => `${attempt.path} answered ${describeWriteResponse(attempt.response)}`)
-        .join('; ');
-      return failed('client_rejected', answers);
+    const sent = await postSwitchSide(context.client, payload.targetSide);
+    if (!sent.response.ok) {
+      return failed('client_rejected', `${sent.path} answered ${describeWriteResponse(sent.response)}`);
     }
     const after = await this.readLobby(context.client);
     const sideAfter = after.kind === 'lobby' ? sideOf(after.lobby, puuid) : null;
     if (sideAfter !== payload.targetSide) {
       return failed(
         'client_rejected',
-        `${sent.used.path} answered ${sent.used.response.status} but the local player is ${sideAfter === null ? 'on no side' : `still on ${sideAfter}`}`,
+        `${sent.path} answered ${sent.response.status} but the local player is ${sideAfter === null ? 'on no side' : `still on ${sideAfter}`}`,
       );
     }
-    log.info('switched side', { from: side, to: sideAfter, path: sent.used.path });
+    log.info('switched side', { from: side, to: sideAfter, path: sent.path });
     return done({ side: sideAfter } satisfies SwitchSideCommandResult);
   }
 

@@ -96,6 +96,21 @@ export const READ_ENDPOINTS: readonly ReadEndpoint[] = [
     idleStatuses: [404],
   },
   {
+    id: 'custom-game-queues',
+    purpose:
+      "Custom game config: the map/mode subcategories and the mutator ids the client's own Create Custom dialog offers (M4.1: what a create body's queueId/mutators.id come from)",
+    path: '/lol-game-queues/v1/custom',
+    params: [],
+    idleStatuses: [200],
+  },
+  {
+    id: 'game-queues',
+    purpose: 'Every queue with its gameTypeConfig; names the custom mutator ids',
+    path: '/lol-game-queues/v1/queues',
+    params: [],
+    idleStatuses: [200],
+  },
+  {
     id: 'eog-stats-block',
     purpose: 'End of game stats (only during EndOfGame)',
     path: '/lol-end-of-game/v1/eog-stats-block',
@@ -145,16 +160,25 @@ export const LIVE_CLIENT_DATA = {
 } as const;
 
 /**
- * Lobby automation paths (M4). Listed, not called, in M0.1. Every one is `unverified`; the switch-side path in
- * particular has two candidates in the wild.
+ * Lobby automation paths (M4). Every one is `unverified` until `verify-commands` has run on the patch.
+ *
+ * The switch-side path is the one the client's own lobby UI uses on 16.17 (`rcp-fe-lol-parties`, read from
+ * the installed plugin bundle on 2026-09-10): `POST /lol-lobby/v2/lobby/team/TEAM1|TEAM2` with no body moves
+ * the local player to that side (and `SPECTATOR`, which we never send). The community `switch-teams` paths
+ * (`/lol-lobby/v1|v2/lobby/custom/switch-teams`) are absent from the 16.17 schema and from the UI code, so
+ * they are not candidates any more.
  */
 export const WRITE_ENDPOINTS = {
   createLobby: { method: 'POST', path: '/lol-lobby/v2/lobby' },
   invite: { method: 'POST', path: '/lol-lobby/v2/lobby/invitations' },
-  switchSideCandidates: [
-    { method: 'POST', path: '/lol-lobby/v1/lobby/custom/switch-teams' },
-    { method: 'POST', path: '/lol-lobby/v2/lobby/custom/switch-teams' },
-  ],
+  switchSide: {
+    method: 'POST',
+    template: '/lol-lobby/v2/lobby/team/{team}',
+    paths: {
+      100: '/lol-lobby/v2/lobby/team/TEAM1',
+      200: '/lol-lobby/v2/lobby/team/TEAM2',
+    },
+  },
 } as const;
 
 /**
