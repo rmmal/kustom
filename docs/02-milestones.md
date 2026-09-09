@@ -11,7 +11,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M1 Foundation | done | M1.1 to M1.10 done; M1.1 to M1.11 done (M1.11 landed 2026-09-09; the wildcard allow-list entry can be removed). Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18 to M2.20 done; M2.6 built as Kustom.exe 0.1.3 (apps/companion/dist, sha256 ffe6345e…), publish (v0.1.3, plus the kustom-releases README rename) and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.5, M3.7, M3.8, M3.10 to M3.18, M3.20, M3.21, M3.24 done. M3.18 Floodlit shell and tonight page v2, M3.20 in-place actions, M3.21 Kustom name landed 2026-09-10. Open: M3.6, M3.19 (board pages in Floodlit, the rail's Top of the board, designer follow-ups), M3.22, M3.23, M3.25. Nothing calls `/api/cron/leaderboard` yet. |
-| M4 Lobby automation, voice split, presence | in progress | M4.1 companion half landed; first live verify-commands (16.17, 2026-09-09) got 500 INVALID_LOBBY with the community body, so 0.1.4 carries a corrected probe built from the client's own lobby UI code (five ranked bodies, team-path side switch); all three writes stay gated until the user's rerun. Server half next. Needs M3. |
+| M4 Lobby automation, voice split, presence | in progress | M4.1 companion and server halves landed (migration 0006 on kustom); first live verify-commands (16.17, 2026-09-09) got 500 INVALID_LOBBY with the community body, so 0.1.4 carries a corrected probe built from the client's own lobby UI code; all three writes stay gated until the user's rerun. Next: M4.2 admin Start-a-lobby and invite fan-out, M4.3. Needs M3. |
 | M5 Backfill, seasons, stats | in progress | M5.1, M5.2, M5.11 landed (backfill walker, scan route, approval toggle, rebuild-ratings, dropped lobby status); migrations 0004 and 0005 pushed to kustom. M5.3 to M5.7 need M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
 
@@ -2376,7 +2376,7 @@ Acceptance: a full night with real players, teams posted within 15 seconds of th
 
 Goal: the companion opens the lobby and invites the ten; Discord splits voice; the WhatsApp thread gets a "7 around".
 
-- [~] **M4.1** (companion half landed 2026-09-09: poll, execute-once, gated executors, verify-commands mode; server half and the live verification pending) `companion_commands` queue: the companion polls, executes, acks. Kinds: `create_lobby`, `invite`, `switch_side`.
+- [~] **M4.1** (companion half landed 2026-09-09: poll, execute-once, gated executors, verify-commands mode; server half landed 2026-09-10: migration 0006 on kustom, poll/ack/nack routes, switch_side queued on balanced and on reroll, superseded on leaving balanced, gate `COMMAND_KIND_ENABLED` mirrors the lcu gate; only the live verification is pending, after which both gates flip in one commit with the reference rows) `companion_commands` queue: the companion polls, executes, acks. Kinds: `create_lobby`, `invite`, `switch_side`.
 
     > **Brief (product, 2026-09-09)**
     >
