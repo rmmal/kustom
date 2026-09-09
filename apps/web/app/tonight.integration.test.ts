@@ -201,6 +201,27 @@ if (stack === null) {
       );
     });
 
+    it('keeps the teams up in the window where no split is chosen', async () => {
+      // Both `balanceLobby` and `promoteSplit` clear `is_chosen` in one statement and set it
+      // in the next — PostgREST has no transaction — so a read can land between them. Falling
+      // through to the member list there would flash it under a reader looking at the teams.
+      const before = await loadTonight(anon, { nightStart: tonightStart() });
+      const chosenId = before.lobby?.teams?.splitId ?? '';
+
+      const { error } = await db.from('splits').update({ is_chosen: false }).eq('id', chosenId);
+      if (error) throw new Error(error.message);
+
+      const during = await loadTonight(anon, { nightStart: tonightStart() });
+      expect(during.lobby?.status).toBe('balanced');
+      expect(during.lobby?.teams).not.toBeNull();
+      // The newest run's rank 1: the best split of the balance the group is actually in.
+      expect(during.lobby?.teams?.splits.find((split) => split.isChosen)?.rank).toBe(1);
+      expect(during.lobby?.teams?.blue).toHaveLength(5);
+
+      const { error: restore } = await db.from('splits').update({ is_chosen: true }).eq('id', chosenId);
+      if (restore) throw new Error(restore.message);
+    });
+
     it('becomes the result when the game ends, with both mu values for the delta', async () => {
       const response = await postGame(
         companionRequest('game', eogBody({ gameId, puuids: ten, partyId, durationS: 2_052 })),
@@ -220,6 +241,36 @@ if (stack === null) {
       expect(html).toMatch(/(Blue|Red) wins/);
       // The delta is rendered, and it is signed.
       expect(html).toMatch(/\((\+|−)\d+\)/);
+    });
+
+    it('names a player on the scoreboard who has no lobby_members row', async () => {
+      // `game_players` and `lobby_members` are not the same ten: `findLobbyId`'s clock and
+      // late-report fallbacks can attach a game to a lobby whose roster was frozen at
+      // `in_game`. Reading the name off the member map printed `Someone` for that player —
+      // and `Top damage: Someone` — while the result embed named them.
+      const { data: player } = await db
+        .from('players')
+        .select('id, display_name')
+        .eq('puuid', ten[9] ?? '')
+        .single();
+      const { error } = await db
+        .from('lobby_members')
+        .delete()
+        .eq('lobby_id', lobbyId)
+        .eq('player_id', player?.id ?? '');
+      if (error) throw new Error(error.message);
+
+      const snapshot = await loadTonight(anon, { nightStart: tonightStart() });
+      const seat = [...(snapshot.lobby?.result?.blue ?? []), ...(snapshot.lobby?.result?.red ?? [])].find(
+        (row) => row.puuid === ten[9],
+      );
+
+      expect(snapshot.lobby?.members.some((member) => member.puuid === ten[9])).toBe(false);
+      expect(seat?.name).toBe(player?.display_name);
+      expect(seat?.name).not.toBeNull();
+      // The same row carries the top damage in this fixture: `Player9` deals the most.
+      expect(snapshot.lobby?.result?.topDamage?.name).toBe(player?.display_name);
+      expect(await firstPaint()).not.toContain('Someone');
     });
 
     it('never puts a Discord id on the wire, and the anon key cannot ask for one', async () => {

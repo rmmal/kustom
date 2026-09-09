@@ -163,6 +163,7 @@ async function loadMembers(
       secondaryRole: player.secondary_role,
       roleOverride: row.role_override,
       isSpectator: row.is_spectator,
+      joinedAt: row.created_at,
       rating: displayRating(rating.mu),
     });
   }
@@ -244,7 +245,13 @@ async function loadTeams(
   if (error) throw new Error(`tonight: split lookup failed: ${error.message}`);
 
   const rows = data ?? [];
-  const chosen = rows.find((row) => row.is_chosen);
+  // **The window where no split is chosen.** Both `balanceLobby` and `promoteSplit` clear
+  // `is_chosen` in one statement and set it in the next — PostgREST has no transaction — so a
+  // read that lands between them sees a lobby with splits and none chosen. Falling through to
+  // `null` there would flash the member list under a reader who is looking at the teams. The
+  // rows come back newest run first, rank ascending, so `rows[0]` is the best split of the
+  // most recent balance: the same teams the next statement is about to re-flag.
+  const chosen = rows.find((row) => row.is_chosen) ?? rows[0];
   if (chosen === undefined) return null;
 
   // One balance run's three splits, and only those: `storeSplits` inserts them in a single
@@ -254,7 +261,9 @@ async function loadTeams(
   // moved past.
   const splits: SplitChoice[] = rows
     .filter((row) => row.created_at === chosen.created_at)
-    .map((row) => ({ id: row.id, rank: row.rank, isChosen: row.is_chosen }));
+    // `isChosen` is "the one this page is showing", so that the reroll control offers the
+    // split after it. In the no-chosen-row window above they are the same thing anyway.
+    .map((row) => ({ id: row.id, rank: row.rank, isChosen: row.id === chosen.id }));
 
   const seats = (side: unknown): SeatView[] =>
     readAssignments(side).map((assignment) => toSeat(assignment, byPuuid));
@@ -325,7 +334,7 @@ async function loadResult(
   ]);
   if (rows.length === 0) return null;
 
-  const puuidsById = await playerPuuids(
+  const scoreboard = await scoreboardPlayers(
     client,
     rows.map((row) => row.player_id),
   );
@@ -333,9 +342,16 @@ async function loadResult(
   const seats: ResultSeatView[] = [];
   let topDamage: { name: PlayerName; damage: number } | null = null;
   for (const row of rows) {
-    const puuid = puuidsById.get(row.player_id);
-    if (puuid === undefined) continue;
-    const name = byPuuid.get(puuid)?.name ?? null;
+    const player = scoreboard.get(row.player_id);
+    if (player === undefined) continue;
+    const puuid = player.puuid;
+    // **The scoreboard's own name, not the lobby's.** `game_players` and `lobby_members` are
+    // not the same ten: `findLobbyId`'s clock and late-report fallbacks can attach a game to a
+    // lobby whose roster was frozen at `in_game`, so a player on the scoreboard need not have
+    // a member row. Reading the name off the member map printed `Someone` for them — and
+    // `Top damage: Someone` — while the result embed, which reads `players`, named them, and
+    // the 60-second name re-read could never fix it because the name was there all along.
+    const name = player.name ?? byPuuid.get(puuid)?.name ?? null;
 
     seats.push({
       puuid,
@@ -373,21 +389,29 @@ async function loadGamePlayers(client: PublicClient, gameId: string) {
   return data ?? [];
 }
 
-async function playerPuuids(
+/**
+ * The puuid **and the newest name** for everyone on the scoreboard, from `players_public`.
+ *
+ * One query either way, so there is no reason to read a name from the lobby when the row that
+ * has it is already being fetched. The member map stays as the second answer: it holds the
+ * same string for anyone who is in both lists.
+ */
+async function scoreboardPlayers(
   client: PublicClient,
   playerIds: readonly string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, { puuid: string; name: PlayerName }>> {
   const { data, error } = await client
     .from('players_public')
-    .select('id, puuid')
+    .select('id, puuid, display_name, game_name')
     .in('id', [...playerIds]);
-  if (error) throw new Error(`tonight: player puuid lookup failed: ${error.message}`);
+  if (error) throw new Error(`tonight: scoreboard player lookup failed: ${error.message}`);
 
-  const puuids = new Map<string, string>();
+  const players = new Map<string, { puuid: string; name: PlayerName }>();
   for (const row of data ?? []) {
-    if (row.id !== null && row.puuid !== null) puuids.set(row.id, row.puuid);
+    if (row.id === null || row.puuid === null) continue;
+    players.set(row.id, { puuid: row.puuid, name: row.display_name ?? row.game_name ?? null });
   }
-  return puuids;
+  return players;
 }
 
 /** The chosen split's roles and odds: the fallback role, and the prediction line's number. */

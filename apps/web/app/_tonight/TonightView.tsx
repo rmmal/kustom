@@ -1,4 +1,5 @@
 import { displayRating } from '@customs/core';
+import { useEffect, useState } from 'react';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
 import { PLAYERS_PER_GAME } from '@/lib/lobbyState';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
@@ -154,13 +155,45 @@ function MemberList({ lobby, viewerPuuid }: { lobby: LobbyView; viewerPuuid: str
 
 function MemberRow({ member, viewerPuuid }: { member: MemberView; viewerPuuid: string | null }) {
   const you = member.puuid === viewerPuuid;
+  const justJoined = useJustJoined(member.joinedAt);
+
   return (
     <li className={you ? 'cn-member cn-you' : 'cn-member'}>
+      {/* The three-second marker. Always mounted, so removing it is a 150ms opacity fade
+          rather than a row that changes shape (05-design.md, "Lobby member list"). */}
+      <span className={justJoined ? 'cn-new cn-new-on' : 'cn-new'} aria-hidden="true" />
       <span className="cn-member-name">{renderWebName(member.name)}</span>
       <span className="cn-num cn-member-roles">{roleLine(member)}</span>
       <span className="cn-num cn-member-rating">{member.rating}</span>
     </li>
   );
+}
+
+/** `05-design.md`: a member who joined in the last 3s carries a 2px accent left border. */
+const JUST_JOINED_MS = 3_000;
+
+/**
+ * Has this row been on the page for less than three seconds?
+ *
+ * Always `false` on the server, and decided after mount: the answer depends on the clock, and
+ * a server render that disagreed with the first client render is a hydration mismatch. The
+ * timer clears itself, so a row stops being new exactly once and nothing polls.
+ */
+function useJustJoined(joinedAt: string): boolean {
+  const [justJoined, setJustJoined] = useState(false);
+
+  useEffect(() => {
+    // A row whose timestamp is in the future — the database's clock is not the phone's — is
+    // not new, it is skewed, and it must not keep an accent border for the rest of the night.
+    const age = Date.now() - Date.parse(joinedAt);
+    if (!Number.isFinite(age) || age < 0 || age >= JUST_JOINED_MS) return;
+
+    setJustJoined(true);
+    const timer = setTimeout(() => setJustJoined(false), JUST_JOINED_MS - age);
+    return () => clearTimeout(timer);
+  }, [joinedAt]);
+
+  return justJoined;
 }
 
 /**

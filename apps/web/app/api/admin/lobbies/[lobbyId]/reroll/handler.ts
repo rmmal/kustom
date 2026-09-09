@@ -1,6 +1,7 @@
 import type { NextResponse } from 'next/server';
 import { promoteSplit } from '@/lib/admin/reroll';
-import { type AdminContext, type AdminRouteOptions, withAdminAuth } from '@/lib/adminRoute';
+import { type AdminContext, type AdminRouteOptions, redirectBack, withAdminAuth } from '@/lib/adminRoute';
+import { safeNextPath } from '@/lib/authNext';
 import { postTeamsForSplit } from '@/lib/discord/post';
 import { siteOrigin } from '@/lib/siteUrl';
 import { type RerollRequest, rerollRequestSchema, rerollResponseSchema } from './schema';
@@ -25,11 +26,19 @@ export async function handleReroll(
   input: RerollRequest,
   context: AdminContext,
 ): Promise<NextResponse> {
+  // Where a *form* post goes back to. `/admin` unless the body names another page on this
+  // site — the tonight page's no-JavaScript fallback names `/` (M3.4). Re-validated here
+  // rather than trusted from the body: `safeNextPath` is the same check the sign-in round
+  // trip uses, and a body must never be able to redirect an admin off-site.
+  const back = safeNextPath(input.redirectTo) ?? context.redirectTo;
+  const fail = (status: number, error: string): NextResponse =>
+    context.form ? redirectBack(context.request, back, { error }) : context.fail(status, error);
+
   const result = await promoteSplit(context.client, { lobbyId, splitId: input.splitId });
   // A lobby that is not `balanced`, a split of another lobby, or a third press: the envelope
-  // for a JSON caller, a 303 back to `/admin` with `?error=` for the form. Nothing was written
-  // and nothing was posted either way.
-  if (!result.ok) return context.fail(result.status, result.error);
+  // for a JSON caller, a 303 back to the page it was pressed on with `?error=` for the form.
+  // Nothing was written and nothing was posted either way.
+  if (!result.ok) return fail(result.status, result.error);
 
   const { splitId, rank, splitCount, promoted } = result.value;
 
@@ -37,6 +46,10 @@ export async function handleReroll(
   const outcome = promoted
     ? await postTeamsForSplit(context.client, splitId, { requestOrigin: siteOrigin(context.request) })
     : null;
+
+  const message = notice({ rank, splitCount, promoted, post: outcome === null ? null : outcome.status });
+
+  if (context.form) return redirectBack(context.request, back, { notice: message });
 
   return context.respond(
     rerollResponseSchema,
@@ -49,7 +62,7 @@ export async function handleReroll(
       promoted,
       post: outcome === null ? null : outcome.status,
     },
-    notice({ rank, splitCount, promoted, post: outcome === null ? null : outcome.status }),
+    message,
   );
 }
 
@@ -83,8 +96,9 @@ function notice(result: {
 /**
  * The route, with the lobby id from the path already in hand.
  *
- * `redirectTo` is `/admin`, which is where the only reroll control lives until the tonight
- * page grows its own (M3.4).
+ * `redirectTo` is `/admin` by default: that is where a form post lands unless the body names
+ * another page on this site. The tonight page's control posts JSON and never navigates; its
+ * no-JavaScript fallback sends `redirectTo=/` (M3.4).
  */
 export function rerollRoute(
   lobbyId: string,

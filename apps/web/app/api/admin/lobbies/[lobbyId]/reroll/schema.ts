@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { idSchema } from '@/lib/admin/formValues';
+import { idSchema, internalPathSchema } from '@/lib/admin/formValues';
 
 /**
  * `POST /api/admin/lobbies/[lobbyId]/reroll`: promote one of the lobby's stored splits and
@@ -13,6 +13,20 @@ import { idSchema } from '@/lib/admin/formValues';
 export const rerollRequestSchema = z.object({
   /** `splits.id`. The lobby comes from the path, so a split of another lobby is a 404. */
   splitId: idSchema,
+  /**
+   * Where an HTML form post is sent back to, when it is not `/admin` (M3.4).
+   *
+   * There are two reroll controls now — `/admin` and the tonight page — and only the form
+   * path needs this: the tonight page normally posts JSON, gets the envelope, and never
+   * navigates, because the promoted split arrives over Realtime. Its no-JavaScript fallback
+   * is a real form, and landing that friend on `/admin` after pressing a button on `/` would
+   * be the page answering a question nobody asked.
+   *
+   * Validated as a path on this site by `safeNextPath` before it is used, so a body cannot
+   * turn this route into an open redirect; anything else falls back to the route's own
+   * `redirectTo`. A JSON caller may send it and it changes nothing.
+   */
+  redirectTo: internalPathSchema.optional(),
 });
 
 export type RerollRequest = z.infer<typeof rerollRequestSchema>;

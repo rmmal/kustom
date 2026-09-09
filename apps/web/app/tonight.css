@@ -175,7 +175,27 @@
 }
 
 .cn-member {
+  position: relative;
   grid-template-columns: 1fr auto auto;
+}
+
+/*
+ * A member who joined in the last three seconds. The bar is always in the DOM and only its
+ * opacity changes, so it fades out on the page's one transition and the row never resizes.
+ */
+.cn-new {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cn-accent);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.cn-new-on {
+  opacity: 1;
 }
 
 /* Role, name, rating: the role column is a fixed 4.5rem so five names start on one line. */
@@ -464,5 +484,9 @@
   .cn-member,
   .cn-seat {
     animation: none;
+  }
+
+  .cn-new {
+    transition: none;
   }
 }

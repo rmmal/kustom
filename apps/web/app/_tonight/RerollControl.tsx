@@ -18,10 +18,10 @@ import type { SplitChoice } from '@/lib/tonight/types';
  * Being drawn is not permission; a non-admin who forged the markup gets a 403.
  *
  * It is a real `<form>` with a real action, intercepted when JavaScript is running. Submitted
- * as a form it lands on `/admin` with the route's notice (the route's `redirectTo`); submitted
- * as JSON — the normal path here — nothing navigates at all and the promoted split arrives
- * through Realtime like every other change, which is what keeps the strip from scrolling under
- * a thumb.
+ * as a form — the no-JavaScript fallback — it carries `redirectTo=/` and comes back here with
+ * the route's notice in the query string; submitted as JSON, which is the normal path, nothing
+ * navigates at all and the promoted split arrives through Realtime like every other change,
+ * which is what keeps the strip from scrolling under a thumb.
  */
 export function RerollControl({ lobbyId, splits }: { lobbyId: string; splits: readonly SplitChoice[] }) {
   const [pending, setPending] = useState(false);
@@ -58,7 +58,11 @@ export function RerollControl({ lobbyId, splits }: { lobbyId: string; splits: re
         // answers the same sentence to a press that gets through anyway (M3.2).
         <p className="cn-reroll-note">{NO_MORE_SPLITS}</p>
       ) : (
-        <input type="hidden" name="splitId" value={next.id} />
+        <>
+          <input type="hidden" name="splitId" value={next.id} />
+          {/* Only the form path reads this. The route re-validates it as a path on this site. */}
+          <input type="hidden" name="redirectTo" value="/" />
+        </>
       )}
       <button className="cn-button" type="submit" disabled={next === null || pending}>
         {REROLL_LABEL}

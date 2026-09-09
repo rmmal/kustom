@@ -21,8 +21,12 @@ import { WORKED_ROSTER, workedBalance, workedPuuid } from './workedExample';
  * ratings from `rateGame`.
  */
 
-/** 06:00 in Africa/Cairo on 2026-09-09, which is 03:00 UTC. Any fixed instant would do. */
-export const FIXTURE_NIGHT_START = '2026-09-09T03:00:00.000Z';
+/**
+ * 06:00 in Africa/Cairo on 2026-09-08, which is 03:00 UTC. Any fixed instant in the past
+ * would do; it has to be in the past so that {@link JOINED_LONG_AGO}, which sits inside this
+ * night, is older than the three-second "just joined" window whenever the suite runs.
+ */
+export const FIXTURE_NIGHT_START = '2026-09-08T03:00:00.000Z';
 
 export function workedMembers(count = WORKED_ROSTER.length): MemberView[] {
   return WORKED_ROSTER.slice(0, count).map((player) => ({
@@ -32,9 +36,14 @@ export function workedMembers(count = WORKED_ROSTER.length): MemberView[] {
     secondaryRole: player.secondaryRole,
     roleOverride: null,
     isSpectator: false,
+    // Long enough ago that the three-second "just joined" marker is off by default.
+    joinedAt: JOINED_LONG_AGO,
     rating: displayRating(player.mu),
   }));
 }
+
+/** Nobody in the fixtures is "new": this lobby filled up long before the suite ran. */
+export const JOINED_LONG_AGO = '2026-09-08T20:00:00.000Z';
 
 /** One more person than the lobby can seat: the eleventh is in the spectator slot. */
 export function extraMember(overrides: Partial<MemberView> = {}): MemberView {
@@ -45,6 +54,7 @@ export function extraMember(overrides: Partial<MemberView> = {}): MemberView {
     secondaryRole: 'top',
     roleOverride: null,
     isSpectator: true,
+    joinedAt: JOINED_LONG_AGO,
     rating: 1300,
     ...overrides,
   };
@@ -150,6 +160,7 @@ export function offRoleFixture(): { members: MemberView[]; teams: TeamsView } {
     secondaryRole: null,
     roleOverride: null,
     isSpectator: false,
+    joinedAt: JOINED_LONG_AGO,
     rating: displayRating(player.mu),
   }));
 

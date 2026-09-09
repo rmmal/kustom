@@ -23,6 +23,12 @@ export interface MemberView {
   roleOverride: RoleValue | null;
   /** Beyond the ten a custom lobby can seat. Rendered under the `Around` hairline. */
   isSpectator: boolean;
+  /**
+   * ISO 8601: when this player first appeared in the lobby. It is the list's order, and it is
+   * what the three-second "just joined" marker is measured against (05-design.md). A re-post
+   * upserts the row without touching `created_at`, so it stays the first sighting.
+   */
+  joinedAt: string;
   /** `displayRating(mu)` for the active season, seeded from rank when there is no row. */
   rating: number;
 }

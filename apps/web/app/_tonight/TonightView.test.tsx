@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
 import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
@@ -92,6 +92,24 @@ describe('filling: the lobby is open', () => {
     expect(screen.queryByText('Blue')).not.toBeInTheDocument();
     expect(screen.queryByText(/favored/)).not.toBeInTheDocument();
     expect(screen.queryByText(/waiting/i)).not.toBeInTheDocument();
+  });
+
+  it('marks a member who joined in the last three seconds, and lets it fade', async () => {
+    const [first, ...rest] = workedMembers();
+    if (first === undefined) throw new Error('no member');
+    const { container } = draw(
+      snapshot(lobbyView({ members: [{ ...first, joinedAt: new Date().toISOString() }, ...rest] })),
+    );
+
+    // The marker is always in the DOM — only its opacity changes — so the row never resizes.
+    expect(container.querySelectorAll('.cn-new')).toHaveLength(10);
+    await waitFor(() => expect(container.querySelectorAll('.cn-new-on')).toHaveLength(1));
+    expect(container.querySelectorAll('.cn-new-on')[0]?.closest('li')).toHaveTextContent('Bilal');
+  });
+
+  it('marks nobody when the lobby filled up minutes ago', () => {
+    const { container } = draw(snapshot(lobbyView({ members: workedMembers() })));
+    expect(container.querySelectorAll('.cn-new-on')).toHaveLength(0);
   });
 
   it('marks the signed-in viewer, and nobody else', () => {

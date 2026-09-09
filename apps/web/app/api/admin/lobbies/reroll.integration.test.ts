@@ -460,5 +460,52 @@ if (stack === null) {
       expect(await chosenRows(lobbyId)).toEqual([{ rank: 2 }]);
       expect(posts).toHaveLength(1);
     });
+
+    it('comes back to the page the button was on when the body names one (M3.4)', async () => {
+      // The tonight page's no-JavaScript fallback. With JavaScript it posts JSON, gets the
+      // envelope and never navigates; without it, landing the friend on `/admin` after a
+      // press on `/` would be the site answering a question nobody asked.
+      const target = splitOfRank(1);
+      const request = new Request(`http://localhost/api/admin/lobbies/${lobbyId}/reroll`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ splitId: target.id, redirectTo: '/' }).toString(),
+      });
+
+      const response = await reroll(lobbyId)(request);
+      expect(response.status).toBe(303);
+      const location = new URL(response.headers.get('location') ?? '');
+      expect(location.pathname).toBe('/');
+      expect(location.searchParams.get('notice')).toBe('Split 1 is back on the board. Posted to Discord.');
+      expect(await chosenRows(lobbyId)).toEqual([{ rank: 1 }]);
+    });
+
+    it('refuses a redirect off this site: the body cannot aim it anywhere', async () => {
+      const target = splitOfRank(2);
+      const post = (redirectTo: string) =>
+        new Request(`http://localhost/api/admin/lobbies/${lobbyId}/reroll`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ splitId: target.id, redirectTo }).toString(),
+        });
+
+      // `//evil.example` is protocol-relative: a browser reads it as another origin. The
+      // schema refuses it outright, and the form is sent back to the page with `?error=`.
+      const offSite = await reroll(lobbyId)(post('//evil.example'));
+      expect(offSite.status).toBe(303);
+      const refusal = new URL(offSite.headers.get('location') ?? '');
+      expect(refusal.host).toBe('localhost');
+      expect(refusal.pathname).toBe('/admin');
+      expect(refusal.searchParams.get('error')).toBe('that form was not valid');
+      expect(await chosenRows(lobbyId)).toEqual([{ rank: 1 }]);
+
+      // And a refusal from the route itself goes back to the page that was pressed, too.
+      const refused = await reroll(lobbyId)(post('/'));
+      expect(refused.status).toBe(303);
+      const location = new URL(refused.headers.get('location') ?? '');
+      expect(location.pathname).toBe('/');
+      expect(location.searchParams.get('notice')).toBe('Split 2 is up: reroll 1 of 2. Posted to Discord.');
+      expect(await chosenRows(lobbyId)).toEqual([{ rank: 2 }]);
+    });
   });
 }
