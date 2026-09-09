@@ -1,35 +1,46 @@
 /*
- * `/leaderboard` and `/p/[puuid]` (M3.5, M3.8, M3.10), built from the tokens in `tokens.css`.
+ * The two board **pages** — `/leaderboard` and `/p/[puuid]` (M3.5, M3.8, M3.10) — in Floodlit
+ * (M3.19), built from the tokens in `tokens.css` and the shell in `shell.css`.
+ *
+ * The card, the legend, the row and the chip are **not** here: they are `board-parts.css`,
+ * loaded by `app/_leaderboard/BoardCard.tsx`, because the tonight page's rail renders the same
+ * rows and must not also inherit this file's `.cn-strip`, `.cn-block` and `.cn-delta` over the
+ * ones `tonight.css` owns.
  *
  * Rules from `docs/05-design.md` that are load-bearing here, so nobody "tidies" them away:
  *
- *   - A leaderboard row is two lines, each a pair of groups pinned to opposite edges: rank and
- *     name left, Proven right; the meta left, Rating right and directly under Proven. The two
- *     numbers form one vertical pair per row and are never merged into one cell.
- *   - `Proven` prints nowhere on a row. It is named once, in the legend above the list.
- *   - Rank 1 gets `accent` on the rank number only. No medals, no highlight row, no zebra.
- *   - At ≥720px the row does not become a table — same two lines, wider gutters.
- *   - The chart is one 1.5px `accent` line, no fill, no points, no grid, 140px tall, with the
+ *   - Three widths and no fourth: the phone column, then 44rem centred from 720px up. The
+ *     1fr/20rem grid belongs to the page with a rail.
+ *   - On `/p/[puuid]` the name outranks the section headings and the two numbers outrank both:
+ *     name in the display cut at `t-xl`, `Proven` at `t-display`, `Rating` at `t-md`, and
+ *     `By role` / `Recent games` as mono `t-xs` micro-labels in a `raise` card header.
+ *   - The chart is one 1.5px `brand` line, no fill, no points, no grid, 140px tall, with the
  *     seed as a hairline in the same units.
  *   - Deltas are never coloured by sign: a gain is `text` at 600, a loss is `dim` at 400.
  *   - Every tappable thing is at least 44px tall.
  *
  * It is deliberately standalone rather than sharing `tonight.css`: that file's row rule couples
- * `.cn-member` and `.cn-seat` to the ten-row reservation the tonight page reserves, and pulling
- * the two apart is a change to a page in review. The handful of shell rules below therefore
- * repeat it — same tokens, same numbers. If a third page appears, extract them then.
+ * `.cn-rack-row` and `.cn-seat` to the ten-row reservation the tonight page makes, and pulling
+ * the two apart is a change to a page that is not this task.
  */
 
 /*
- * The shell (M3.18) owns the page's gutters and its 44rem/76rem widths, so this rule keeps its
- * block rhythm and stops setting side padding — otherwise the board sits inside two sets of
- * gutters. Everything else on these two pages is M3.19's, not M3.18's.
+ * The shell (M3.18) owns the page's gutters; this owns its column. **Three widths and no
+ * fourth** (`05-design.md`, "Breakpoints and the desktop grid"): the phone column, then 44rem
+ * centred from 720px up. The 1fr/20rem rail belongs to the page that has a rail, and a board
+ * stretched to the shell's 76rem is a row whose two ends are 700px apart.
  */
 .cn-page {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--cn-sp-5);
+}
+
+@media (min-width: 720px) {
+  .cn-page {
+    max-width: 44rem;
+  }
 }
 
 .cn-block {
@@ -70,15 +81,16 @@
   color: var(--cn-dim);
 }
 
-.cn-back {
+/*
+ * The player's name, in the display cut. It is the biggest **language** on the page and the
+ * only reason the page exists; the two numbers under it are bigger still, which is the rank
+ * order `05-design.md` settled on 2026-09-09 after v1 gave the name, `By role` and
+ * `Recent games` the same `t-lg` 600.
+ */
+.cn-player-name {
   margin: 0;
-}
-
-.cn-heading {
-  margin: 0;
-  font-size: var(--cn-t-lg);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: var(--cn-t-xl);
+  overflow-wrap: anywhere;
 }
 
 .cn-empty,
@@ -100,156 +112,26 @@
   padding-left: var(--cn-sp-3);
 }
 
-/* A bare inline anchor is about 26px tall; every tap target on these pages is at least 44. */
-.cn-link {
-  display: inline-block;
-  min-height: 44px;
-  line-height: 44px;
-  color: var(--cn-brand);
-  text-underline-offset: 3px;
-}
-
-/* ---------------------------------------------------------------------------
- * The board.
- * ------------------------------------------------------------------------- */
-
-/*
- * The legend: `Proven · Rating`, right-aligned over the two numbers. It is not a header row —
- * it does not stick, does not sort and is not tappable — because on a phone a header row has
- * scrolled away after four rows and every row below it is then two unexplained numbers.
- */
-.cn-legend {
-  margin: 0 0 calc(-1 * var(--cn-sp-2));
-  padding-right: var(--cn-sp-3);
-  text-align: right;
-  font-size: var(--cn-t-xs);
-  color: var(--cn-dim);
-}
-
-.cn-board {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: var(--cn-surface);
-  border-radius: var(--cn-radius);
-}
-
-/* Two lines, a hairline between rows, no zebra striping. */
-.cn-row {
-  display: flex;
-  flex-direction: column;
-  min-height: 56px;
-  padding: var(--cn-sp-1) var(--cn-sp-3);
-}
-
-.cn-row + .cn-row {
-  border-top: 1px solid var(--cn-line);
-}
-
-/* "You": a 2px accent rule down the left of the row, drawn so it adds no width. */
-.cn-you {
-  box-shadow: inset 2px 0 0 0 var(--cn-brand);
-}
-
-.cn-row-top {
-  display: flex;
-  align-items: center;
-  gap: var(--cn-sp-3);
-  min-width: 0;
-}
-
-.cn-rank {
-  flex: 0 0 2.5ch;
-  font-size: var(--cn-t-sm);
-  color: var(--cn-dim);
-  text-align: right;
-}
-
-.cn-rank-first {
-  color: var(--cn-brand);
-}
-
-/*
- * The name is the row's tap target: it opens `/p/[puuid]`. It keeps the row spec's own type —
- * `t-md` 600 in `text`, one line, ellipsis — rather than reading as a link, and the 44px comes
- * from the line box so the row does not grow a second time for it.
- */
-.cn-row-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 44px;
-  line-height: 44px;
-  font-size: var(--cn-t-md);
-  font-weight: 600;
-  color: var(--cn-text);
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cn-row-name:hover,
-.cn-row-name:focus-visible {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-/* The primary number, hard against the row's right edge. Never abbreviated. */
-.cn-proven {
-  flex: 0 0 auto;
-  font-size: var(--cn-t-md);
-  font-weight: 600;
-}
-
-.cn-row-bottom {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--cn-sp-3);
-  padding-bottom: var(--cn-sp-2);
-  font-size: var(--cn-t-xs);
-  color: var(--cn-dim);
-}
-
-/*
- * Line 2's left group on a board row, and the record under the two numbers on `/p/[puuid]`.
- * It carries its own size and colour because the second of those is not inside a
- * `.cn-row-bottom` to inherit them from.
- */
-.cn-row-meta {
-  min-width: 0;
-  margin: 0;
-  font-size: var(--cn-t-xs);
-  color: var(--cn-dim);
-}
-
-/* Directly under the Proven number, right-aligned to the same edge: one vertical pair. */
-.cn-row-rating {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-/* ---------------------------------------------------------------------------
- * The still-settling chip (M3.8). A label, not a warning.
- * ------------------------------------------------------------------------- */
-
-.cn-chip {
-  display: inline-block;
-  border: 1px solid var(--cn-line);
-  border-radius: var(--cn-radius-chip);
-  padding: 0 var(--cn-sp-1);
-  font-size: var(--cn-t-xs);
-  color: var(--cn-dim);
-  white-space: nowrap;
-}
-
 /* ---------------------------------------------------------------------------
  * The player page: the two numbers, the chart, the record, the last few games.
  * ------------------------------------------------------------------------- */
 
+/* Both of the page's list cards clip their rows at the card's radius. */
+.cn-list-card,
+.cn-player-card {
+  overflow: hidden;
+}
+
+.cn-player-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-4);
+  padding: var(--cn-sp-4);
+}
+
 /*
  * The two numbers and the record read as one block: the page's answer to "where am I", with
- * the block's own `sp-4` gap saved for what comes after it.
+ * the card's own gap saved for what comes after it.
  */
 .cn-summary {
   display: flex;
@@ -257,28 +139,52 @@
   gap: var(--cn-sp-1);
 }
 
+/*
+ * The two labels sit on one line and their numbers hang under them: with the numbers at two
+ * very different sizes, bottom-aligning the pair puts `Rating` and `Proven` at two different
+ * heights and the smaller label reads as a caption for the bigger number.
+ */
 .cn-numbers {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: var(--cn-sp-4);
+  gap: var(--cn-sp-5);
   margin: 0;
 }
 
+/* Label over value: at `t-display` the label cannot sit on the number's baseline beside it. */
 .cn-number {
   display: inline-flex;
-  align-items: baseline;
-  gap: var(--cn-sp-2);
+  flex-direction: column;
+  gap: var(--cn-sp-1);
 }
 
 .cn-number-label {
+  font-family: var(--cn-font-mono);
   font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
   color: var(--cn-dim);
 }
 
 .cn-number-value {
   font-size: var(--cn-t-md);
   font-weight: 600;
+  line-height: 1;
+}
+
+/*
+ * **Proven is the page's number.** It is the one the board sorts on, so it is the one in the
+ * display size; `Rating` beside it is the number a reader arrives knowing, and the chart under
+ * them both belongs to it.
+ */
+.cn-number-primary .cn-number-value {
+  font-size: var(--cn-t-display);
+  letter-spacing: -0.02em;
+}
+
+/* The chip sits on the labels' line, where it is a label about the number under it. */
+.cn-numbers .cn-chip {
+  align-self: baseline;
 }
 
 .cn-chart {
@@ -286,7 +192,9 @@
 }
 
 .cn-chart-title {
+  font-family: var(--cn-font-mono);
   font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
   color: var(--cn-dim);
   margin-bottom: var(--cn-sp-2);
 }
@@ -319,8 +227,9 @@
 }
 
 /*
- * The `seed` label sits on its own line and masks the hairline behind it. Clamped inside the
- * plot: a reference line at the very top of the range must not put its label over the title.
+ * The `seed` label sits on its own line and masks the hairline behind it — in `surface`, the
+ * fill of the card the chart is now inside. Clamped inside the plot: a reference line at the
+ * very top of the range must not put its label over the title.
  */
 .cn-chart-seed-label {
   position: absolute;
@@ -328,8 +237,20 @@
   top: clamp(0.5rem, var(--cn-seed-pos, 50%), calc(100% - 0.5rem));
   transform: translateY(-50%);
   padding: 0 var(--cn-sp-1);
-  background: var(--cn-bg);
+  background: var(--cn-surface);
   font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+}
+
+/* ---------------------------------------------------------------------------
+ * `By role` and `Recent games`: mono micro-labels in a `raise` card header.
+ * ------------------------------------------------------------------------- */
+
+.cn-list-title {
+  margin: 0;
+  font-size: var(--cn-t-xs);
+  font-weight: 400;
+  letter-spacing: 0.08em;
   color: var(--cn-dim);
 }
 
@@ -341,14 +262,9 @@
   padding: 0;
 }
 
-.cn-records {
-  background: var(--cn-surface);
-  border-radius: var(--cn-radius);
-}
-
 .cn-record {
   display: grid;
-  grid-template-columns: 4.5rem 1fr auto;
+  grid-template-columns: 6.5rem 1fr auto;
   align-items: center;
   gap: var(--cn-sp-2);
   min-height: 44px;
@@ -369,38 +285,54 @@
   text-align: right;
 }
 
-/* Role labels are always lower case, mono, and spaced: `top`, `jungle`, `adc`. */
-.cn-lineup-role,
-.cn-record .cn-lineup-role {
+/* Role labels are always lower case, mono and spaced: `top`, `jungle`, `adc`. Icon and word. */
+.cn-lineup-role {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cn-sp-2);
+  min-width: 0;
   font-size: var(--cn-t-xs);
-  color: var(--cn-dim);
   letter-spacing: 0.06em;
+  color: var(--cn-dim);
+  white-space: nowrap;
+}
+
+.cn-role-icon {
+  flex: none;
 }
 
 .cn-games {
   display: flex;
   flex-direction: column;
-  gap: var(--cn-sp-4);
 }
 
 /*
- * One card per game, with the side's 3px rule along the top edge — the same treatment a team
- * card gets, because it is the same fact: which side this player was on.
+ * One block per game inside the card, with the side's 3px rule along its leading edge — the
+ * same treatment a team card gets, because it is the same fact: which side this player was on.
+ * Hairlines between them rather than gaps, so five games read as one list and not as five
+ * floating cards inside a sixth.
  */
 .cn-game {
-  background: var(--cn-surface);
-  border-radius: var(--cn-radius);
-  border-top: 3px solid transparent;
+  border-inline-start: 3px solid transparent;
 }
 
+.cn-game + .cn-game {
+  border-top: 1px solid var(--cn-line);
+}
+
+/*
+ * **The side is the rule, and only the rule** (the designer, 2026-09-10). The 10% tint that the
+ * team cards carry says *this is one team's card*; here it sits behind a row that already says
+ * `Won` or `Lost`, so a red wash behind `Won` reads as a loss and a blue one behind `Lost`
+ * reads as a win. The 3px leading rule answers "which side was I on" without arguing with the
+ * word beside it.
+ */
 .cn-game-blue {
-  background: var(--cn-blue-tint);
-  border-top-color: var(--cn-blue);
+  border-inline-start-color: var(--cn-blue);
 }
 
 .cn-game-red {
-  background: var(--cn-red-tint);
-  border-top-color: var(--cn-red);
+  border-inline-start-color: var(--cn-red);
 }
 
 .cn-game-head {
@@ -427,6 +359,17 @@
   text-align: right;
 }
 
+/*
+ * A game that moved nothing (M3.23). Quieter than a rating and in the same column, so the eye
+ * still reads one column of "what this game did to me" — no em-dash, no blank, no second word
+ * for a backfilled game.
+ */
+.cn-not-rated {
+  font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+  white-space: nowrap;
+}
+
 /* A gain is `text` at 600, a loss is `dim` at 400. Never coloured by sign. */
 .cn-delta {
   font-size: var(--cn-t-sm);
@@ -442,7 +385,7 @@
 /* The five, in lane order: the same positions as the team cards and the result embed. */
 .cn-lineup-row {
   display: grid;
-  grid-template-columns: 4.5rem 1fr;
+  grid-template-columns: 6.5rem 1fr;
   align-items: center;
   gap: var(--cn-sp-2);
   min-height: 44px;
@@ -458,9 +401,30 @@
   min-width: 0;
   font-size: var(--cn-t-md);
   font-weight: 600;
+  color: var(--cn-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * The four teammates open their own pages; the player whose page this is stays plain text and
+ * unadorned (the designer's M3.5 review).
+ *
+ * **A phone has no hover**, so the link cannot save its only affordance for one: at rest it
+ * carries a `line`-coloured underline — visible enough to say "tappable", quiet enough not to
+ * turn a column of five names into five links shouting — and the underline comes up to
+ * `currentColor` on hover and on focus. The row is already 44px, so the link buys no height.
+ */
+.cn-lineup-link {
+  text-decoration: underline;
+  text-decoration-color: var(--cn-line);
+  text-underline-offset: 3px;
+}
+
+.cn-lineup-link:hover,
+.cn-lineup-link:focus-visible {
+  text-decoration-color: currentColor;
 }
 
 /* ---------------------------------------------------------------------------

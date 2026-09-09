@@ -21,7 +21,7 @@ exports[`leaderboardEmbed, the worked example > is the design doc's nightly post
         },
       ],
       "footer": {
-        "text": "Proven stays below a new player's rating until the board has seen about 30 games.",
+        "text": "Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.",
       },
       "timestamp": "2026-09-08T20:15:00.000Z",
       "title": "Season 1 · leaderboard",

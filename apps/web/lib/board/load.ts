@@ -6,6 +6,7 @@ import { provenRating, provenSortKey } from '../ratingDisplay';
 import type { PlayerName } from '../tonight/types';
 import { SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
+import { recentGames } from './recent';
 import { currentStreak } from './streak';
 import type {
   BoardRow,
@@ -117,6 +118,43 @@ export async function loadBoard(client: PublicClient): Promise<BoardView> {
 }
 
 /**
+ * The board's first rows, for a surface that has room for a few of them — the tonight page's
+ * ≥1080px rail (`05-design.md`, "Breakpoints and the desktop grid": `Top of the board`).
+ *
+ * **The same query, the same sort, the same rows.** It is {@link loadBoard} with a slice on the
+ * end rather than a second read with its own ordering, because a rail that disagreed with the
+ * page it links to about who is first is worse than a rail with nothing in it. The group is
+ * twenty rows; there is nothing to save by reading fewer.
+ */
+export async function loadTopPlayers(client: PublicClient, options: { limit: number }): Promise<BoardRow[]> {
+  const board = await loadBoard(client);
+  return board.rows.slice(0, Math.max(0, options.limit));
+}
+
+/**
+ * The same rows, for a surface where **failing to read them is not a reason to fail the page**
+ * (M3.19, reviewer): the tonight page's rail.
+ *
+ * The tonight page answers "is the night happening and am I in it", and it did not depend on
+ * the board's four queries until the rail arrived. Awaited beside the snapshot, a season lookup
+ * that times out would turn a working teams screen into a 500 — for the one block `05-design.md`
+ * calls a snapshot that refreshes with the page and that carries no state. So a failed read is
+ * an empty rail and one line in the server log, exactly like `TonightLive`'s failed re-read:
+ * the last thing on the screen stays on the screen and nothing is announced.
+ */
+export async function loadTopPlayersOrNone(
+  client: PublicClient,
+  options: { limit: number },
+): Promise<BoardRow[]> {
+  try {
+    return await loadTopPlayers(client, options);
+  } catch (error) {
+    console.error('tonight: reading the rail board failed', error);
+    return [];
+  }
+}
+
+/**
  * One player's page: the two numbers, the `Rating` history, the role record and the last few
  * games. `null` when no `players_public` row has that puuid, which the page turns into a 404.
  */
@@ -139,19 +177,35 @@ export async function loadPlayerBoard(client: PublicClient, puuid: string): Prom
   ]);
 
   const byGame = new Map(games.map((game) => [game.id, game]));
-  // The player's rated games of this season, oldest first: `game_players` comes back in
-  // whatever order Postgres feels like, and the fold is a walk through `started_at`.
-  const played = rows
-    .filter((row) => row.muAfter !== null && byGame.has(row.gameId))
+  // Every game of this season this player has a scoreboard row for, oldest first:
+  // `game_players` comes back in whatever order Postgres feels like, and the fold is a walk
+  // through `started_at`.
+  const all = rows
+    .filter((row) => byGame.has(row.gameId))
     .map((row) => ({ row, game: byGame.get(row.gameId) as SeasonGame }))
     .sort((a, b) => Date.parse(a.game.startedAt) - Date.parse(b.game.startedAt));
+
+  /**
+   * **The rated ones, and only they, are what the numbers are made of** (M3.23). The chart
+   * series, the seed line, the by-role record and `37 games · 20W 17L` all count the games the
+   * fold counted; `Recent games` counts the games the player played. A game that landed
+   * unrated is in the list, with `not rated` where its rating would be, and is in neither
+   * total.
+   */
+  const played = all.filter(({ row }) => row.muAfter !== null);
 
   const stored = ratings.get(player.id);
   const rating = stored?.rating ?? seedFromRank(player.rankTier, player.rankDivision);
   const gamesPlayed = stored?.games ?? 0;
   const wins = stored?.wins ?? 0;
 
-  const recent = await loadRecentGames(client, played.slice(-RECENT_GAMES).reverse());
+  const recent = await loadRecentGames(
+    client,
+    recentGames(
+      all.map(({ row, game }) => ({ row, game, startedAt: game.startedAt, muAfter: row.muAfter })),
+      RECENT_GAMES,
+    ),
+  );
 
   return {
     kind: 'season',

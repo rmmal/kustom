@@ -1,3 +1,4 @@
+import { loadTopPlayersOrNone } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import { nightTimeZone, tonightStart } from '@/lib/tonight/night';
@@ -19,13 +20,31 @@ import '../tonight.css';
  */
 export const dynamic = 'force-dynamic';
 
+/** The rail's `Top of the board` (`05-design.md`, "Breakpoints and the desktop grid"). */
+const RAIL_BOARD_ROWS = 5;
+
 export default async function TonightPage() {
-  const [snapshot, viewer] = await Promise.all([
-    loadTonight(createPublicClient(), { nightStart: tonightStart(), timeZone: nightTimeZone() }),
+  const client = createPublicClient();
+  const [snapshot, viewer, topPlayers] = await Promise.all([
+    loadTonight(client, { nightStart: tonightStart(), timeZone: nightTimeZone() }),
     currentViewer(),
+    // The rail, read once with the page and never re-read on a Realtime event: it is the one
+    // block on this screen that is allowed to be a few minutes old, because it is the only one
+    // nobody is watching.
+    //
+    // **And the one whose failure may not take the page down.** This page answers "is the night
+    // happening and am I in it", and it did not depend on the board's queries until the rail
+    // arrived; awaited raw, a season lookup that times out would 500 a working teams screen for
+    // a snapshot in a sidebar. `…OrNone` logs once and renders an empty rail instead.
+    loadTopPlayersOrNone(client, { limit: RAIL_BOARD_ROWS }),
   ]);
 
   return (
-    <TonightLive initial={snapshot} viewerPuuid={viewer?.puuid ?? null} isAdmin={viewer?.isAdmin ?? false} />
+    <TonightLive
+      initial={snapshot}
+      viewerPuuid={viewer?.puuid ?? null}
+      isAdmin={viewer?.isAdmin ?? false}
+      topPlayers={topPlayers}
+    />
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { BoardRow } from '@/lib/board/types';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import { hasNamelessRow, tonightState } from '@/lib/tonight/state';
@@ -45,9 +46,16 @@ export interface TonightLiveProps {
   initial: TonightSnapshot;
   viewerPuuid: string | null;
   isAdmin: boolean;
+  /**
+   * The rail's `Top of the board`, read on the server with the page. It is **not** re-read on a
+   * Realtime event: the rail never carries state, and a board that reshuffled itself while
+   * somebody was reading the teams beside it would be the one thing on the page that moves for
+   * no reason a reader can see.
+   */
+  topPlayers: readonly BoardRow[];
 }
 
-export function TonightLive({ initial, viewerPuuid, isAdmin }: TonightLiveProps) {
+export function TonightLive({ initial, viewerPuuid, isAdmin, topPlayers }: TonightLiveProps) {
   const [snapshot, setSnapshot] = useState(initial);
   const refresh = useRef<() => void>(() => {});
   const nightStart = initial.nightStart;
@@ -135,5 +143,7 @@ export function TonightLive({ initial, viewerPuuid, isAdmin }: TonightLiveProps)
     };
   }, [nameless]);
 
-  return <TonightView snapshot={snapshot} viewerPuuid={viewerPuuid} isAdmin={isAdmin} />;
+  return (
+    <TonightView snapshot={snapshot} viewerPuuid={viewerPuuid} isAdmin={isAdmin} topPlayers={topPlayers} />
+  );
 }

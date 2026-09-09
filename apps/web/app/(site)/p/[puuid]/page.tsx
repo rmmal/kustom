@@ -3,7 +3,6 @@ import { cache } from 'react';
 import { loadPlayerBoard } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { renderWebName } from '@/lib/tonight/copy';
-import { currentViewer } from '@/lib/viewer';
 import { PlayerView } from '../../../_board/PlayerView';
 import '../../../board.css';
 
@@ -38,8 +37,11 @@ export async function generateMetadata({ params }: PlayerPageProps) {
 
 export default async function PlayerPage({ params }: PlayerPageProps) {
   const { puuid } = await params;
-  const [player, viewer] = await Promise.all([loadPlayer(puuid), currentViewer()]);
+  const player = await loadPlayer(puuid);
   if (player === null) notFound();
 
-  return <PlayerView player={player} viewerPuuid={viewer?.puuid ?? null} />;
+  // **The session decides nothing here** (M3.19): a lineup marks the player whose page it is,
+  // and marking the viewer as well put the `brand` rule on two rows of five on every night the
+  // two of them played together. With nothing left for it to decide, the page does not read it.
+  return <PlayerView player={player} />;
 }

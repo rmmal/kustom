@@ -32,6 +32,16 @@ const INSET = 2;
 /** The 5% the design pads the series range by, on each side. */
 const PAD = 0.05;
 
+/**
+ * The padding on the side the **seed** widened, as a fraction of the span it widened to.
+ *
+ * 0.15, not the series' own 0.05 (the designer's M3.5 review): at 5% a seed that sits outside
+ * the series lands two or three pixels inside a 140px plot, so the hairline draws under the
+ * edge of the stroke and the `seed` label sits half off the box. A reference line the reader
+ * cannot see is a chart with no reference, which is the rule this pad exists to keep.
+ */
+const SEED_PAD = 0.15;
+
 export interface ChartGeometry {
   width: number;
   height: number;
@@ -83,10 +93,11 @@ export function chartGeometry(series: readonly number[], seed: number): ChartGeo
 }
 
 /**
- * The series padded by 5%, then widened to take the seed in — and padded again on that side,
- * so a seed outside the series is a visible hairline rather than a half-drawn one on the
- * boundary. A flat series (one game, or a player whose rating has not moved) gets a range of
- * one display point either way so there is something to divide by.
+ * The series padded by 5%, then widened to take the seed in — and padded again on that side by
+ * {@link SEED_PAD} of the span, so a seed outside the series is a hairline with air around it
+ * rather than a half-drawn one on the boundary with its label off the box. A flat series (one
+ * game, or a player whose rating has not moved) gets a range of one display point either way so
+ * there is something to divide by.
  */
 function range(series: readonly number[], seed: number): { low: number; high: number } {
   const min = Math.min(...series);
@@ -95,8 +106,8 @@ function range(series: readonly number[], seed: number): { low: number; high: nu
 
   let low = min - pad;
   let high = max + pad;
-  if (seed < low) low = seed - (high - seed) * PAD;
-  if (seed > high) high = seed + (seed - low) * PAD;
+  if (seed < low) low = seed - (high - seed) * SEED_PAD;
+  if (seed > high) high = seed + (seed - low) * SEED_PAD;
   return { low, high };
 }
 

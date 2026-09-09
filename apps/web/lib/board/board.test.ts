@@ -1,16 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { provenRating } from '../ratingDisplay';
 import { workedBoardRows } from '../testing/boardFixtures';
 import { CHART_HEIGHT, CHART_WIDTH, chartGeometry } from './chart';
 import {
+  BOARD_LEGEND,
   gamesLabel,
   NO_GAMES_YET,
+  NOT_RATED,
+  NOT_RATED_HINT,
+  PROVEN_LABEL,
+  RATING_LABEL,
+  RECENT_RATING_LEGEND,
   SETTLING_GAMES,
   SETTLING_SENTENCE,
   SETTLING_SENTENCE_SHORT,
   winLossLabel,
 } from './copy';
+import { loadTopPlayers, loadTopPlayersOrNone } from './load';
 import { compareBoardRows, sortBoardRows } from './order';
+import { isRated, recentGames } from './recent';
 import { currentStreak, formatStreak } from './streak';
 import type { BoardRow } from './types';
 
@@ -39,14 +47,29 @@ function row(overrides: Partial<BoardRow>): BoardRow {
 describe('the copy product owns', () => {
   it('is the still-settling sentence, word for word', () => {
     expect(SETTLING_SENTENCE).toBe(
-      'The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.',
+      'The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.',
     );
   });
 
   it('is the short form Discord gets as a footer', () => {
     expect(SETTLING_SENTENCE_SHORT).toBe(
-      "Proven stays below a new player's rating until the board has seen about 30 games.",
+      'Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.',
     );
+  });
+
+  /**
+   * **The gap shrinks; it never closes** (product, 2026-09-10). σ falls with every game and
+   * does not reach zero, so a sentence that promises Proven will catch up — `stays below your
+   * rating until…`, `catches up after…` — promises a day that never comes, and the reader who
+   * waits for it asks the question the sentence exists to answer. `settles` is the word both
+   * forms use, and it is the word the `settling` chip already says.
+   */
+  it('promises a gap that settles, never one that closes', () => {
+    for (const sentence of [SETTLING_SENTENCE, SETTLING_SENTENCE_SHORT]) {
+      expect(sentence).toContain('settles');
+      expect(sentence).not.toContain('until');
+      expect(sentence).not.toContain('catches up');
+    }
   });
 
   // M3.8's acceptance check: the number in the sentence is the threshold the marker uses.
@@ -65,6 +88,71 @@ describe('the copy product owns', () => {
 
   it('has one line for a season with no games and a player with none', () => {
     expect(NO_GAMES_YET).toBe('No games this season yet.');
+  });
+
+  /**
+   * **The legend is one word** (`05-design.md`, "Leaderboard row", amended 2026-09-09).
+   * Right-aligned over the stacked pair, `Proven · Rating` put `Rating` over the Proven column
+   * and `Proven` over nothing.
+   */
+  it('names the one unlabelled number and nothing else', () => {
+    expect(BOARD_LEGEND).toBe(PROVEN_LABEL);
+    expect(BOARD_LEGEND).not.toContain(RATING_LABEL);
+    // The player page's own legend is the same word the seat rack uses, lower case.
+    expect(RECENT_RATING_LEGEND).toBe('rating');
+  });
+
+  it('has one vocabulary for a game that moved nothing, and one sentence under it', () => {
+    expect(NOT_RATED).toBe('not rated');
+    expect(NOT_RATED_HINT).toBe(
+      "Some games don't move ratings: too short, short a player, or added from match history and not counted yet.",
+    );
+  });
+});
+
+/**
+ * `Recent games` lists the player's last five games, **rated or not** (M3.23, product
+ * 2026-09-10): a game that landed unrated counts toward the five and prints `not rated` where
+ * its rating would be. Everything the rating is folded from stays rated-only, which is the
+ * loader's `played` array and not this function.
+ */
+describe('which games the recent list shows', () => {
+  const game = (day: number, muAfter: number | null) => ({
+    id: `game-${day}`,
+    startedAt: `2026-09-0${day}T20:00:00.000Z`,
+    muAfter,
+  });
+
+  it('takes the newest five of six, newest first, unrated among them', () => {
+    const six = [
+      game(1, 20),
+      game(2, 21),
+      // The one the fold refused, or a backfill nothing has rebuilt yet.
+      game(3, null),
+      game(4, 22),
+      game(5, 23),
+      game(6, 24),
+    ];
+
+    expect(recentGames(six, 5).map((row) => row.id)).toEqual([
+      'game-6',
+      'game-5',
+      'game-4',
+      'game-3',
+      'game-2',
+    ]);
+    // In date order, with its `mu_after` still null: the row is what says so, not a filter.
+    expect(recentGames(six, 5).map(isRated)).toEqual([true, true, true, false, true]);
+  });
+
+  it('sorts what it is given, because `game_players` comes back in no order', () => {
+    const shuffled = [game(3, null), game(1, 20), game(2, 21)];
+
+    expect(recentGames(shuffled, 5).map((row) => row.id)).toEqual(['game-3', 'game-2', 'game-1']);
+  });
+
+  it('is empty for a player with nothing to list', () => {
+    expect(recentGames([], 5)).toEqual([]);
   });
 });
 
@@ -195,6 +283,37 @@ describe('the streak column', () => {
   });
 });
 
+/**
+ * The rail's read, on the tonight page (M3.19, reviewer).
+ *
+ * The tonight page is the one a friend opens from WhatsApp at 21:40 to find out whether the
+ * night is happening. It gained four board queries when the rail arrived, and a page that 500s
+ * because a sidebar could not be read is a worse page than one with an empty sidebar.
+ */
+describe('the rail board read', () => {
+  /** A client whose very first call fails, the way a timed-out season lookup would. */
+  const broken = {
+    from() {
+      throw new Error('boom');
+    },
+  } as unknown as Parameters<typeof loadTopPlayersOrNone>[0];
+
+  it('is an empty rail and one log line, not a failed page', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(loadTopPlayersOrNone(broken, { limit: 5 })).resolves.toEqual([]);
+    expect(logged).toHaveBeenCalledTimes(1);
+
+    logged.mockRestore();
+  });
+
+  it('still throws for anybody who asks for the board itself', async () => {
+    // `/leaderboard` is the board: an empty page there would be a lie, so the unguarded read is
+    // what that page uses and this guard is the rail's alone.
+    await expect(loadTopPlayers(broken, { limit: 5 })).rejects.toThrow();
+  });
+});
+
 describe('the rating chart', () => {
   it('draws nothing for a player with no history', () => {
     expect(chartGeometry([], 1_200)).toBeNull();
@@ -215,6 +334,22 @@ describe('the rating chart', () => {
 
     expect(geometry?.low).toBeCloseTo(995, 5);
     expect(geometry?.high).toBeCloseTo(1_105, 5);
+  });
+
+  /**
+   * The pad on the widened side is **0.15 of the span**, not the series' own 0.05 (the
+   * designer's M3.5 review): at 5% the hairline landed two or three pixels inside a 140px plot,
+   * under the edge of the stroke, with its `seed` label half off the box.
+   */
+  it('pads the side the seed widened by 0.15 of the span', () => {
+    // Series 1400–1500 pads to 1395–1505; the seed at 1200 then takes the low edge, and the
+    // low edge is padded by 0.15 of what is left above it.
+    const geometry = chartGeometry([1_400, 1_500], 1_200);
+
+    expect(geometry?.low).toBeCloseTo(1_200 - (1_505 - 1_200) * 0.15, 5);
+    // Comfortably inside the plot, not on its boundary.
+    expect(geometry?.seedPercent).toBeLessThan(90);
+    expect(geometry?.seedPercent).toBeGreaterThan(10);
   });
 
   it('keeps the seed line inside the range even when that widens it', () => {

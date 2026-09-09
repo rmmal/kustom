@@ -106,6 +106,33 @@ export const FLEXIBLE_ROLE = 'flexible';
 /** Beyond the ten a custom lobby can seat. */
 export const AROUND_LABEL = 'Around';
 
+/* ---------------------------------------------------------------------------
+ * Team cards.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The legend in a team card's header, when that card has a seat off its role (the designer,
+ * 2026-09-10, `05-design.md` "The `· off-role` legend in a team card header").
+ *
+ * It is the key to the amber dot on the rows below it, dressed like every other mono
+ * micro-label on the page — `rating`, `SEATS`, `live`, `open` — and never `brand` itself: the
+ * one amber in a header bar is the dot.
+ *
+ * The suffix is visually hidden. The bare word straight after `RED` reads as a property of the
+ * side; `off-role seats in this card` is what a listener moving header to header needs, and the
+ * plural is a category, like `rating` over a column of many, so nothing pluralises at render.
+ */
+export const OFF_ROLE_LEGEND = 'off-role';
+
+export const OFF_ROLE_LEGEND_SUFFIX = ' seats in this card';
+
+/**
+ * The one punctuation mark between a heading and its legend, the same one the rack header's
+ * `SEATS · 9 of 10` uses. In its own `aria-hidden` span and **not** a CSS `::before`:
+ * generated content is announced by VoiceOver, and this is punctuation.
+ */
+export const HEAD_SEPARATOR = '·';
+
 /**
  * M3.10's one quiet line, under the block and never per row. It appears while any row on
  * screen reads `Someone` and disappears with the last of them.
