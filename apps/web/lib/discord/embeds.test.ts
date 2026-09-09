@@ -523,7 +523,7 @@ describe('leaderboardEmbed, the worked example', () => {
     const embed = leaderboardEmbed(workedLeaderboardInput()).embeds[0];
 
     expect(embed?.footer.text).toBe(
-      "Proven stays below a new player's rating until the board has seen about 30 games.",
+      'Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.',
     );
     expect(embed?.fields[0]?.value).not.toContain('settling');
   });
@@ -542,7 +542,7 @@ describe('leaderboardEmbed, the worked example', () => {
 
     expect(embed).not.toHaveProperty('url');
     // Unlike the teams footer, this one promises no link, so it does not change.
-    expect(embed?.footer.text).toContain('Proven stays below');
+    expect(embed?.footer.text).toContain('Proven is your rating minus');
   });
 
   it('prints ten at most, however many the season has', () => {

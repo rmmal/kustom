@@ -1,4 +1,4 @@
-import { loadTopPlayers } from '@/lib/board/load';
+import { loadTopPlayersOrNone } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import { nightTimeZone, tonightStart } from '@/lib/tonight/night';
@@ -31,7 +31,12 @@ export default async function TonightPage() {
     // The rail, read once with the page and never re-read on a Realtime event: it is the one
     // block on this screen that is allowed to be a few minutes old, because it is the only one
     // nobody is watching.
-    loadTopPlayers(client, { limit: RAIL_BOARD_ROWS }),
+    //
+    // **And the one whose failure may not take the page down.** This page answers "is the night
+    // happening and am I in it", and it did not depend on the board's queries until the rail
+    // arrived; awaited raw, a season lookup that times out would 500 a working teams screen for
+    // a snapshot in a sidebar. `…OrNone` logs once and renders an empty rail instead.
+    loadTopPlayersOrNone(client, { limit: RAIL_BOARD_ROWS }),
   ]);
 
   return (

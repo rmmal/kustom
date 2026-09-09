@@ -132,6 +132,29 @@ export async function loadTopPlayers(client: PublicClient, options: { limit: num
 }
 
 /**
+ * The same rows, for a surface where **failing to read them is not a reason to fail the page**
+ * (M3.19, reviewer): the tonight page's rail.
+ *
+ * The tonight page answers "is the night happening and am I in it", and it did not depend on
+ * the board's four queries until the rail arrived. Awaited beside the snapshot, a season lookup
+ * that times out would turn a working teams screen into a 500 — for the one block `05-design.md`
+ * calls a snapshot that refreshes with the page and that carries no state. So a failed read is
+ * an empty rail and one line in the server log, exactly like `TonightLive`'s failed re-read:
+ * the last thing on the screen stays on the screen and nothing is announced.
+ */
+export async function loadTopPlayersOrNone(
+  client: PublicClient,
+  options: { limit: number },
+): Promise<BoardRow[]> {
+  try {
+    return await loadTopPlayers(client, options);
+  } catch (error) {
+    console.error('tonight: reading the rail board failed', error);
+    return [];
+  }
+}
+
+/**
  * One player's page: the two numbers, the `Rating` history, the role record and the last few
  * games. `null` when no `players_public` row has that puuid, which the page turns into a 404.
  */

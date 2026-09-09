@@ -4,14 +4,20 @@ import type { Streak } from './streak';
 
 /**
  * What `/leaderboard` and `/p/[puuid]` know (M3.5). Loaded on the server with the anon key and
- * rendered there; nothing on either page is a client component and nothing here crosses the
- * wire to a browser.
+ * rendered there; neither page has a client component.
+ *
+ * **`BoardRow` does cross the wire** (M3.19): the tonight page's rail renders the board's first
+ * five through `TonightLive`, which is a client component, so those rows are serialized into the
+ * RSC payload. Everything on the row is a string, a number, a boolean or `null` — including
+ * `sortKey`, which is serialized and simply never rendered — so there is nothing here that a
+ * `JSON.stringify` would change.
  *
  * **Numbers are display numbers, deltas are not.** `proven` and `rating` are what the shared
  * helpers in `lib/ratingDisplay.ts` computed, because the board must print the same integers
  * the embeds print. A rating *change* is carried as the two mu values it comes from and turned
- * into a delta where it is rendered: `-0` is a real value and does not survive `JSON.stringify`
- * (`05-design.md`, "Rating delta").
+ * into a delta where it is rendered: `-0` is a real value and does not survive a
+ * `JSON.stringify` — which, now that these rows do make one, is a rule with teeth rather than a
+ * precaution (`05-design.md`, "Rating delta").
  */
 
 export interface SeasonView {

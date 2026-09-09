@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { provenRating } from '../ratingDisplay';
 import { workedBoardRows } from '../testing/boardFixtures';
 import { CHART_HEIGHT, CHART_WIDTH, chartGeometry } from './chart';
@@ -16,6 +16,7 @@ import {
   SETTLING_SENTENCE_SHORT,
   winLossLabel,
 } from './copy';
+import { loadTopPlayers, loadTopPlayersOrNone } from './load';
 import { compareBoardRows, sortBoardRows } from './order';
 import { isRated, recentGames } from './recent';
 import { currentStreak, formatStreak } from './streak';
@@ -46,14 +47,29 @@ function row(overrides: Partial<BoardRow>): BoardRow {
 describe('the copy product owns', () => {
   it('is the still-settling sentence, word for word', () => {
     expect(SETTLING_SENTENCE).toBe(
-      'The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.',
+      'The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.',
     );
   });
 
   it('is the short form Discord gets as a footer', () => {
     expect(SETTLING_SENTENCE_SHORT).toBe(
-      "Proven stays below a new player's rating until the board has seen about 30 games.",
+      'Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.',
     );
+  });
+
+  /**
+   * **The gap shrinks; it never closes** (product, 2026-09-10). σ falls with every game and
+   * does not reach zero, so a sentence that promises Proven will catch up — `stays below your
+   * rating until…`, `catches up after…` — promises a day that never comes, and the reader who
+   * waits for it asks the question the sentence exists to answer. `settles` is the word both
+   * forms use, and it is the word the `settling` chip already says.
+   */
+  it('promises a gap that settles, never one that closes', () => {
+    for (const sentence of [SETTLING_SENTENCE, SETTLING_SENTENCE_SHORT]) {
+      expect(sentence).toContain('settles');
+      expect(sentence).not.toContain('until');
+      expect(sentence).not.toContain('catches up');
+    }
   });
 
   // M3.8's acceptance check: the number in the sentence is the threshold the marker uses.
@@ -264,6 +280,37 @@ describe('the streak column', () => {
   it('prints as `L2`', () => {
     expect(formatStreak({ kind: 'L', length: 2 })).toBe('L2');
     expect(formatStreak({ kind: 'W', length: 11 })).toBe('W11');
+  });
+});
+
+/**
+ * The rail's read, on the tonight page (M3.19, reviewer).
+ *
+ * The tonight page is the one a friend opens from WhatsApp at 21:40 to find out whether the
+ * night is happening. It gained four board queries when the rail arrived, and a page that 500s
+ * because a sidebar could not be read is a worse page than one with an empty sidebar.
+ */
+describe('the rail board read', () => {
+  /** A client whose very first call fails, the way a timed-out season lookup would. */
+  const broken = {
+    from() {
+      throw new Error('boom');
+    },
+  } as unknown as Parameters<typeof loadTopPlayersOrNone>[0];
+
+  it('is an empty rail and one log line, not a failed page', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(loadTopPlayersOrNone(broken, { limit: 5 })).resolves.toEqual([]);
+    expect(logged).toHaveBeenCalledTimes(1);
+
+    logged.mockRestore();
+  });
+
+  it('still throws for anybody who asks for the board itself', async () => {
+    // `/leaderboard` is the board: an empty page there would be a lie, so the unguarded read is
+    // what that page uses and this guard is the rail's alone.
+    await expect(loadTopPlayers(broken, { limit: 5 })).rejects.toThrow();
   });
 });
 

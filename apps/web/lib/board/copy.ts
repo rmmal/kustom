@@ -58,18 +58,30 @@ export const SETTLING_CHIP = 'settling';
 
 /**
  * The sentence, once per page — under the leaderboard heading, under the rating chart on the
- * player page — and never once per row (product, 2026-09-08 — final, `05-design.md`).
+ * player page — and never once per row (product, **2026-09-10**, amending the 2026-09-08
+ * wording; {@link SETTLING_SENTENCE_SHORT} was amended in the same pass and for the same
+ * reason, so the page and the nightly post say one thing).
+ *
+ * The 2026-09-08 wording said new players `start low on purpose and climb as they play`, which
+ * is false on a season's first board, where every row is a rank seed and nobody has climbed
+ * anything. It also promised a gap that closes — `stays below your rating until…` — and the gap
+ * never closes: σ shrinks, it does not reach zero. This one says what Proven **is**, in the
+ * reader's own terms, and what happens to the difference: it shrinks and settles.
  *
  * The number is interpolated from {@link SETTLING_GAMES} rather than typed, because the M3.8
  * acceptance check is that the number in the sentence is the threshold the marker itself uses.
  * `board/copy.test.ts` pins the assembled string against product's words.
  */
 export const SETTLING_SENTENCE =
-  `The board sorts on ${PROVEN_LABEL}, which stays below your rating until it has seen about ${SETTLING_GAMES} games. New players start low on purpose and climb as they play.` as const;
+  `The board sorts on ${PROVEN_LABEL}: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about ${SETTLING_GAMES} games.` as const;
 
-/** The short form, for the one-line Discord footer where two sentences will not fit. */
+/**
+ * The short form, for the one-line Discord footer where two sentences will not fit. Amended
+ * with the long one (product, 2026-09-10): **the gap settles, it never closes** — σ falls with
+ * every game and does not reach zero, so neither sentence may say `until` or `catches up`.
+ */
 export const SETTLING_SENTENCE_SHORT =
-  `${PROVEN_LABEL} stays below a new player's rating until the board has seen about ${SETTLING_GAMES} games.` as const;
+  `${PROVEN_LABEL} is your rating minus how unsure the board still is about you, and it settles after about ${SETTLING_GAMES} games.` as const;
 
 /**
  * A season that has no games yet, and a player who has none (M3.5's edge cases: "not an empty
