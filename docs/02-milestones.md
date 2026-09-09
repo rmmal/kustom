@@ -11,7 +11,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M1 Foundation | done | M1.1 to M1.10 done; M1.1 to M1.11 done (M1.11 landed 2026-09-09; the wildcard allow-list entry can be removed). Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18, M2.19 done; M2.6 built as 0.1.1, publish and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.4, M3.7, M3.11 to M3.17 done (tonight page live). Open: M3.5, M3.6, M3.8, M3.10. |
-| M4 Lobby automation, voice split, presence | not started | Needs M3. |
+| M4 Lobby automation, voice split, presence | in progress | M4.1 companion half landed (all three lobby writes gated off until the user runs verify-commands with a friend); server half next after M3.5. Needs M3. |
 | M5 Backfill, seasons, stats | in progress | M5.1 companion half done (walker, mapMatchDetail, scan contract in packages/db); server half (scan route, approval, store-without-rating) and M5.2 next, then M3.5. The rest needs M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
 
@@ -2268,7 +2268,7 @@ Acceptance: a full night with real players, teams posted within 15 seconds of th
 
 Goal: the companion opens the lobby and invites the ten; Discord splits voice; the WhatsApp thread gets a "7 around".
 
-- [ ] **M4.1** `companion_commands` queue: the companion polls, executes, acks. Kinds: `create_lobby`, `invite`, `switch_side`.
+- [~] **M4.1** (companion half landed 2026-09-09: poll, execute-once, gated executors, verify-commands mode; server half and the live verification pending) `companion_commands` queue: the companion polls, executes, acks. Kinds: `create_lobby`, `invite`, `switch_side`.
 
     > **Brief (product, 2026-09-09)**
     >
