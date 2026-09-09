@@ -5,6 +5,8 @@
 A referee for our nightly League of Legends customs: it sees who is in the lobby, splits them into two fair teams
 with real roles, keeps ratings from actual results, and ends the argument before it starts.
 
+The product is called **Kustom**; `Customs Night` is the codename used in this repo.
+
 ## Who it is for
 
 Ten to twenty friends, rotating roster, ranks from Bronze to Master, some people one-trick a role. Discord for
