@@ -2337,7 +2337,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >    appears nine times in a column.
     > 6. `grep -r "cn-accent" apps/web` returns nothing outside `admin.css`, and `admin.css` is byte-identical to
     >    its state before this task.
-    > 7. The nav renders only routes that exist; with M3.5 merged that is four tabs, and no tab 404s. The
+    > 7. The nav renders only routes that exist; with M3.5 merged that is three tabs (`Tonight`, `Leaderboard`, `Companion ↗`; `Stats` appears with M5.4), and no tab 404s. The
     >    footer's `Get the companion` and the nav's `Companion ↗` both point at
     >    `https://github.com/suyaser/kustom-releases/releases/latest`; the string `latest/download/Kustom.exe`
     >    appears nowhere under `apps/web/app` outside `/admin`.
