@@ -3,13 +3,16 @@ import { playerLabel } from '@/lib/admin/playerName';
 import { listAdminPlayers } from '@/lib/admin/players';
 import { listAdminTokens } from '@/lib/admin/tokens';
 import { requireAdmin } from '@/lib/adminPage';
+import { RELEASE_EXE_SHA256_URL, RELEASE_EXE_URL } from '@/lib/nav';
 import { getServiceClient } from '@/lib/supabase';
+import { AdminAnswerGroup } from '../../_components/AdminAnswerGroup';
+import { AdminForm } from '../../_components/AdminForm';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Companion tokens — Customs Night admin',
+  title: 'Companion tokens — Kustom admin',
   robots: { index: false, follow: false },
 };
 
@@ -41,7 +44,7 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
       {players.length === 0 ? (
         <Empty>No players yet, so there is nobody to mint a token for.</Empty>
       ) : (
-        <form method="post" action="/api/admin/tokens">
+        <AdminForm action="/api/admin/tokens" kind="tokens">
           <input type="hidden" name="action" value="mint" />
           <label>
             <span className="admin-muted">player </span>
@@ -58,8 +61,20 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
             <input type="text" name="label" placeholder="bilal's desktop" aria-label="Label" />
           </label>
           <button type="submit">Mint token</button>
-        </form>
+        </AdminForm>
       )}
+
+      {/*
+       * The download, beside the token it needs (M2.20). This is the one place in `apps/web`
+       * that links the `.exe` directly: an admin reading this is on the PC that is going to run
+       * it. Every friend-facing surface links the releases page instead, because the tonight
+       * page is opened on a phone.
+       */}
+      <p className="admin-muted">
+        <a href={RELEASE_EXE_URL}>Kustom.exe</a> — the latest Windows build, with{' '}
+        <a href={RELEASE_EXE_SHA256_URL}>Kustom.exe.sha256</a> beside it to check the download. Send it to
+        whoever is running the companion, with the token you just minted.
+      </p>
 
       <h2>Tokens</h2>
       {tokens.length === 0 ? (
@@ -91,15 +106,20 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
                   <td>{formatTimestamp(token.lastSeenAt)}</td>
                   <td>{token.revokedAt === null ? 'active' : formatTimestamp(token.revokedAt)}</td>
                   <td>
-                    {token.revokedAt === null ? (
-                      <form method="post" action="/api/admin/tokens">
-                        <input type="hidden" name="action" value="revoke" />
-                        <input type="hidden" name="tokenId" value={token.id} />
-                        <button type="submit">Revoke</button>
-                      </form>
-                    ) : (
-                      <span className="admin-muted">revoked</span>
-                    )}
+                    {/* The group is outside the branch on purpose: revoking replaces the form
+                        with the word `revoked`, and the sentence has to outlive the control
+                        that produced it (M3.20). */}
+                    <AdminAnswerGroup>
+                      {token.revokedAt === null ? (
+                        <AdminForm action="/api/admin/tokens" kind="tokens">
+                          <input type="hidden" name="action" value="revoke" />
+                          <input type="hidden" name="tokenId" value={token.id} />
+                          <button type="submit">Revoke</button>
+                        </AdminForm>
+                      ) : (
+                        <span className="admin-muted">revoked</span>
+                      )}
+                    </AdminAnswerGroup>
                   </td>
                 </tr>
               ))}

@@ -5,12 +5,14 @@ import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { getServiceClient } from '@/lib/supabase';
+import { AdminAnswerGroup } from '../_components/AdminAnswerGroup';
+import { AdminForm } from '../_components/AdminForm';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Admin — Customs Night',
+  title: 'Admin — Kustom',
   robots: { index: false, follow: false },
 };
 
@@ -119,26 +121,33 @@ function Reroll({ lobby }: { lobby: RerollableLobby | null }) {
       )}
       {exhausted ? <p className="admin-muted">{NO_MORE_SPLITS}</p> : null}
 
-      {lobby.splits
-        .filter((split) => !split.isChosen && (split.rank === 1 || !exhausted))
-        .map((split) => (
-          <form
-            key={split.id}
-            method="post"
-            action={`/api/admin/lobbies/${lobby.id}/reroll`}
-            className="admin-stacked"
-          >
-            <input type="hidden" name="splitId" value={split.id} />
-            <p className="admin-muted">
-              Split {split.rank} · gap {split.gap} · {split.explanation}
-            </p>
-            <button type="submit">
-              {split.rank === 1
-                ? 'Put split 1 back'
-                : `Promote split ${split.rank} · reroll ${split.rank - 1} of ${rerolls}`}
-            </button>
-          </form>
-        ))}
+      {/*
+       * The group wraps the whole list, not each form: promoting split 2 makes it the chosen
+       * one, so its own form is filtered out of the next render — and that sentence is the
+       * only place the page says whether Discord took the post (M3.20).
+       */}
+      <AdminAnswerGroup>
+        {lobby.splits
+          .filter((split) => !split.isChosen && (split.rank === 1 || !exhausted))
+          .map((split) => (
+            <AdminForm
+              key={split.id}
+              action={`/api/admin/lobbies/${lobby.id}/reroll`}
+              kind="reroll"
+              className="admin-stacked"
+            >
+              <input type="hidden" name="splitId" value={split.id} />
+              <p className="admin-muted">
+                Split {split.rank} · gap {split.gap} · {split.explanation}
+              </p>
+              <button type="submit">
+                {split.rank === 1
+                  ? 'Put split 1 back'
+                  : `Promote split ${split.rank} · reroll ${split.rank - 1} of ${rerolls}`}
+              </button>
+            </AdminForm>
+          ))}
+      </AdminAnswerGroup>
     </>
   );
 }

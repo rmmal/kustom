@@ -367,9 +367,14 @@ function escapeMarkdown(value: string): string {
   return value.replace(/([`*_~|\\])/g, '\\$1');
 }
 
-/** `Customs Night · more on the tonight page`, or just the name when there is no link. */
+/**
+ * `Kustom · more on the tonight page`, or just the name when there is no link (M3.21).
+ *
+ * The product is **Kustom** on every friend-facing surface; the repo's codename stays in
+ * `CLAUDE.md`, the docs and the package names, and appears nowhere under `apps/web`.
+ */
 function teamsFooter(url: string | undefined): string {
-  return url === undefined ? 'Customs Night' : 'Customs Night · more on the tonight page';
+  return url === undefined ? 'Kustom' : 'Kustom · more on the tonight page';
 }
 
 /** `Sara and Deniz`, `Sara, Deniz and Ali` (M2.15). */

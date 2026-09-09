@@ -1,15 +1,9 @@
 import { displayRating } from '@customs/core';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import type { RoleValue } from '@customs/db';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
-import { PLAYERS_PER_GAME } from '@/lib/lobbyState';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import { NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
-  AROUND_LABEL,
-  EMPTY_LOBBY,
-  IDLE_LINK_LABEL,
-  IDLE_SENTENCE,
   joinWebNames,
   NAMELESS_HINT,
   renderWebName,
@@ -26,21 +20,31 @@ import type {
   TeamsView,
   TonightSnapshot,
 } from '@/lib/tonight/types';
+import { RoleIcon } from '../_icons/RoleIcon';
+import { CompanionCard, HowThisWorksCard } from '../_shell/HowThisWorks';
 import { RerollControl } from './RerollControl';
+import { SeatRack } from './SeatRack';
 
 /**
- * The tonight page's markup (M3.4). A pure function of one snapshot and who is looking, so
- * every state in `05-design.md`'s table is a component test rather than a night of waiting.
+ * The tonight page's markup (M3.4, Floodlit v2 in M3.18). A pure function of one snapshot and
+ * who is looking, so every state in `05-design.md`'s table is a component test rather than a
+ * night of waiting.
  *
- * The rule this file exists to keep: **one primary block, chosen from `lobbies.status`,
- * replaced in place.** The header strip is always mounted and is the only element that
- * survives every transition. Nothing here appends, scrolls or animates anything but a 150 ms
- * opacity fade.
+ * The two rules this file exists to keep, neither of which v2 bends:
+ *
+ *   - **One primary block**, chosen from `lobbies.status`, replaced in place. The status strip
+ *     is always mounted and is the only element that survives every transition.
+ *   - **No layout shift inside a state.** A join, a leave, a name arriving and a reroll each
+ *     move nothing above the fold: the rack is ten rows at every count, the strip's sentence
+ *     has two lines reserved, and both markers are inset shadows rather than borders.
+ *
+ * The rail is the ≥1080px second column. It never carries state — three static cards — and it
+ * is `display: none` below that, where the same two cards are in the footer.
  */
 
 export interface TonightViewProps {
   snapshot: TonightSnapshot;
-  /** The signed-in viewer's puuid, for the `accent` "you" border. `null` for everybody else. */
+  /** The signed-in viewer's puuid, for the `brand` "you" rule. `null` for everybody else. */
   viewerPuuid: string | null;
   /** Decided on the server from the session (`lib/viewer.ts`). Draws the reroll control. */
   isAdmin: boolean;
@@ -52,168 +56,120 @@ export function TonightView({ snapshot, viewerPuuid, isAdmin }: TonightViewProps
   const viewer = { puuid: viewerPuuid, isAdmin };
 
   return (
-    <main className="cn-page">
-      <header className="cn-strip">
-        <h1 className="cn-strip-title">
-          {header.count === null ? (
-            header.label
-          ) : (
-            <>
-              <span className="cn-num cn-count">{header.count}</span>{' '}
-              <span className="cn-strip-sub">{header.label}</span>
-            </>
-          )}
-          {header.live ? <span className="cn-dot" aria-hidden="true" /> : null}
-        </h1>
-        {state.kind === 'filling' ? <LobbyBars around={state.lobby.members.length} /> : null}
-      </header>
+    <div className="cn-grid cn-grid-rail">
+      <main className="cn-col">
+        <StatusStrip snapshot={snapshot} header={header} />
 
-      {snapshot.seasonActive ? null : (
-        // Directly under the strip, not at the foot of a 977px page: it is the reason the
-        // numbers below it are not being saved, and a reader who has to scroll to find that
-        // out has already read the numbers. **This page's own sentence** (M3.17): the admin
-        // one ends by naming a page most of the people holding this link cannot open.
-        <p className="cn-notice" role="status">
-          {NO_ACTIVE_SEASON_TONIGHT_MESSAGE}
-        </p>
-      )}
+        {snapshot.seasonActive ? null : (
+          // Directly under the strip, not at the foot of a 977px page: it is the reason the
+          // numbers below it are not being saved, and a reader who has to scroll to find that
+          // out has already read the numbers. **This page's own sentence** (M3.17): the admin
+          // one ends by naming a page most of the people holding this link cannot open.
+          <p className="cn-notice" role="status">
+            {NO_ACTIVE_SEASON_TONIGHT_MESSAGE}
+          </p>
+        )}
 
-      {state.kind === 'idle' ? <Idle /> : null}
-      {state.kind === 'filling' ? <MemberList lobby={state.lobby} viewerPuuid={viewer.puuid} /> : null}
-      {state.kind === 'teams' ? <TeamsBlock lobby={state.lobby} teams={state.teams} viewer={viewer} /> : null}
-      {state.kind === 'result' ? (
-        <ResultBlock result={state.result} teams={state.teams} viewerPuuid={viewer.puuid} />
-      ) : null}
+        {state.kind === 'idle' ? <Idle /> : null}
+        {state.kind === 'filling' ? (
+          <section className="cn-block">
+            <SeatRack members={state.lobby.members} viewerPuuid={viewer.puuid} />
+          </section>
+        ) : null}
+        {state.kind === 'teams' ? (
+          <TeamsBlock lobby={state.lobby} teams={state.teams} viewer={viewer} />
+        ) : null}
+        {state.kind === 'result' ? (
+          <ResultBlock result={state.result} teams={state.teams} viewerPuuid={viewer.puuid} />
+        ) : null}
 
-      {/* M3.10's one quiet line, under the block and never per row. */}
-      {hasNamelessRow(state) ? <p className="cn-hint">{NAMELESS_HINT}</p> : null}
-    </main>
-  );
-}
+        {/* M3.10's one quiet line, under the block and never per row. */}
+        {hasNamelessRow(state) ? <p className="cn-hint">{NAMELESS_HINT}</p> : null}
+      </main>
 
-/**
- * No lobby tonight. One sentence and a link, and nothing else: no spinner, no skeleton, no
- * illustration, and no repeat of the header strip's `Nothing tonight`.
- *
- * A typed `next/link` since M3.5 created `/leaderboard`: `typedRoutes` now checks the href at
- * build time, and the board is prefetched, which is the one thing a friend on the idle screen
- * is going to tap.
- */
-function Idle() {
-  return (
-    <section className="cn-block">
-      <p className="cn-idle">{IDLE_SENTENCE}</p>
-      <p>
-        <Link className="cn-link" href="/leaderboard">
-          {IDLE_LINK_LABEL}
-        </Link>
-      </p>
-    </section>
-  );
-}
-
-/** Ten 3px bars: the whole status at arm's length, countable without reading. */
-function LobbyBars({ around }: { around: number }) {
-  const filled = Math.min(around, PLAYERS_PER_GAME);
-  return (
-    <div className="cn-bars" aria-hidden="true">
-      {Array.from({ length: PLAYERS_PER_GAME }, (_, index) => (
-        <span
-          // The bars are positional and have no identity of their own.
-          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length row of ten marks
-          key={index}
-          className={index < filled ? 'cn-bar cn-bar-on' : 'cn-bar'}
-        />
-      ))}
+      <aside className="cn-rail" aria-label="About this page">
+        <HowThisWorksCard />
+        <CompanionCard />
+      </aside>
     </div>
   );
 }
 
 /**
- * The lobby filling up. Join order, oldest first, newest appended — a list that reorders under
- * a thumb is worse than a list you scroll — and **ten rows of height reserved from the first
- * paint**, so the 9→10 join moves nothing.
+ * The status strip (05-design.md, "The status strip"): slug, headline, live pill, sentence.
+ *
+ * The `<h1>` is the wordmark in the shell, so the headline here is a `<p>` — there is one page
+ * title and it is the product's name, not the state of a lobby.
  */
-function MemberList({ lobby, viewerPuuid }: { lobby: LobbyView; viewerPuuid: string | null }) {
-  const playing = lobby.members.filter((member) => !member.isSpectator);
-  const around = lobby.members.filter((member) => member.isSpectator);
+function StatusStrip({
+  snapshot,
+  header,
+}: {
+  snapshot: TonightSnapshot;
+  header: ReturnType<typeof tonightHeader>;
+}) {
+  return (
+    <header className="cn-strip">
+      {/* The line that tells a friend from WhatsApp what they are looking at and when.
+          Formatted on the server, in one locale and the configured timezone. With no active
+          season it is the date alone. */}
+      <p className="cn-num cn-slug">
+        {snapshot.seasonName === null
+          ? snapshot.nightLabel
+          : `${snapshot.nightLabel} · ${snapshot.seasonName}`}
+      </p>
 
+      <p className="cn-headline-row">
+        {header.count === null ? null : <span className="cn-display cn-count">{header.count}</span>}
+        <span className="cn-display cn-headline">{header.headline}</span>
+        {header.live ? <LivePill /> : null}
+      </p>
+
+      {/*
+       * The page's one polite live region, with two lines of `t-sm` reserved: the sentence
+       * changes with the count — the one text that changes without a state change — and the
+       * block under it must not move while it does.
+       */}
+      <p className="cn-sentence" aria-live="polite">
+        {header.sentence}
+      </p>
+    </header>
+  );
+}
+
+/**
+ * The one glow and the one pulse in the product. The word is the accessible text and the dot
+ * is decoration: a pulsing orange circle that nothing names means nothing.
+ *
+ * It means **the lobby is open**, not that a socket is up. The page has no idea whether the
+ * companion is still running and must not pretend to.
+ */
+function LivePill() {
+  return (
+    <span className="cn-live">
+      <span className="cn-live-dot" aria-hidden="true" />
+      <span className="cn-num cn-live-word">live</span>
+    </span>
+  );
+}
+
+/**
+ * No lobby tonight. The strip has said `NOBODY IN YET` and the shipped sentence; this is an
+ * empty rack — the shape the page will have in an hour — and the two cards the desktop rail
+ * carries, inline below 1080px, because on a phone there is nothing else to read. Where the
+ * rail is on screen they are in it, and `tonight.css` hides the inline pair rather than saying
+ * the same two things twice.
+ */
+function Idle() {
   return (
     <section className="cn-block">
-      {lobby.members.length === 0 ? <p className="cn-empty">{EMPTY_LOBBY}</p> : null}
-      <ul className="cn-members">
-        {playing.map((member) => (
-          <MemberRow key={member.puuid} member={member} viewerPuuid={viewerPuuid} />
-        ))}
-      </ul>
-      {around.length === 0 ? null : (
-        <>
-          <p className="cn-around">{AROUND_LABEL}</p>
-          <ul className="cn-members cn-members-around">
-            {around.map((member) => (
-              <MemberRow key={member.puuid} member={member} viewerPuuid={viewerPuuid} />
-            ))}
-          </ul>
-        </>
-      )}
+      <SeatRack members={[]} viewerPuuid={null} />
+      <div className="cn-idle-cards">
+        <HowThisWorksCard />
+        <CompanionCard />
+      </div>
     </section>
   );
-}
-
-function MemberRow({ member, viewerPuuid }: { member: MemberView; viewerPuuid: string | null }) {
-  const you = member.puuid === viewerPuuid;
-  const justJoined = useJustJoined(member.joinedAt);
-
-  return (
-    <li className={you ? 'cn-member cn-you' : 'cn-member'}>
-      {/* The three-second marker. Always mounted, so removing it is a 150ms opacity fade
-          rather than a row that changes shape (05-design.md, "Lobby member list"). */}
-      <span className={justJoined ? 'cn-new cn-new-on' : 'cn-new'} aria-hidden="true" />
-      <span className="cn-member-name">{renderWebName(member.name)}</span>
-      <span className="cn-num cn-member-roles">{roleLine(member)}</span>
-      <span className="cn-num cn-member-rating">{member.rating}</span>
-    </li>
-  );
-}
-
-/** `05-design.md`: a member who joined in the last 3s carries a 2px accent left border. */
-const JUST_JOINED_MS = 3_000;
-
-/**
- * Has this row been on the page for less than three seconds?
- *
- * Always `false` on the server, and decided after mount: the answer depends on the clock, and
- * a server render that disagreed with the first client render is a hydration mismatch. The
- * timer clears itself, so a row stops being new exactly once and nothing polls.
- */
-function useJustJoined(joinedAt: string): boolean {
-  const [justJoined, setJustJoined] = useState(false);
-
-  useEffect(() => {
-    // A row whose timestamp is in the future — the database's clock is not the phone's — is
-    // not new, it is skewed, and it must not keep an accent border for the rest of the night.
-    const age = Date.now() - Date.parse(joinedAt);
-    if (!Number.isFinite(age) || age < 0 || age >= JUST_JOINED_MS) return;
-
-    setJustJoined(true);
-    const timer = setTimeout(() => setJustJoined(false), JUST_JOINED_MS - age);
-    return () => clearTimeout(timer);
-  }, [joinedAt]);
-
-  return justJoined;
-}
-
-/**
- * `top / mid`, or `flexible` for somebody who has declared nothing.
- *
- * The player's own two roles, as `players` holds them. A role tap for tonight
- * (`lobby_members.role_override`) has no writer until M3.6 and no renderer here: showing it
- * would mean restating core's `resolveRoles` in the web app, and M3.6 lands the control and
- * the resolved pair together.
- */
-function roleLine(member: MemberView): string {
-  if (member.mainRole === null) return 'flexible';
-  return member.secondaryRole === null ? member.mainRole : `${member.mainRole} / ${member.secondaryRole}`;
 }
 
 interface Viewer {
@@ -223,7 +179,7 @@ interface Viewer {
 
 /**
  * `balanced` and `in_game` render the identical block: the sit-out strip, the two cards blue
- * first, then the explanation line. Only the header word and the live dot differ, and the
+ * first, then the explanation line. Only the headline word and the live pill differ, and the
  * cards do not re-render, re-fetch or fade on the way between them.
  */
 function TeamsBlock({ lobby, teams, viewer }: { lobby: LobbyView; teams: TeamsView; viewer: Viewer }) {
@@ -247,7 +203,9 @@ function TeamsBlock({ lobby, teams, viewer }: { lobby: LobbyView; teams: TeamsVi
 
 /**
  * Above the cards, never below: if you are sitting out, everything under it is not about you,
- * and you should learn that before you scan for your name.
+ * and you should learn that before you scan for your name. The card is its 3px brand rule and
+ * the sentence — no header bar over it, which was the same words twice; the sentences
+ * themselves are unchanged.
  */
 function SitOutNotice({
   sitters,
@@ -260,29 +218,37 @@ function SitOutNotice({
   const youSit = viewerPuuid !== null && sitters.some((member) => member.puuid === viewerPuuid);
 
   return (
-    <p className="cn-sitout">
-      {youSit ? SIT_OUT_VIEWER : sitOutGeneral(joinWebNames(sitters.map((member) => member.name)))}
-    </p>
+    // No header bar: the 3px brand rule and the sentence are the card (the designer,
+    // 2026-09-09). `SITTING OUT` over `Sitting out this game: …` was the same words twice.
+    <section className="cn-card cn-sitout">
+      <p className="cn-sitout-text">
+        {youSit ? SIT_OUT_VIEWER : sitOutGeneral(joinWebNames(sitters.map((member) => member.name)))}
+      </p>
+    </section>
   );
 }
 
+/**
+ * One side. The 4px side rule is on the **leading edge** — the top when the cards are stacked,
+ * the left when they are side by side — the header bar is `raise` with the side colour on the
+ * name only, and the body carries the 10% tint. Never a filled side-coloured block behind five
+ * names.
+ */
 function TeamCard({
   side,
   seats,
   viewerPuuid,
-  losing = false,
 }: {
   side: 'blue' | 'red';
   seats: readonly SeatView[];
   viewerPuuid: string | null;
-  /** The result card drops the losing side's 3px rule to a hairline. Nothing else changes. */
-  losing?: boolean;
 }) {
   const sum = seats.reduce((total, seat) => total + seat.rating, 0);
+
   return (
-    <section className={`cn-card cn-card-${side}${losing ? ' cn-card-lost' : ''}`}>
-      <header className="cn-card-head">
-        <h2 className="cn-side">{side === 'blue' ? 'Blue' : 'Red'}</h2>
+    <section className={`cn-card cn-team cn-team-${side}`}>
+      <header className="cn-card-head cn-team-head">
+        <h2 className="cn-display cn-side">{side === 'blue' ? 'BLUE' : 'RED'}</h2>
         <p className="cn-num cn-sum">
           {sum}
           <span className="cn-sr"> sum of the five ratings</span>
@@ -291,7 +257,7 @@ function TeamCard({
       <ul className="cn-seats">
         {seats.map((seat) => (
           <li key={seat.puuid} className={seat.puuid === viewerPuuid ? 'cn-seat cn-you' : 'cn-seat'}>
-            <span className={seat.offRole ? 'cn-num cn-role cn-off' : 'cn-num cn-role'}>{seat.role}</span>
+            <RoleCell role={seat.role} offRole={seat.offRole} />
             <span className="cn-seat-name">
               {seat.offRole ? <span className="cn-off-dot" aria-hidden="true" /> : null}
               {renderWebName(seat.name)}
@@ -306,12 +272,29 @@ function TeamCard({
 }
 
 /**
+ * Icon and word, always both (05-design.md, "Iconography"). Off-role turns the pair `brand`
+ * and dots the word's underline — colour is never the only signal, and the stored explanation
+ * names them in a sentence anyway.
+ */
+function RoleCell({ role, offRole = false }: { role: RoleValue | null; offRole?: boolean }) {
+  if (role === null) return <span className="cn-num cn-seat-role" />;
+
+  return (
+    <span className={offRole ? 'cn-num cn-seat-role cn-off' : 'cn-num cn-seat-role'}>
+      <RoleIcon role={role} />
+      {role}
+    </span>
+  );
+}
+
+/**
  * The explanation strip: `splits.explanation` of the promoted split, **verbatim**, as a single
  * paragraph. Never re-composed from the split's numbers, never chopped into chips, never
  * truncated. Three lines of wrap on a phone is the correct outcome.
  *
  * After a reroll the same element re-renders with the promoted split's stored string, off-role
- * clause and all (M3.7).
+ * clause and all (M3.7). The reroll control stays here and not in the top bar: the button
+ * means "give me a different version of *this sentence*".
  */
 function Explanation({
   lobby,
@@ -323,7 +306,7 @@ function Explanation({
   showReroll: boolean;
 }) {
   return (
-    <div className="cn-explain">
+    <div className="cn-card cn-explain">
       <p className="cn-explain-text">{teams.explanation}</p>
       {showReroll ? <RerollControl lobbyId={lobby.id} splits={teams.splits} /> : null}
     </div>
@@ -331,13 +314,12 @@ function Explanation({
 }
 
 /**
- * The result (`finished`). The result card is the whole block: headline, duration, the honest
- * prediction line, the two team cards with **after** ratings and delta chips, top damage. Then
- * the explanation line of the split they played.
+ * The result (`finished`). The headline card — winner, duration, the honest prediction line and
+ * top damage — then the two team cards with **after** ratings and deltas, then the explanation
+ * line of the split they played.
  *
- * **One rating per player per screen.** The cards inside this card are the only cards; there is
- * no second pair underneath with the before numbers (M3.4; the state table in `05-design.md`
- * reads as though there were, and M3.16 is reconciling it).
+ * **One rating per player per screen.** The cards inside this block are the only cards; there
+ * is no second pair underneath with the before numbers (M3.4, M3.16).
  */
 function ResultBlock({
   result,
@@ -348,16 +330,34 @@ function ResultBlock({
   teams: TeamsView | null;
   viewerPuuid: string | null;
 }) {
-  const winner = result.winningSide === 100 ? 'Blue' : 'Red';
+  const winner = result.winningSide === 100 ? 'BLUE' : 'RED';
   const prediction = favoredClause(result.blueWinProb);
 
   return (
     <section className="cn-block">
-      <p className="cn-headline">
-        <span className={result.winningSide === 100 ? 'cn-win-blue' : 'cn-win-red'}>{`${winner} wins`}</span>{' '}
-        <span className="cn-num cn-duration">{formatDuration(result.durationS)}</span>
-      </p>
-      {prediction === null ? null : <p className="cn-prediction">{prediction}</p>}
+      <section className="cn-card cn-result">
+        <p className="cn-result-head">
+          {/* The one place in the product where a colour is large, and it is large for one
+              line. The strip says `GAME OVER`; this says who won, and neither repeats the
+              other (M3.16, and product 2026-09-09). */}
+          <span
+            className={
+              result.winningSide === 100 ? 'cn-display cn-win cn-win-blue' : 'cn-display cn-win cn-win-red'
+            }
+          >
+            {`${winner} WINS`}
+          </span>
+          <span className="cn-num cn-duration">{formatDuration(result.durationS)}</span>
+        </p>
+        {prediction === null ? null : <p className="cn-prediction">{prediction}</p>}
+        {result.topDamage === null ? null : (
+          // A fact about the game, inside the game's own card.
+          <p className="cn-damage">
+            {`Top damage: ${renderWebName(result.topDamage.name)}, `}
+            <span className="cn-num cn-damage-value">{formatDamage(result.topDamage.damage)}</span>
+          </p>
+        )}
+      </section>
 
       <div className="cn-cards">
         <ResultCard
@@ -374,15 +374,8 @@ function ResultBlock({
         />
       </div>
 
-      {result.topDamage === null ? null : (
-        <p className="cn-damage">
-          {`Top damage: ${renderWebName(result.topDamage.name)}, `}
-          <span className="cn-num cn-damage-value">{formatDamage(result.topDamage.damage)}</span>.
-        </p>
-      )}
-
       {teams === null ? null : (
-        <div className="cn-explain">
+        <div className="cn-card cn-explain">
           <p className="cn-explain-text">{teams.explanation}</p>
         </div>
       )}
@@ -391,8 +384,9 @@ function ResultBlock({
 }
 
 /**
- * One side of the result card. Lane order, the same five positions as the teams block, so "my
- * row" is where it was.
+ * One side of the result. Lane order, the same five positions as the teams block, so "my row"
+ * is where it was. The winner keeps its 4px side rule and gains a 1px `brand` ring; the loser's
+ * rule drops to a hairline. Two signals, both structural.
  *
  * **The delta is computed here, at render.** `displayDelta` returns `-0` for a rating that fell
  * by less than half a point, and `-0` does not survive `JSON.stringify`: carried through a
@@ -416,7 +410,7 @@ function ResultCard({
   }));
 
   return (
-    <section className={`cn-card cn-card-${side}${losing ? ' cn-card-lost' : ''}`}>
+    <section className={`cn-card cn-team cn-team-${side}${losing ? ' cn-team-lost' : ' cn-team-won'}`}>
       {/*
        * **No side sums here.** The sum answers "are these teams even?", which is a question
        * the game has just answered, and a reader who saw `6000` before and `6465` after has
@@ -424,13 +418,13 @@ function ResultCard({
        * print (05-design.md, "Result card"). The teams block keeps its sums; this header is
        * the side name alone.
        */}
-      <header className="cn-card-head">
-        <h2 className="cn-side">{side === 'blue' ? 'Blue' : 'Red'}</h2>
+      <header className="cn-card-head cn-team-head">
+        <h2 className="cn-display cn-side">{side === 'blue' ? 'BLUE' : 'RED'}</h2>
       </header>
       <ul className="cn-seats">
         {rows.map(({ seat, rating, delta }) => (
           <li key={seat.puuid} className={seat.puuid === viewerPuuid ? 'cn-seat cn-you' : 'cn-seat'}>
-            <span className="cn-num cn-role">{seat.role ?? ''}</span>
+            <RoleCell role={seat.role} />
             <span className="cn-seat-name">{renderWebName(seat.name)}</span>
             <span className="cn-num cn-seat-rating">
               {rating ?? ''}

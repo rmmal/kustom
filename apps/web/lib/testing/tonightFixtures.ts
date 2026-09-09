@@ -226,5 +226,14 @@ export function lobbyView(overrides: Partial<LobbyView> = {}): LobbyView {
 }
 
 export function snapshot(lobby: LobbyView | null, overrides: Partial<TonightSnapshot> = {}): TonightSnapshot {
-  return { lobby, nightStart: FIXTURE_NIGHT_START, seasonActive: true, ...overrides };
+  return {
+    lobby,
+    nightStart: FIXTURE_NIGHT_START,
+    // What `formatNightLabel` answers for {@link FIXTURE_NIGHT_START} in the group's own zone:
+    // the slug is formatted on the server and travels in the snapshot (M3.18).
+    nightLabel: 'Tuesday 8 September',
+    seasonActive: true,
+    seasonName: 'Season 1',
+    ...overrides,
+  };
 }

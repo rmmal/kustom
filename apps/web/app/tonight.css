@@ -1,74 +1,90 @@
 /*
- * The tonight page (M3.4), built from the tokens in `tokens.css`.
+ * The tonight page (M3.4, Floodlit v2 in M3.18), built from the tokens in `tokens.css` and
+ * mounted inside the shell in `shell.css`.
  *
  * Rules from `docs/05-design.md` that are load-bearing here, so nobody "tidies" them away:
  *
- *   - One transition in the whole page: `opacity 150ms ease`. Nothing slides, nothing scales,
- *     nothing pulses but the single live dot, and `prefers-reduced-motion: reduce` drops all
- *     of it. The page must never move under a thumb that is about to tap.
- *   - The member list reserves ten rows of height, so the 9→10 join shifts no pixel.
+ *   - One transition in the whole page: `opacity 150ms ease`. Nothing slides, nothing pulses
+ *     but the single live dot, and `prefers-reduced-motion: reduce` drops all of it. The page
+ *     must never move under a thumb that is about to tap.
+ *   - The rack is ten rows at every count, and a row is exactly 44px: the 9 → 10 join replaces
+ *     `open` with a name and shifts no pixel. `rowHeight.test.tsx` guards the arithmetic.
  *   - Nothing scrolls itself: no `overflow: auto` anywhere, no fixed heights with scrollbars.
- *   - A side colour is only a rule, a text colour, or a 7% tint. Never a filled block behind
- *     five names.
+ *   - A side colour is a rule, a text colour, or a 10% tint. Never a filled block behind five
+ *     names, and never a wash of colour over the page.
  *   - Every tappable thing is at least 44 x 44px.
- *   - Phone widths are the design width; ≥720px is the same layout in two columns.
+ *   - The one glow in the product is the live pill's, below. The one gradient is the shell's.
+ *   - Phone widths are the design width; ≥720px puts the team cards side by side; ≥1080px adds
+ *     the shell's rail.
  */
 
-.cn-page {
-  max-width: 42rem;
-  margin: 0 auto;
-  padding: var(--cn-sp-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--cn-sp-5);
-}
-
-@media (min-width: 720px) {
-  .cn-page {
-    padding: var(--cn-sp-5);
-  }
-}
-
 /* ---------------------------------------------------------------------------
- * Header strip: always mounted, the only element that survives every transition.
+ * Status strip: always mounted, the only element that survives every transition.
  * ------------------------------------------------------------------------- */
 
 .cn-strip {
-  border-bottom: 1px solid var(--cn-hairline);
-  padding-bottom: var(--cn-sp-3);
-}
-
-.cn-strip-title {
-  margin: 0;
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
   gap: var(--cn-sp-2);
-  font-size: var(--cn-t-lg);
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
-.cn-count {
-  font-size: var(--cn-t-xl);
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--cn-accent);
-}
-
-.cn-strip-sub {
-  font-size: var(--cn-t-base);
-  font-weight: 400;
+/* The night and the season, upper case in the stylesheet and a readable date in the DOM. */
+.cn-slug {
+  margin: 0;
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--cn-dim);
 }
 
-/* The one pulsing element on the page, and it stops at `finished`. */
-.cn-dot {
+.cn-headline-row {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--cn-sp-3);
+}
+
+.cn-count {
+  font-size: var(--cn-t-display);
+  color: var(--cn-brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.cn-headline {
+  font-size: var(--cn-t-lg);
+  text-transform: uppercase;
+  color: var(--cn-text);
+}
+
+/*
+ * The live pill: `raise` fill, an 8px brand dot on a 2s cycle, the word `live`, and the one
+ * glow in the product. It is gone at `finished` and on the idle page.
+ */
+.cn-live {
   align-self: center;
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cn-sp-2);
+  padding: var(--cn-sp-1) var(--cn-sp-2);
+  border-radius: var(--cn-radius-chip);
+  background: var(--cn-raise);
+  box-shadow: var(--cn-glow);
+}
+
+.cn-live-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--cn-accent);
+  background: var(--cn-brand);
   animation: cn-pulse 2s ease-in-out infinite;
+}
+
+.cn-live-word {
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  color: var(--cn-dim);
 }
 
 @keyframes cn-pulse {
@@ -81,21 +97,16 @@
   }
 }
 
-/* Ten 3px bars: the whole status at arm's length, countable without reading. */
-.cn-bars {
-  display: flex;
-  gap: var(--cn-sp-1);
-  margin-top: var(--cn-sp-3);
-}
-
-.cn-bar {
-  flex: 1 1 0;
-  height: 3px;
-  background: var(--cn-hairline);
-}
-
-.cn-bar-on {
-  background: var(--cn-accent);
+/*
+ * Two lines of `t-sm` reserved, so the sentence that changes with the count — the one text on
+ * the page that changes without a state change — never moves the block below it.
+ */
+.cn-sentence {
+  margin: 0;
+  min-height: calc(2 * 1.4 * var(--cn-t-sm));
+  font-size: var(--cn-t-sm);
+  line-height: 1.4;
+  color: var(--cn-dim);
 }
 
 /* ---------------------------------------------------------------------------
@@ -118,128 +129,154 @@
   }
 }
 
-.cn-idle,
-.cn-empty,
-.cn-around,
 .cn-hint,
 .cn-notice,
 .cn-prediction,
 .cn-damage,
-.cn-sitout,
+.cn-sitout-text,
 .cn-explain-text,
-.cn-reroll-note,
-.cn-headline {
+.cn-reroll-note {
   margin: 0;
-}
-
-.cn-empty,
-.cn-hint,
-.cn-notice {
-  color: var(--cn-dim);
 }
 
 .cn-hint,
 .cn-notice {
   font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
 }
 
 /*
- * The no-season line, directly under the header strip: the reason the numbers below it are not
+ * The no-season line, directly under the status strip: the reason the numbers below it are not
  * being saved. `dim` and `t-sm` because it is an aside, not a banner — the page has no banners.
  */
 .cn-notice {
-  border-left: 2px solid var(--cn-hairline);
+  border-left: 2px solid var(--cn-line);
   padding-left: var(--cn-sp-3);
 }
 
-/*
- * The one tappable thing on the idle screen. A bare inline anchor is about 26px tall, which is
- * under the 44px floor every other control on this page keeps.
- */
-.cn-link {
-  display: inline-block;
-  min-height: 44px;
-  line-height: 44px;
-  color: var(--cn-accent);
-  text-underline-offset: 3px;
-}
-
 /* ---------------------------------------------------------------------------
- * Lobby member list — state "filling"
+ * The seat rack — state "filling", and the idle page's body.
  * ------------------------------------------------------------------------- */
 
-/*
- * Ten rows reserved from the first paint, **in the row's own units**: ten 44px rows plus the
- * nine 1px hairlines between them. Measured at 390px the rows came out 46-47px against a
- * reserved 440px, so the 9 → 10 join — the one moment everybody is looking — shifted the page
- * by about thirty pixels. The row height below is what makes this arithmetic true.
- */
-.cn-members {
+/* The `open` rows are filled to the card's edge, so the card clips them at its radius. */
+.cn-rack {
+  overflow: hidden;
+}
+
+/* `SEATS · 9 of 10` left, the `rating` legend right. Both mono micro-labels. */
+.cn-rack-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cn-sp-3);
+  min-height: 32px;
+  padding: 0 var(--cn-sp-3);
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  color: var(--cn-dim);
+}
+
+.cn-rack-list,
+.cn-seats {
   list-style: none;
   margin: 0;
   padding: 0;
-  background: var(--cn-surface);
-  border-radius: var(--cn-radius);
-  min-height: calc(10 * 44px + 9px);
-}
-
-/* The people past the ten are as many as they are; nothing is reserved for them. */
-.cn-members-around {
-  min-height: 0;
 }
 
 /*
- * Exactly 44px: `t-md` at the body's 1.5 line height is 30px, which with `sp-2` top and bottom
- * makes a 46-47px row and breaks the reserved height above. 1.3 is the type scale's own line
- * height for `t-md` (05-design.md, "Scale"), and it still lands the row inside 44px.
+ * Exactly 44px, and the reservation is the ten rows themselves: `10 × 44px + 9px` of hairline.
+ * `t-md` at the body's 1.5 line height makes a 46-47px row, which overflowed v1's reserved
+ * height by two or three pixels a row; 1.3 is the type scale's own line height for `t-md` and
+ * lands the row inside 44px.
  */
-.cn-member,
+.cn-rack-row,
 .cn-seat {
+  position: relative;
   display: grid;
   align-items: center;
-  gap: var(--cn-sp-3);
   min-height: 44px;
   padding: var(--cn-sp-2) var(--cn-sp-3);
   line-height: 1.3;
-  animation: cn-fade 150ms ease;
 }
 
-.cn-member {
-  position: relative;
-  grid-template-columns: 1fr auto auto;
+.cn-rack-row {
+  grid-template-columns: 1fr 4.5rem;
+  gap: var(--cn-sp-4);
+}
+
+/* The role column exists only when it distinguishes: `1fr · role · rating 4.5rem`. */
+.cn-rack-roled .cn-rack-row {
+  grid-template-columns: 1fr 6.5rem 4.5rem;
 }
 
 /*
- * A member who joined in the last three seconds. The bar is always in the DOM and only its
- * opacity changes, so it fades out on the page's one transition and the row never resizes.
+ * The second role costs a phone row more than it gives: `jungle · support` does not fit beside
+ * a name on a 390px screen, and a column that ends in `t…` is worse than one that says the
+ * role somebody actually plays. It comes back the moment there is room for it.
  */
-.cn-new {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--cn-accent);
-  opacity: 0;
-  transition: opacity 150ms ease;
+.cn-rack-second {
+  display: none;
 }
 
-.cn-new-on {
-  opacity: 1;
+/*
+ * 10rem, not 8.5: with its icon, `jungle · support` measures 149px and was cut mid-word to
+ * `suppo` at every width above 480 (the designer, 2026-09-09). A role column that clips is
+ * exactly the "field that failed to load" this design keeps arguing against.
+ */
+@media (min-width: 480px) {
+  .cn-rack-roled .cn-rack-row {
+    grid-template-columns: 1fr 10rem 4.5rem;
+  }
+
+  .cn-rack-second {
+    display: inline;
+  }
 }
 
-/* Role, name, rating: the role column is a fixed 4.5rem so five names start on one line. */
+/*
+ * On a desktop the main column is wide and a `1fr` name column pushed the role and the rating
+ * 450px away from it. The name is capped and ellipsised instead, the role sits beside it, and
+ * the rating stays right-aligned under its own legend.
+ */
+@media (min-width: 720px) {
+  .cn-rack-roled .cn-rack-row {
+    grid-template-columns: minmax(0, 16rem) 10rem minmax(4.5rem, 1fr);
+  }
+}
+
+/* A team seat leads with its role, because the five of them are read as a lane order. */
 .cn-seat {
-  grid-template-columns: 4.5rem 1fr auto;
+  grid-template-columns: 6.5rem 1fr 5.5rem;
   gap: var(--cn-sp-2);
 }
 
-.cn-member + .cn-member,
-.cn-seat + .cn-seat {
-  border-top: 1px solid var(--cn-hairline);
+/*
+ * A result row carries the rating **and** its delta, and `1393 (−41)` on two lines reads as
+ * two numbers. The role column pays for it: with the icon beside it, `support` is the widest
+ * word there is and it fits in 5rem.
+ */
+.cn-team-won .cn-seat,
+.cn-team-lost .cn-seat {
+  grid-template-columns: 5rem 1fr 7.5rem;
 }
 
-.cn-member-name,
+.cn-rack-row + .cn-rack-row,
+.cn-seat + .cn-seat {
+  border-top: 1px solid var(--cn-line);
+}
+
+/* An empty seat is a seat: recessed below the card, never a skeleton and never a blank row. */
+.cn-rack-open {
+  background: var(--cn-bg);
+}
+
+.cn-open {
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  color: var(--cn-dim);
+}
+
+.cn-rack-name,
 .cn-seat-name {
   min-width: 0;
   font-size: var(--cn-t-md);
@@ -249,31 +286,98 @@
   white-space: nowrap;
 }
 
-.cn-member-roles {
+.cn-rack-roles,
+.cn-seat-role {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cn-sp-2);
+  min-width: 0;
   font-size: var(--cn-t-xs);
-  color: var(--cn-dim);
   letter-spacing: 0.06em;
+  color: var(--cn-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.cn-member-rating,
+.cn-role-icon {
+  flex: none;
+}
+
+.cn-rack-rating,
 .cn-seat-rating {
   font-size: var(--cn-t-md);
   text-align: right;
 }
 
 /*
- * "You", and a member who has just joined: a 2px accent rule down the left of the row. An
- * inset shadow rather than a border, so drawing it moves nothing.
+ * A member who joined in the last three seconds, and "you". Both are 2px inset rules rather
+ * than borders, so drawing one moves nothing; the marker is always in the DOM and only its
+ * opacity changes, so it leaves on the page's one transition.
  */
+.cn-new {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cn-brand);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.cn-new-on {
+  opacity: 1;
+}
+
 .cn-you {
-  box-shadow: inset 2px 0 0 0 var(--cn-accent);
+  box-shadow: inset 2px 0 0 0 var(--cn-brand);
+}
+
+/* The people past the ten. The same row shape, and nothing reserved for them. */
+.cn-around-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-2);
 }
 
 .cn-around {
+  margin: 0;
+  padding: var(--cn-sp-2) var(--cn-sp-3);
+  border-radius: var(--cn-radius-chip);
+  background: var(--cn-raise);
   font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--cn-dim);
-  border-top: 1px solid var(--cn-hairline);
-  padding-top: var(--cn-sp-2);
+}
+
+/* The card recipe itself comes from `.cn-card` in `tokens.css`; this only clips its rows. */
+.cn-rack-around {
+  overflow: hidden;
+}
+
+/* The idle page carries the rail's two cards inline, at every width. */
+.cn-idle-cards {
+  display: grid;
+  gap: var(--cn-sp-4);
+}
+
+@media (min-width: 720px) {
+  .cn-idle-cards {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/*
+ * The rail is the desktop home for these two cards. Where it is on screen, the inline pair is
+ * the same two cards a second time on one page (the designer, 2026-09-09).
+ */
+@media (min-width: 1080px) {
+  .cn-grid-rail .cn-idle-cards {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -289,60 +393,95 @@
 @media (min-width: 720px) {
   .cn-cards {
     flex-direction: row;
+    align-items: flex-start;
   }
 
-  .cn-cards > .cn-card {
+  .cn-cards > .cn-team {
     flex: 1 1 0;
     min-width: 0;
   }
 }
 
-.cn-card {
-  border-radius: var(--cn-radius);
-  border-top: 3px solid transparent;
-  background: var(--cn-surface);
-}
-
-.cn-card-blue {
-  background: var(--cn-blue-tint);
-  border-top-color: var(--cn-blue);
-}
-
-.cn-card-red {
-  background: var(--cn-red-tint);
-  border-top-color: var(--cn-red);
-}
-
 /*
- * The losing side of a result: the 3px rule drops to a hairline and the two pixels come back
- * as padding, so the two cards still line up. That is the only difference between them.
+ * The side rule is on the **leading edge**: the top when the cards are stacked, the left when
+ * they are side by side. One `border-block-start` / `border-inline-start` swap, no second card.
  */
-.cn-card-lost {
-  border-top-width: 1px;
-  border-top-color: var(--cn-hairline);
-  padding-top: 2px;
+.cn-team {
+  overflow: hidden;
+  border-block-start: 4px solid var(--cn-line);
 }
 
-.cn-card-head {
+.cn-team-blue {
+  background: var(--cn-blue-tint);
+  border-block-start-color: var(--cn-blue);
+}
+
+.cn-team-red {
+  background: var(--cn-red-tint);
+  border-block-start-color: var(--cn-red);
+}
+
+/* The result's winner: the 4px rule stays and a 1px brand ring joins it. */
+.cn-team-won {
+  border-color: var(--cn-brand);
+}
+
+.cn-team-won.cn-team-blue {
+  border-block-start-color: var(--cn-blue);
+}
+
+.cn-team-won.cn-team-red {
+  border-block-start-color: var(--cn-red);
+}
+
+/* The loser: the rule drops to a hairline, and the three pixels come back as padding so the
+   two cards still line up. Two structural signals, neither a wash of colour. */
+.cn-team-lost {
+  border-block-start-width: 1px;
+  border-block-start-color: var(--cn-line);
+  padding-block-start: 3px;
+}
+
+@media (min-width: 720px) {
+  .cn-team {
+    border-block-start: 1px solid var(--cn-line);
+    border-inline-start: 4px solid var(--cn-line);
+  }
+
+  .cn-team-blue {
+    border-inline-start-color: var(--cn-blue);
+  }
+
+  .cn-team-red {
+    border-inline-start-color: var(--cn-red);
+  }
+
+  .cn-team-lost {
+    padding-block-start: 0;
+    padding-inline-start: 3px;
+    border-inline-start-width: 1px;
+    border-inline-start-color: var(--cn-line);
+  }
+}
+
+.cn-team-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--cn-sp-3);
-  padding: var(--cn-sp-3);
+  padding: var(--cn-sp-2) var(--cn-sp-3);
 }
 
 .cn-side {
   margin: 0;
   font-size: var(--cn-t-lg);
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
-.cn-card-blue .cn-side {
+.cn-team-blue .cn-side {
   color: var(--cn-blue);
 }
 
-.cn-card-red .cn-side {
+.cn-team-red .cn-side {
   color: var(--cn-red);
 }
 
@@ -352,47 +491,47 @@
   color: var(--cn-dim);
 }
 
-.cn-seats {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.cn-role {
-  font-size: var(--cn-t-xs);
-  color: var(--cn-dim);
-  letter-spacing: 0.06em;
+/*
+ * Off-role. Colour is never the only signal: the word carries a dotted underline, the row
+ * carries visually-hidden text, and the explanation line names the player and the role.
+ */
+.cn-off {
+  color: var(--cn-brand);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 
 /*
- * Off-role. Colour is never the only signal: the explanation line names the player and the
- * role in words, and the row carries visually-hidden text.
+ * The dot's slot is reserved on **every** seat and the dot is drawn back into it, so a marked
+ * name starts on the same pixel as an unmarked one. Without this the five names in a mixed
+ * card sat at two different left edges (the designer, 2026-09-10).
  */
-.cn-off {
-  color: var(--cn-accent);
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
+.cn-seat-name {
+  padding-left: calc(6px + var(--cn-sp-2));
 }
 
 .cn-off-dot {
   display: inline-block;
   width: 6px;
   height: 6px;
+  margin-left: calc(-6px - var(--cn-sp-2));
   margin-right: var(--cn-sp-2);
   border-radius: 50%;
-  background: var(--cn-accent);
+  background: var(--cn-brand);
   vertical-align: middle;
 }
 
 /* ---------------------------------------------------------------------------
- * Sit-out notice and explanation line: both `surface`, both a 2px accent left rule.
+ * Sit-out strip and explanation line: the card recipe, plus a 3px brand leading rule.
  * ------------------------------------------------------------------------- */
 
 .cn-sitout,
 .cn-explain {
-  background: var(--cn-surface);
-  border-left: 2px solid var(--cn-accent);
-  border-radius: var(--cn-radius);
+  border-inline-start: 3px solid var(--cn-brand);
+  overflow: hidden;
+}
+
+.cn-sitout-text {
   padding: var(--cn-sp-3);
 }
 
@@ -400,6 +539,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--cn-sp-3);
+  padding: var(--cn-sp-3);
 }
 
 @media (min-width: 720px) {
@@ -426,20 +566,22 @@
   width: 100%;
   padding: 0 var(--cn-sp-4);
   font: inherit;
-  color: var(--cn-accent);
+  color: var(--cn-brand);
   background: transparent;
-  border: 1px solid var(--cn-accent);
-  border-radius: var(--cn-radius);
+  border: 1px solid var(--cn-brand);
+  border-radius: var(--cn-radius-row);
   cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
 .cn-button:active {
   background: var(--cn-pressed);
+  transform: scale(0.985);
 }
 
 .cn-button:disabled {
   color: var(--cn-dim);
-  border-color: var(--cn-hairline);
+  border-color: var(--cn-line);
   cursor: default;
 }
 
@@ -460,14 +602,26 @@
 }
 
 /* ---------------------------------------------------------------------------
- * Result card. The result is a fact, not an event: no wash of colour, no banner.
+ * Result. The result is a fact, not an event: no wash of colour, no banner.
  * ------------------------------------------------------------------------- */
 
-.cn-headline {
-  font-size: var(--cn-t-xl);
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+.cn-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-2);
+  padding: var(--cn-sp-4);
+}
+
+.cn-result-head {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cn-sp-3);
+}
+
+.cn-win {
+  font-size: var(--cn-t-display);
 }
 
 .cn-win-blue {
@@ -480,7 +634,6 @@
 
 .cn-duration {
   font-size: var(--cn-t-sm);
-  font-weight: 400;
   color: var(--cn-dim);
 }
 
@@ -488,8 +641,12 @@
   color: var(--cn-dim);
 }
 
+.cn-damage {
+  font-size: var(--cn-t-sm);
+}
+
 .cn-damage-value {
-  color: var(--cn-accent);
+  color: var(--cn-brand);
 }
 
 /* Deltas are never coloured by sign: a gain is `text` at 600, a loss is `dim` at 400. */
@@ -509,14 +666,17 @@
  * ------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .cn-dot,
-  .cn-block,
-  .cn-member,
-  .cn-seat {
+  .cn-live-dot,
+  .cn-block {
     animation: none;
   }
 
-  .cn-new {
+  .cn-new,
+  .cn-button {
     transition: none;
+  }
+
+  .cn-button:active {
+    transform: none;
   }
 }

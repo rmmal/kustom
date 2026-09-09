@@ -215,7 +215,7 @@ pre-empt it.
 
 No OAuth app exists yet. Once someone creates one:
 
-1. <https://discord.com/developers/applications> → **New Application** → name it (Customs Night).
+1. <https://discord.com/developers/applications> → **New Application** → name it (Kustom).
 2. **OAuth2** → **Redirects** → add one per environment. This is Supabase's callback, not ours:
    - local stack: `http://127.0.0.1:54321/auth/v1/callback`
    - hosted: `https://<project-ref>.supabase.co/auth/v1/callback`

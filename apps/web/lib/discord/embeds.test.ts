@@ -71,7 +71,7 @@ describe('teamsEmbed, the worked example', () => {
   it('is the accent bar, not either side: a tinted teams embed reads as a prediction', () => {
     expect(embed?.color).toBe(ACCENT_COLOR);
     expect(embed?.title).toBe('Teams are set');
-    expect(embed?.footer.text).toBe('Customs Night · more on the tonight page');
+    expect(embed?.footer.text).toBe('Kustom · more on the tonight page');
     expect(embed?.timestamp).toBe(TIMESTAMP);
   });
 
@@ -122,7 +122,7 @@ describe('teamsEmbed, the worked example', () => {
   it('stops promising a tonight page when the title is not a link', () => {
     // A localhost origin is dropped by `tonightPageUrl`, and a footer that says "more on the
     // tonight page" over an unlinked title tells a friend to tap something that is not there.
-    expect(teamsEmbed(workedTeamsInput({ url: undefined })).embeds[0]?.footer.text).toBe('Customs Night');
+    expect(teamsEmbed(workedTeamsInput({ url: undefined })).embeds[0]?.footer.text).toBe('Kustom');
   });
 });
 

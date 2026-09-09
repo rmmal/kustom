@@ -4,8 +4,8 @@ import { loadPlayerBoard } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { renderWebName } from '@/lib/tonight/copy';
 import { currentViewer } from '@/lib/viewer';
-import { PlayerView } from '../../_board/PlayerView';
-import '../../board.css';
+import { PlayerView } from '../../../_board/PlayerView';
+import '../../../board.css';
 
 /**
  * `/p/[puuid]` (M3.5). One player: the two numbers, the `Rating` history, the role record and
@@ -33,7 +33,7 @@ const loadPlayer = cache(async (puuid: string) => loadPlayerBoard(createPublicCl
 export async function generateMetadata({ params }: PlayerPageProps) {
   const { puuid } = await params;
   const player = await loadPlayer(puuid);
-  return { title: player === null ? 'Customs Night' : `${renderWebName(player.name)} · Customs Night` };
+  return { title: player === null ? 'Kustom' : `${renderWebName(player.name)} · Kustom` };
 }
 
 export default async function PlayerPage({ params }: PlayerPageProps) {

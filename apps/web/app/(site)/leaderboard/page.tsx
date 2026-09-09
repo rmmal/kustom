@@ -2,8 +2,8 @@ import { LEADERBOARD_LABEL } from '@/lib/board/copy';
 import { loadBoard } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { currentViewer } from '@/lib/viewer';
-import { BoardView } from '../_board/BoardView';
-import '../board.css';
+import { BoardView } from '../../_board/BoardView';
+import '../../board.css';
 
 /**
  * `/leaderboard` (M3.5). The season table, ordered by Proven.
@@ -18,7 +18,7 @@ import '../board.css';
  */
 export const dynamic = 'force-dynamic';
 
-export const metadata = { title: `Customs Night · ${LEADERBOARD_LABEL}` };
+export const metadata = { title: `Kustom · ${LEADERBOARD_LABEL}` };
 
 export default async function LeaderboardPage() {
   const [board, viewer] = await Promise.all([loadBoard(createPublicClient()), currentViewer()]);

@@ -1,4 +1,16 @@
-import { isNameless } from './copy';
+import {
+  BALANCED_SENTENCE,
+  FINISHED_SENTENCE,
+  fillingSentence,
+  HEADLINE_BALANCED,
+  HEADLINE_FILLING,
+  HEADLINE_FINISHED,
+  HEADLINE_IDLE,
+  HEADLINE_IN_GAME,
+  IDLE_SENTENCE,
+  IN_GAME_SENTENCE,
+  isNameless,
+} from './copy';
 import type { LobbyView, PlayerName, SplitChoice, TonightSnapshot, TonightState } from './types';
 
 /**
@@ -40,31 +52,56 @@ export function tonightState(snapshot: TonightSnapshot): TonightState {
 }
 
 export interface HeaderView {
-  /** The word, or the count line. `count` is set only while the lobby is filling. */
-  label: string;
+  /** The word or phrase, upper case, in the display cut. `9 IN THE LOBBY` when `count` is set. */
+  headline: string;
   count: number | null;
-  /** The one pulsing element on the page. It stops at `finished`. */
+  /**
+   * The line under the headline, and the page's one polite live region. It **never repeats the
+   * headline**, and it is `''` on an unrated finish — the slot keeps its reserved height and
+   * says nothing, because there is no apology to make (M3.4).
+   */
+  sentence: string;
+  /** The live pill. It means the lobby is open, not that a socket is up. Gone at `finished`. */
   live: boolean;
 }
 
 /**
- * The header strip, which is always mounted and is the only element that survives every
+ * The status strip, which is always mounted and is the only element that survives every
  * transition: a phone reopened mid-night answers "where are we" in one glance.
+ *
+ * Every string is product's, from the final copy table (05-design.md, 2026-09-09), and
+ * `state.test.ts` pins one per state.
  */
 export function tonightHeader(state: TonightState): HeaderView {
   switch (state.kind) {
     case 'idle':
-      return { label: 'Nothing tonight', count: null, live: false };
-    case 'filling':
-      return { label: 'in the lobby', count: state.lobby.members.length, live: true };
+      return { headline: HEADLINE_IDLE, count: null, sentence: IDLE_SENTENCE, live: false };
+    case 'filling': {
+      const around = state.lobby.members.length;
+      return {
+        headline: HEADLINE_FILLING,
+        count: around,
+        sentence: fillingSentence(around),
+        live: true,
+      };
+    }
     case 'teams':
-      return state.lobby.status === 'in_game'
-        ? { label: 'In game', count: null, live: true }
-        : state.lobby.status === 'finished'
-          ? { label: 'Final', count: null, live: false }
-          : { label: 'Teams set', count: null, live: true };
+      if (state.lobby.status === 'in_game') {
+        return { headline: HEADLINE_IN_GAME, count: null, sentence: IN_GAME_SENTENCE, live: true };
+      }
+      // A finished lobby that reaches the teams block is a game the fold did not rate: the
+      // teams they played stay up under `GAME OVER`, with no deltas and no sentence.
+      if (state.lobby.status === 'finished') {
+        return { headline: HEADLINE_FINISHED, count: null, sentence: '', live: false };
+      }
+      return { headline: HEADLINE_BALANCED, count: null, sentence: BALANCED_SENTENCE, live: true };
     default:
-      return { label: 'Final', count: null, live: false };
+      return {
+        headline: HEADLINE_FINISHED,
+        count: null,
+        sentence: state.result.rated ? FINISHED_SENTENCE : '',
+        live: false,
+      };
   }
 }
 
