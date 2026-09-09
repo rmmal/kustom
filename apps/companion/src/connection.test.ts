@@ -16,6 +16,7 @@ import {
   type ConnectionEvent,
   ConnectionMachine,
   type EogHookEvent,
+  LOCKFILE_HINT,
   type LobbyHookEvent,
   type RankedStatsHookEvent,
   TRANSITIONS,
@@ -464,6 +465,46 @@ describe('ConnectionMachine', () => {
       expect(text).not.toContain('multiUserChatPassword');
     } finally {
       rmSync(logDir, { recursive: true, force: true });
+    }
+  });
+
+  it('says how to point at a custom install only when no lockfilePath is configured', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'companion-hint-'));
+    const missing = join(dir, 'lockfile');
+    try {
+      // No override: the default-style candidate list is all there is, so the hint is due.
+      const bare = createMemoryLogger();
+      const bareMachine = new ConnectionMachine({
+        logger: bare,
+        lockfile: { candidates: [missing], env: {} },
+        pollIntervalMs: 40,
+      });
+      const bareRun = bareMachine.run();
+      await until(() => bare.lines.some((line) => line.message === 'waiting for the League client'));
+      bareMachine.stop();
+      await bareRun;
+      const bareLine = bare.lines.find((line) => line.message === 'waiting for the League client');
+      expect(bareLine?.fields.hint).toBe(LOCKFILE_HINT);
+      expect(LOCKFILE_HINT).toBe('If League is installed somewhere else, add lockfilePath to config.json');
+
+      // With a configured lockfilePath the person has already done what the hint asks.
+      const configured = createMemoryLogger();
+      const configuredMachine = new ConnectionMachine({
+        logger: configured,
+        lockfile: { overridePath: missing, candidates: [], env: {} },
+        pollIntervalMs: 40,
+      });
+      const configuredRun = configuredMachine.run();
+      await until(() => configured.lines.some((line) => line.message === 'waiting for the League client'));
+      configuredMachine.stop();
+      await configuredRun;
+      const configuredLine = configured.lines.find(
+        (line) => line.message === 'waiting for the League client',
+      );
+      expect(configuredLine?.fields).not.toHaveProperty('hint');
+      expect(configuredLine?.fields.tried).toEqual([{ path: missing, reason: 'missing' }]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

@@ -9,10 +9,10 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | M1.1 to M1.10 done; M1.1 to M1.11 done (M1.11 landed 2026-09-09; the wildcard allow-list entry can be removed). Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15 done; M2.6 built, publish and Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
+| M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18, M2.19 done; M2.6 built as 0.1.1, publish and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.3, M3.11 to M3.15 done. Next: M3.4 tonight page, then M3.5, M3.6, M3.7, M3.8, M3.10, M3.16. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
-| M5 Backfill, seasons, stats | not started | Needs M3. Independent of M4. |
+| M5 Backfill, seasons, stats | not started | M5.1 backfill and M5.2 rebuild pulled forward to right after M3.4/M3.5 (user wants past customs to seed ratings); the rest needs M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
 
 Update this table as tasks complete. Status values: `not started`, `in progress`, `blocked: <why>`, `done`.
@@ -1672,6 +1672,7 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 > fixture lands in `packages/lcu/fixtures/16.17/`, and `schemas.test.ts` parses it. This is a byproduct of
 > the acceptance run, not a task that blocks it.
 
+- [x] **M2.19** Windows first-run fixes from the 0.1.0 field test (2026-09-09): the hidden token prompt discards terminal escape sequences and validates the token shape before saving (re-prompts, `--show-token`); a custom League install is found via the process list when the default lockfile is missing (`lockfilePath` still wins). Ships as companion 0.1.1.
 ## M3 Teams in Discord and on the web (2 to 3 days, needs M2)
 
 Goal: first real night. Ten join the lobby, teams appear in Discord with an explanation, results and leaderboard follow.
@@ -2250,6 +2251,245 @@ Acceptance: a full night with real players, teams posted within 15 seconds of th
 Goal: the companion opens the lobby and invites the ten; Discord splits voice; the WhatsApp thread gets a "7 around".
 
 - [ ] **M4.1** `companion_commands` queue: the companion polls, executes, acks. Kinds: `create_lobby`, `invite`, `switch_side`.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene.** Nobody is watching this task. It is the wire under M4.2 and M4.3: the server needs a way to
+    > say "open a lobby", "invite Rami", "you are on red" to a client it cannot reach, and the companion needs a
+    > way to do exactly those three things and nothing else. If it works, ten friends never learn that it exists.
+    > If it half works, somebody's client opens two lobbies, and that is the failure this brief is written against.
+    >
+    > **Where it lives.** `apps/web/app/api/companion/commands/route.ts` (GET) and
+    > `apps/web/app/api/companion/commands/ack/route.ts` (POST), both on the existing companion-token class
+    > (`lib/companionRoute.ts`); the queue's rules in `apps/web/lib/commands.ts`; the wire schemas in
+    > `packages/db/src/schemas/companionCommands.ts` (one payload schema and one result schema per kind, exported
+    > from `@customs/db/schemas` like every other boundary); the runner in `apps/companion/src/commandRunner.ts`
+    > with its executed-ids file in `apps/companion/src/executed.ts`; and the three client calls in
+    > `packages/lcu` on top of `WRITE_ENDPOINTS`, which is the only place in this repo allowed to POST to
+    > `127.0.0.1`. One new migration (take the next unused number) adds the columns below.
+    >
+    > **The migration.** `companion_commands` as shipped in `0001_init.sql` can say what to do and that it was
+    > acked, but not what came back or why it failed, and it has no expiry — a `create_lobby` row handed out an
+    > hour late opens a lobby nobody asked for. Add, never editing 0001:
+    >
+    > ```sql
+    > alter table public.companion_commands
+    >   add column sent_at    timestamptz,
+    >   add column attempts   smallint not null default 0,
+    >   add column result     jsonb,
+    >   add column error      text,
+    >   add column expires_at timestamptz not null default now() + interval '5 minutes';
+    > ```
+    >
+    > The existing `companion_commands_pending_idx` already covers the poll. RLS stays as it is: this table has
+    > no read policy at all and is reached only through the service role behind a token check.
+    >
+    > **Time to live, per kind.** `create_lobby` 60 s, `invite` 5 min, `switch_side` 3 min, set by the writer, in
+    > one map in `lib/commands.ts`. A minute is how long a friend will wait staring at a button before pressing
+    > it again; three minutes is how long a side switch is still the right side; five is how long an invite is
+    > still worth popping up. Expired rows are `failed` with `error = 'expired'`.
+    >
+    > ### `GET /api/companion/commands`
+    >
+    > Query: `clientConnected=true|false` (required). Answer:
+    >
+    > ```
+    > { commands: [{ id, kind, payload, createdAt, expiresAt }], nextPollInMs }
+    > ```
+    >
+    > - **The token's player only.** `target_player_id = <token's player>`, `status in ('pending','sent')`,
+    >   `expires_at > now()`, oldest `created_at` first, at most **5**. There is no admin view of another
+    >   player's queue on this route and no way to ask for one; the parameter does not exist.
+    > - `nextPollInMs` is `5000`. It is the server's dial, exactly as `recheckInMs` is (M2.5): the companion obeys
+    >   the number and holds no interval of its own.
+    > - **Handing a row out** sets `status = 'sent'`, `sent_at = now()`, `attempts = attempts + 1`. A `sent` row is
+    >   handed out again only after **30 s** (`RECLAIM_MS`) — long enough that a companion mid-execution is not
+    >   raced by its own next poll, short enough that a crash costs one poll.
+    > - At `attempts > 3` the row is `failed` with `error = 'not acked after 3 deliveries'` and is never returned
+    >   again. A command that kills the companion three times is not going to work the fourth.
+    > - **`clientConnected=false` answers `{ commands: [], nextPollInMs }` and touches nothing** — no `status`
+    >   move, no `attempts`, and **no `last_seen_at` write**. The companion asks for work only when it can do it,
+    >   so a queue is never drained into a client that is not there, and `companion_tokens.last_seen_at` comes to
+    >   mean "this friend was at their PC with League open", which is the signal M4.2's "around" is built on.
+    >   Every other companion route keeps touching `last_seen_at` as today; they all imply a live client anyway.
+    > - Each call runs one cheap expiry sweep first, in the style of M2.5's abandon sweep:
+    >   `update companion_commands set status='failed', error='expired' where status in ('pending','sent') and expires_at <= now()`.
+    >
+    > ### `POST /api/companion/commands/ack`
+    >
+    > Body: `{ id: uuid, outcome: 'done' | 'failed', result?: <kind's result schema>, error?: string }`
+    > (`error` trimmed to 500 characters). Rules:
+    >
+    > - The row must exist **and** belong to the token's player, otherwise **404** — not 403. A 403 would confirm
+    >   that somebody else's command id exists.
+    > - `outcome: 'done'` → `status = 'acked'`, `acked_at = now()`, `result` stored after parsing with that kind's
+    >   result schema. A result that fails the schema is **422** and the row is left alone: a mangled result is a
+    >   companion bug, and losing it is better than storing a lie that M4.2 will read.
+    > - `outcome: 'failed'` → `status = 'failed'`, `acked_at = now()`, `error` stored, `result` null.
+    > - **An ack of a row that is already `acked` or `failed` is a 200 no-op** — `{ ok: true, status, changed: false }`
+    >   — and changes not one column. This is the other half of execute-once: a lost ack is re-sent, not re-run.
+    > - The route announces acks through a hook list (`registerCommandHook({ onAcked })`, mirroring
+    >   `apps/web/lib/ingest/hooks.ts`). M4.2 hangs the invite fan-out off it. A hook that throws is logged and
+    >   the response still goes out.
+    >
+    > ### The payloads and what comes back
+    >
+    > | kind | payload | result on `done` |
+    > |---|---|---|
+    > | `create_lobby` | `{ lobbyName: string(1..30), lobbyPassword: string(4..16) }` | `{ partyId, lobbyName }` |
+    > | `invite` | `{ puuid, summonerId: string \| null }` | `{ puuid, method: 'summonerId' \| 'puuid', state: 'Pending' \| 'Accepted' }` |
+    > | `switch_side` | `{ targetSide: 100 \| 200 }` | `{ side: 100 \| 200 }` |
+    >
+    > Failure reasons are a closed vocabulary (`commandFailureReasonSchema`), so a page can render them and a log
+    > line can be grepped: `not_connected`, `wrong_phase`, `no_lobby`, `not_custom_lobby`, `already_in_lobby`,
+    > `not_on_a_team`, `side_full`, `endpoint_unverified`, `client_rejected`, `expired`, `malformed_payload`.
+    > `error` is the reason plus, for `client_rejected`, the client's status code and its message — never a body.
+    >
+    > ### Executed once, even when the ack is lost
+    >
+    > `<configDir>/commands-done.json`: `{ version: 1, entries: [{ id, kind, at, outcome, result?, error? }] }`,
+    > capped at 200 entries, entries older than 24 h dropped on write, same tmp-file-and-rename discipline as the
+    > end-of-game queue (`queue.ts`). Written **after the client call returns and before the ack POST**.
+    >
+    > - On every poll, a command id in that file is **not executed again**. The companion re-acks it from the
+    >   recorded outcome and result and makes no client call. That is the whole guarantee.
+    > - The one hole is honest and stated: a process killed between the client call and the file write can run a
+    >   command twice. That is why **every executor reads the lobby first and compares before it writes** — a
+    >   second `create_lobby` finds a lobby open and nacks `already_in_lobby`, a second `invite` finds a `Pending`
+    >   or `Accepted` invitation and acks `done` without POSTing, a second `switch_side` finds the local player
+    >   already on the target side and acks `done` without POSTing. Repeating a command is a no-op by
+    >   construction, not by luck.
+    >
+    > ### What the companion does when the client is not in the right state
+    >
+    > The runner never queues work behind a bad state; it answers straight away so the person pressing the button
+    > learns something.
+    >
+    > - **No client at all.** The runner polls with `clientConnected=false` and is handed nothing. It never nacks
+    >   for this reason; a friend who is launching League gets their invite when the client is up, and the command's
+    >   own TTL is what gives up. (`not_connected` exists for the race where the socket drops between the poll and
+    >   the call.)
+    > - **Phase is anything but `None` or `Lobby`.** `wrong_phase`, no client call. Champion select and in-game are
+    >   not states we act in — see the line below.
+    > - **`create_lobby`** with `GET /lol-lobby/v2/lobby` answering 200: `already_in_lobby`, and the existing
+    >   `partyId` goes in `error`. **The companion never dissolves a lobby somebody is standing in.**
+    > - **`invite`** with a 404 from the lobby: `no_lobby`. With `gameConfig.isCustom` false: `not_custom_lobby`.
+    >   With the invitee already in `members[]` or already holding a `Pending` invitation: acked `done`, no POST.
+    > - **`switch_side`** with no lobby or a non-custom one: as above. With the local puuid in `customSpectators`
+    >   or on neither side: `not_on_a_team` — the toggle cannot seat a spectator. With the target side already
+    >   holding five: `side_full`. Already on the target side: `done`, no POST.
+    > - **A kind whose reference row is not `verified`:** `endpoint_unverified`, no client call, one log line
+    >   naming the row to verify. See the gate below.
+    >
+    > ### The line this task sits on
+    >
+    > The executor holds a **hard allow-list of client paths** — `POST /lol-lobby/v2/lobby`,
+    > `POST /lol-lobby/v2/lobby/invitations`, `POST /lol-lobby/v1/lobby/custom/switch-teams` (and its v2
+    > candidate) — plus the reads it needs (`GET /lol-lobby/v2/lobby`, `GET /lol-gameflow/v1/gameflow-phase`,
+    > `GET /lol-summoner/v2/summoners/puuid/{puuid}`). Anything else is refused at runtime with a thrown error in
+    > tests. **Create a lobby, invite, switch side. Nothing else, ever.** No champion-select path, no matchmaking
+    > path, no `/lol-champ-select/*` subscription acted on, no request to `127.0.0.1:2999`. That is the Riot line
+    > in `CLAUDE.md` and in `03-lcu-reference.md`, and a command kind the enum does not name is acked `failed`
+    > with `malformed_payload` rather than turned into a client call.
+    >
+    > ### Before any of it: the live verification pass
+    >
+    > `03-lcu-reference.md` still marks all three write endpoints `unverified`, and questions 5 and 6 are open,
+    > because M0's tooling is GET-only by design. **Nothing in this task may ship enabled on an unverified row**
+    > (`CLAUDE.md`, "Verify before you claim"). So M4.1 ships two things: the queue, which is fully testable
+    > against stubs, and the tool that turns the rows green.
+    >
+    > `pnpm --filter companion verify-commands` (packaged: `CustomsNight.exe --verify-commands`). It is run by a
+    > person, with the League client up and one friend online, and it is the **only** code allowed to POST to the
+    > client while the rows are unverified. It makes no API calls, prompts before each probe, prints a report and
+    > writes it to `<configDir>/verify-commands-<patch>-<date>.txt`.
+    >
+    > 1. **Create.** `POST /lol-lobby/v2/lobby` with the body in the reference row, `lobbyName: "customs-verify"`,
+    >    `lobbyPassword: "1234"`, `mutators.id: 1`. Print the status, the body's `partyId` and
+    >    `gameConfig.customMutatorName`, and whether the client's own lobby screen shows the password. Repeat with
+    >    `mutators.id: 2` and record which number is which mode.
+    > 2. **Invite.** With that lobby open: `GET /lol-summoner/v2/summoners/puuid/{puuid}` for the friend, then
+    >    `POST /lol-lobby/v2/lobby/invitations` with `[{ toSummonerId }]`. Print the status and the resulting
+    >    `invitations[]` row. On any 4xx, retry with `[{ toPuuid }]` and print both answers.
+    > 3. **Switch.** `POST /lol-lobby/v1/lobby/custom/switch-teams` with an empty body; print the status and
+    >    `customTeam100`/`customTeam200` before and after. On 404, the v2 path. Then fill the target side (the
+    >    friend plus bots) and repeat, printing what a full side answers.
+    >
+    > **Pass condition, per kind:** the endpoint's row in `03-lcu-reference.md` carries the exact body that
+    > worked, the answer for the full-side case, and a status of `verified (<patch>, <date>)`; questions 5 and 6
+    > are answered in the same edit. Until a kind's row is green, its per-kind flag is off at **both** ends — the
+    > server does not queue it and the companion answers `endpoint_unverified` — so an old exe can never become
+    > the thing that POSTs an unverified path. The user runs the mode and pastes the report; the engineer writes
+    > the rows. Do not go looking for another way in if a path 404s: M4.3's escape hatch is a line of copy, not a
+    > different endpoint.
+    >
+    > ### Edge cases
+    >
+    > - **Fewer than ten, more than ten.** The queue does not know how many people are in the room. Who gets a
+    >   command is M4.2's and M4.3's decision; this layer carries one row per player.
+    > - **Someone leaves mid-lobby.** Their pending rows sit until the TTL fails them. Nothing here cancels
+    >   anything; M4.3 supersedes its own rows when the teams change.
+    > - **Companion disconnects.** It keeps polling with `clientConnected=false` and is handed nothing, so a
+    >   command is never spent on a dead client. If the client comes back inside the TTL, the command runs.
+    > - **A player with no companion.** The row expires and is `failed` with `expired`. M4.2 should not write it
+    >   in the first place; the TTL is the backstop, not the rule.
+    > - **An unknown player.** A `players` row is a `players` row; the queue keys on `target_player_id` and has no
+    >   opinion about names or ranks.
+    > - **Two tokens for one player.** The architecture says one token per player. Two live tokens on two machines
+    >   would both be offered the same row and both could execute it; `RECLAIM_MS` makes it unlikely and the
+    >   read-before-write executors make it harmless for `invite` and `switch_side`. Two machines signed in as one
+    >   player is out of scope and named here so nobody thinks it was missed.
+    > - **A second command while the first is still running.** The runner executes one command at a time, in the
+    >   order it was handed them. Five is the page size for a reason.
+    >
+    > ### Acceptance check
+    >
+    > Integration tests against the local stack for the routes, stubbed-client and stubbed-API tests for the
+    > runner, in the style of `companion.integration.test.ts` and `gameWatcher.test.ts`. 13 is a human check.
+    >
+    > 1. GET with a valid token returns only that player's rows, oldest first, at most five; a second player's row
+    >    is never visible with either token. No bearer, a revoked token, an unknown token → 401.
+    > 2. A handed-out row is `sent` with `attempts = 1` and `sent_at` set; polling again at +29 s does not return
+    >    it; at +31 s it returns with `attempts = 2`; the delivery that would make `attempts` 4 instead marks it
+    >    `failed` with `error = 'not acked after 3 deliveries'` and it is never returned again.
+    > 3. `clientConnected=false` answers `{ commands: [] }`, moves no row, and leaves `last_seen_at` where it was;
+    >    the same token with `clientConnected=true` a second later does move it (subject to the 5-minute throttle).
+    > 4. A row past `expires_at` is never returned and is `failed` with `error = 'expired'` after any later poll.
+    > 5. Ack `done` with a valid result: `acked`, `acked_at` set, `result` stored. Ack it again: 200,
+    >    `changed: false`, and every column identical. Ack another player's id: 404 with no row read into the
+    >    response. Ack `done` with a result that fails the kind's schema: 422 and the row untouched.
+    > 6. Ack `failed` with `side_full`: `failed`, `error` carries the reason, `result` null, and the registered
+    >    `onAcked` hook saw it.
+    > 7. **The lost ack.** Stubbed client, stubbed API: a `create_lobby` is executed once, the ack POST fails with
+    >    a network error, the same row comes back on the next poll, and the companion makes **no** client call and
+    >    re-acks with the identical result. Assert the client stub recorded exactly one POST.
+    > 8. The same, across a restart: kill the runner after the client call and before the ack, start it again,
+    >    still exactly one client POST for that id.
+    > 9. Every nack path, one test each: no lobby → `no_lobby`; a non-custom lobby → `not_custom_lobby`; phase
+    >    `ChampSelect` → `wrong_phase`; an open custom lobby on `create_lobby` → `already_in_lobby` with the
+    >    `partyId` in `error`; `switch_side` while already on the target side → `done` with zero client POSTs;
+    >    target side holding five → `side_full` with zero client POSTs; a spectator → `not_on_a_team`.
+    > 10. With a kind's verification flag off: the command is acked `failed` with `endpoint_unverified`, no client
+    >     call is made, and one log line names the reference row.
+    > 11. Across the whole companion suite, the client stub records **no** request to a path outside the
+    >     allow-list and **no** connection to port 2999. Assert it as a test, not as a review.
+    > 12. No log line at `info` or above carries a lobby password, a companion token, a lockfile password or a
+    >     chat credential; the created lobby's password appears at `debug` only. (`log.addSecret` covers the token;
+    >     the password is a deliberate `debug`.)
+    > 13. **Live:** the verification report exists for the current patch, and either the three rows in
+    >     `03-lcu-reference.md` are `verified` with their exact bodies, or the kinds that failed are flagged off in
+    >     both places and M4.2/M4.3 read those flags.
+    > 14. `pnpm -r typecheck` and `pnpm -r test` pass; the migration applies on `pnpm db:reset` and
+    >     `pnpm db:types` is regenerated.
+    >
+    > ### Out of scope
+    >
+    > What the commands are *for* — the Start button and the invite fan-out (M4.2), the side switch (M4.3). The
+    > Discord bot (M4.4) and presence (M4.5). Any fourth command kind: the enum has three and widening it is a
+    > migration and a decision row, not a drive-by. Automatic retry of a `failed` command — a person presses the
+    > button again, which is one tap and is honest about what happened. An admin page for the queue; the row's
+    > `status` and `error` are enough until somebody asks twice.
+
 - [ ] **M4.2** "Start a lobby" button on the tonight page and an admin route: creates a `create_lobby` command for a chosen companion user, with a generated name and password, followed by `invite` commands for everyone linked and "around".
 
     > **Note (product, 2026-09-08, after M0.3).** The invite body is still unverified and M0 could not
@@ -2260,6 +2500,153 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > `invitations[]` in the lobby event shows which worked. Update the reference row and its status before
     > building the queue handler on it — that is the "verify before you claim" rule. `create_lobby`'s body
     > and its `mutators.id` values are unverified for the same reason and get the same treatment here.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene.** 21:40. Seven friends are in Discord voice and one of them has the tonight page open on a
+    > phone. They tap **Start a lobby**. Somebody's League client — nobody had to decide whose — opens a custom
+    > lobby with a name and a password neither of them chose, and the invite popup appears for everyone who is
+    > around. Nobody typed a lobby name, nobody read a password out loud, nobody asked "who's making it?".
+    > This is the one tap M4's acceptance line already accepts, and it is the only one.
+    >
+    > **Where it lives.** One route, `apps/web/app/api/lobbies/start/route.ts`, called by two surfaces: the
+    > tonight page control (M3.4's component) and a `Start a lobby` control on the `/admin` dashboard index. The
+    > rules — who may press, who hosts, the name, the password, who is around, the fan-out — live in
+    > `apps/web/lib/lobbyStart.ts`. The invite fan-out hangs off M4.1's `onAcked` hook. The companion side is
+    > M4.1's executor plus one thing: it remembers the password it set.
+    >
+    > **Who may press.** A signed-in visitor whose Supabase session matches a `players` row — M3.6's third route
+    > class — or an admin. Not admin-only: opening a lobby is what any of these ten people does today, and making
+    > it an admin chore puts a human in the way of a night starting. An anonymous visitor sees the button
+    > disabled with `Sign in with Discord to start a lobby.`; a signed-in visitor with no player row gets M3.6's
+    > `Which one of these is you?` flow instead of an error. **One route, both surfaces** — the admin control is
+    > the same call with an admin's session, so there is one set of rules and no second copy to drift.
+    >
+    > **Refusals.** Each is a 409 and one sentence the page prints where the button was:
+    >
+    > | when | sentence |
+    > |---|---|
+    > | a lobby of tonight is `open`, `balanced` or `in_game` | `There is already a lobby open.` |
+    > | nobody's companion has been up in the last 10 minutes | `Nobody has the companion running right now. Start it and try again.` |
+    > | a `create_lobby` for tonight is still pending (< 60 s old) | `A lobby is already being opened.` |
+    > | the `create_lobby` kind is flagged off (M4.1's gate) | `Opening lobbies isn't verified on this patch yet.` |
+    >
+    > The third one is also the double-tap guard: the pending row *is* the lock, so two people tapping at the same
+    > moment produce one command.
+    >
+    > **Who hosts.** The server picks: among players with an unrevoked companion token whose `last_seen_at` is
+    > inside the last **10 minutes**, the newest, preferring the presser when they qualify. `last_seen_at` means
+    > "at their PC with League open" from M4.1 on, which is exactly the question being asked. Nobody chooses a
+    > host in a dropdown; the page names the one that was picked while the command is pending and then stops
+    > mentioning it.
+    >
+    > **The name and the password.**
+    >
+    > - Name: `Customs <dd Mon> #<n>`, ASCII, at most 30 characters — `Customs 09 Sep #2`. `n` is the number of
+    >   `lobbies` rows for tonight (`nightStart`, `CUSTOMS_NIGHT_TZ`, any status) plus one, so the night's second
+    >   lobby says so in the client's own lobby list and in the Discord embed.
+    > - Password: four digits, `randomInt(0, 10000)` zero-padded. Four because somebody joining by hand types it,
+    >   and the group reads it out in voice. It is not a secret: it goes in the Discord embed and on the tonight
+    >   page.
+    > - Both go on the `create_lobby` payload. The companion keeps `{ partyId → password }` in memory and sends
+    >   `lobbyPassword` on **every** lobby post for that party. That is what finally fills
+    >   `lobbies.lobby_password`, and it **supersedes** the 2026-09-08 decision that the column stays null until
+    >   M4.1.
+    > - **A `lobbyPassword: null` never clears a stored password.** Only a non-null value writes. The second
+    >   companion in the same lobby posts null, and so does the host's own companion after a restart; neither of
+    >   them knows the password and neither may erase it.
+    > - Mode: blind pick (`mutators.id: 1`), `mapId: 11`, `teamSize: 5`, `spectatorPolicy: 'AllAllowed'` — one
+    >   constant, `CUSTOM_LOBBY_MUTATOR_ID`, matching the lobbies the group actually opened in the 16.17 capture
+    >   (queue 3100). If the group wants draft, that is a one-line change and a decision row, not a picker on the
+    >   page: a dropdown is a step, and this product's claim is that there are none.
+    >
+    > **"Around", defined here because M4.5 does not exist yet.** Voice presence is the real answer and it lands
+    > two tasks later. Until then, around is the union of:
+    >
+    > - **a.** every player whose companion token was seen in the last **60 minutes** (`last_seen_at`, which now
+    >   means their client was up); and
+    > - **b.** every player who appeared in a custom on one of the last **7 nights** — a `game_players` row, or a
+    >   `lobby_members` row of a lobby that reached `in_game` — counted in nights by `CUSTOMS_NIGHT_TZ`, the same
+    >   06:00 boundary as everything else;
+    >
+    > minus the host, minus anyone already in `lobby_members` for the live lobby, ordered most recently active
+    > first, capped at **19** invites. Clause (b) is not decoration: `00-product.md` says one or two friends run
+    > the companion, so a companion-only definition would invite two people and call it a night. An invite that
+    > reaches somebody who is not around costs them one popup that expires on its own; a missing invite costs a
+    > person their game. When M4.5 lands, voice presence replaces clause (b) and this rule shrinks to one line.
+    >
+    > **The fan-out.** On the `create_lobby` ack with `outcome: 'done'` — which is also the proof that a lobby
+    > exists — queue one `invite` command **per person in the around set, all targeted at the host's companion**
+    > (the client invites into whatever lobby it is in; the invitee needs no companion at all). Payload carries
+    > the invitee's `puuid` and their `summoner_id` when we have one, so M4.1's executor can use whichever body
+    > the verification pass found. A `create_lobby` that fails or expires queues nothing: no lobby, no invites,
+    > no half state.
+    >
+    > **Copy (product owns these words).**
+    >
+    > - Button: `Start a lobby`
+    > - While the command is pending: `Opening a lobby on <Name>'s PC…`
+    > - On success: nothing. The member list appearing *is* the answer, and a toast on top of it is noise.
+    > - Under the member list while the lobby is filling, until ten are in:
+    >   `Invited <n> friends — waiting for them to accept.`
+    > - The four refusals in the table above.
+    >
+    > ### Edge cases
+    >
+    > - **Fewer than ten accept.** Nothing happens. The lobby sits `open`, M2.5's rules take over, and there is no
+    >   second wave of invites and no reminder. The button is not a doorman.
+    > - **More than ten accept.** The client caps each side at five and the rest land in the spectator slot, which
+    >   M2.5 already counts as around and rotates through. Nothing here changes.
+    > - **Someone leaves mid-lobby.** No re-invite. If the group wants them back, someone presses Start on the
+    >   next cycle or invites them from the client, which is the same click it has always been.
+    > - **The host's companion goes away between the press and the poll.** The command is never handed out
+    >   (`clientConnected=false`), it expires after 60 s, and the page says
+    >   `Nobody's client answered. Try again.` Nothing was created.
+    > - **The host already has a lobby open** (they made one by hand a minute earlier). The nack is
+    >   `already_in_lobby`; the page says `<Name> already has a lobby open — everyone can join that one.` and no
+    >   password is stored, so the teams embed falls back to the name alone, exactly as M3.1 already specifies.
+    > - **An unknown player in the around set.** Invited like anyone else on their puuid; they have no name yet and
+    >   the page renders `Someone` (M3.10).
+    > - **The host's companion restarts after creating the lobby.** It no longer knows the password and posts
+    >   null; the stored password survives by the never-clear rule above.
+    > - **Two people tap at the same moment.** One `create_lobby` row; the second tap gets
+    >   `A lobby is already being opened.`
+    > - **The night's second lobby.** After a cycle reaches `finished`, Start is allowed again and `#n` increments.
+    >
+    > ### Acceptance check
+    >
+    > Integration tests for the route, unit tests for the around set and the name/password, and one live check.
+    >
+    > 1. Anonymous → 401 and the disabled button with the sign-in sentence. A signed-in linked non-admin →
+    >    allowed. An admin → allowed. A signed-in visitor with no player row → M3.6's picker, not a 500.
+    > 2. With no token seen in the last 10 minutes → 409, the "nobody has the companion running" sentence, and
+    >    **zero** rows written anywhere.
+    > 3. A successful press writes exactly one `create_lobby` row for the chosen host, `expires_at` 60 s out, a
+    >    name matching `^Customs \d\d [A-Z][a-z]{2} #\d+$` and a four-digit password. A second press inside 60 s
+    >    writes no second row and answers 409.
+    > 4. On the `create_lobby` ack, `invite` rows appear for exactly the around set minus the host minus current
+    >    members, at most 19, most-recently-active first, each carrying the invitee's puuid and their
+    >    `summoner_id` when known — all with `target_player_id` = the host.
+    > 5. A `create_lobby` acked `failed`, and one left to expire, each queue **zero** invites.
+    > 6. The host's next lobby post carries `lobbyPassword` and `lobbies.lobby_password` holds it; a later post
+    >    from a second companion with `lobbyPassword: null` leaves the column unchanged; the teams embed's Lobby
+    >    field renders `` `Customs 09 Sep #1` · password `4821` `` — the first time that field has ever had a
+    >    password (M3.1, acceptance check 5).
+    > 7. Around-set units: a token last seen 61 minutes ago with no game in 7 nights is out, at 59 minutes in; a
+    >    player who played 6 nights ago in, 8 nights ago out; anyone in `lobby_members` of the live lobby is never
+    >    invited; the host is never invited; a 25-player group is trimmed to 19 with a log line.
+    > 8. With `create_lobby` or `invite` flagged off by M4.1's verification gate, the route answers 409 with the
+    >    "not verified on this patch yet" sentence and writes nothing.
+    > 9. **Live, with one friend:** press Start, a lobby opens on the host's client with that name and password,
+    >    the friend gets an invite popup, and the tonight page shows the member list without anyone refreshing it.
+    > 10. `pnpm -r typecheck` and `pnpm -r test` pass.
+    >
+    > ### Out of scope
+    >
+    > Side switching (M4.3), voice (M4.4), the "N around" count and presence (M4.5). A mode picker, a name field,
+    > a password field — all three are steps. Kicking, dissolving a lobby from the web, or re-inviting. Backfill,
+    > seasons, anything in M5. Changing who sits (M2.5 owns that and it has not moved).
+
 - [ ] **M4.3** Auto side switch: after balancing, for each lobby member who runs a companion, queue `switch_side` if they are on the wrong side. Verify the endpoint in M0 first; if it does not exist, this task is dropped and the embed says "switch to your side".
 
     > **Correction (product, 2026-09-08, after M0.3).** "Verify the endpoint in M0 first" did not happen and
@@ -2274,9 +2661,133 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > to. Moving yourself in a lobby is one click, and this milestone's acceptance ("everyone on the right
     > side") is met by people clicking it. Do not invent a champion-select or in-game path to get around a
     > 404 — that is the line in `CLAUDE.md`.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene.** The teams post in Discord. Ten friends alt-tab back to the client and they are already on the
+    > sides the bot gave them. That is the whole feature. The version of it that ships if the client will not
+    > cooperate is one sentence on the screen, and it costs each person one click — which is what they do today.
+    > Either way M4's acceptance line ("everyone on the right side") is met; only the number of clicks changes.
+    >
+    > **Where it lives.** `apps/web/lib/commands.ts` (the queue writer and the flag), hung off the existing
+    > `onBalanced` hook in `apps/web/lib/ingest/hooks.ts` — the same seam Discord posts from — plus the reroll
+    > path (M3.2). The embed line goes in the teams embed builder, the page line in M3.4's teams state. The
+    > companion side is entirely M4.1's `switch_side` executor; this task adds no client call of its own.
+    >
+    > ### The verification gate
+    >
+    > `switch_side` runs only when **both** are true: the switch-side row in `03-lcu-reference.md` is `verified`
+    > for the running patch, and `SWITCH_SIDE_ENABLED` in `apps/web/lib/commands.ts` is on. One constant, read by
+    > the queue writer **and** by the copy below, so the embed and the queue can never say different things. The
+    > companion keeps its own per-kind flag from M4.1: a stale exe must never be the thing that POSTs an
+    > unverified path.
+    >
+    > The verification itself is M4.1's `verify-commands` probe 3, run by a person against a live client. Its
+    > answer decides this task, and there are three:
+    >
+    > - **A path toggles the local player.** Write the working path, whether the empty body is required, and the
+    >   full-side answer into the reference row and question 5, flip both flags on, and the queue below ships.
+    > - **Neither path works, or it only works from a state we do not enter.** The task is dropped, the flag stays
+    >   off, the fallback copy is what ships, and the status table says "dropped: no switch-side path on 16.17"
+    >   with the date. **Do not look for another way in.** A champion-select or in-game path is the line in
+    >   `CLAUDE.md` and no amount of convenience buys it.
+    > - **It works but a full target side refuses.** Expected, and handled below — the endpoint is a toggle, so
+    >   two people trading sides cannot both go first.
+    >
+    > ### What gets queued, and when
+    >
+    > On the `balanced` transition, and again on a reroll promotion (M3.2), for each of the chosen ten who:
+    >
+    > - **a.** has an unrevoked companion token seen in the last **10 minutes** (`last_seen_at` means their client
+    >   is up, from M4.1), **and**
+    > - **b.** has a `lobby_members.side` that differs from the side the chosen split gives them, **and**
+    > - **c.** has a `side` that is not null.
+    >
+    > Clause (c) is the one that is easy to miss: a friend in the spectator slot who is in the chosen ten has
+    > `side: null`, and a toggle cannot seat a spectator on a team. They are never queued and the line below is
+    > what tells them to move. Nobody outside the chosen ten is ever queued — a sitter is not moved by us.
+    >
+    > **On a reroll, the previous cycle's pending `switch_side` rows are marked `failed` with
+    > `error = 'superseded'` in the same write that queues the new ones**, so nobody is dragged to a side from the
+    > split the group just rerolled away from. At most one pending `switch_side` per player per lobby at any time.
+    >
+    > **The bounce.** Both sides cap at five and the endpoint only toggles, so when two people are trading places
+    > one of them finds the target side full. Each executor re-reads the lobby immediately before acting and nacks
+    > `side_full` rather than POSTing (M4.1). Whoever's seat clears first succeeds; anyone left over is covered by
+    > the line. We do not sequence the queue to choreograph a swap — a two-step dance across two machines with a
+    > five-second poll is more ways to be wrong than the click it replaces.
+    >
+    > **Why this is safe against a rebalance.** A side change is not part of the roster's identity (M2.5), so a
+    > companion's lobby post after a switch updates `lobby_members.side` without touching `lobbies.updated_at` and
+    > without restarting the ten-second clock. Switching sides can never cause a rebalance. That property is load
+    > bearing for this task; if it ever changes, this task breaks first.
+    >
+    > ### The copy, and when each line appears
+    >
+    > The teams embed is posted **at the moment of balancing**, before any companion has polled, so the embed can
+    > never truthfully say "everyone is on their side". It says what will happen:
+    >
+    > - Flag **off** (or dropped): `Move to your side in the lobby.`
+    > - Flag **on**: `You'll be moved to your side — if not, move yourself.`
+    >
+    > One line, in the `Seats` block that M3.13 already put above the team cards; the designer places it and does
+    > not have to invent the words. It is never per-person: naming who is on the wrong side is stale the second
+    > somebody moves, and on a phone it is four extra lines nobody reads.
+    >
+    > The tonight page is live and can be accurate, so it shows `Move to your side in the lobby.` **while any of
+    > the chosen ten is on a side that is not theirs**, and nothing once all ten match. It disappears by itself,
+    > which is the only way a nagging line is allowed to exist.
+    >
+    > ### Edge cases
+    >
+    > - **Fewer than ten around.** No balance, so nothing to queue.
+    > - **More than ten.** Only the chosen ten; a sitter is never moved, and a spectator who is playing is told to
+    >   move rather than dragged.
+    > - **Someone leaves mid-lobby.** The lobby goes back to `open`; the pending rows are superseded by the next
+    >   balance. One already in flight may still fire and move somebody in a lobby that is rebalancing — harmless,
+    >   because the next balance assigns sides again and the line is on the screen either way.
+    > - **Companion disconnects.** It is handed nothing while `clientConnected=false` (M4.1); the command expires
+    >   after three minutes; the person moves themselves. No nack, no noise.
+    > - **Unknown player.** No token, no command, covered by the line like anyone else without a companion.
+    > - **Everyone is already on the right side.** Zero rows queued, and the embed still carries its line. Correct:
+    >   the embed cannot know, and "move to your side" read by somebody already on their side costs nothing.
+    >
+    > ### Acceptance check
+    >
+    > 1. Flag off: a `balanced` transition writes **zero** `switch_side` rows, the embed carries
+    >    `Move to your side in the lobby.`, and the tonight page carries the same sentence.
+    > 2. Flag on: rows are queued for exactly the chosen ten whose stored side differs and whose token was seen in
+    >    the last 10 minutes; a player with `side: null` is never queued; a sitter is never queued; a player whose
+    >    token was last seen 11 minutes ago is never queued.
+    > 3. Each queued row carries `targetSide` equal to the side that player has in the **chosen** split, and
+    >    `expires_at` three minutes out.
+    > 4. A reroll marks the earlier rows `failed` with `superseded` before queuing the new set; at no point does a
+    >    player hold two pending `switch_side` rows.
+    > 5. Companion: already on the target side → acked `done` with zero client POSTs; target side holding five →
+    >    `side_full` with zero client POSTs; spectator → `not_on_a_team`.
+    > 6. After a successful switch, the next lobby post updates `lobby_members.side`, `lobbies.updated_at` does
+    >    **not** move, and the lobby is still `balanced` — the regression check for the property above.
+    > 7. The tonight page's line is present while one of the ten is mismatched and gone when all ten match, driven
+    >    by the Realtime `lobby_members` events with no refetch and no re-render of the team cards.
+    > 8. Flag on with the embed: the message says `You'll be moved to your side — if not, move yourself.` and the
+    >    message is never edited afterwards (M3.1's rule stands).
+    > 9. `pnpm -r typecheck` and `pnpm -r test` pass. If the endpoint did not verify, checks 2 to 6 are skipped
+    >    with the reason in the status table and 1, 7 and 9 still pass.
+    >
+    > ### Out of scope
+    >
+    > Everything about the lobby existing (M4.2). Voice (M4.4, M4.5). Any attempt to move a spectator onto a team,
+    > or to swap two players by orchestrating two commands. Champion select, in any form, for any reason.
+
 - [ ] **M4.4** `apps/discord` bot: Realtime subscription; on `balanced` move linked members into blue and red voice; on `finished` move everyone back. Handles missing permissions gracefully with a log line, never a crash.
 - [ ] **M4.5** Presence: when lobby voice membership changes and no lobby is open, post or edit a single "N around: names" message. Count feeds the sit-out logic as "around".
 - [ ] **M4.6** Deploy the bot to Fly.io or Railway with a health check and auto-restart.
+
+- [ ] **M4.7** Designer: the two M4 surfaces that have copy and no layout. (a) The `Start a lobby` control on the tonight page — where it sits in the **idle** and **filling** states of `05-design.md`'s state table, and how the four refusal sentences and the pending line (`Opening a lobby on <Name>'s PC…`) are shown without a toast. (b) The side line — `Move to your side in the lobby.` / `You'll be moved to your side — if not, move yourself.` — in the teams embed's `Seats` block (field order fixed by M3.13) and under the team cards on the page. The words are product's and are fixed in the M4.2 and M4.3 briefs; the placement is the designer's.
+
+    > **Acceptance check.** `05-design.md` shows both controls in the state table and in the embed layout, with the exact strings, and says what the page shows while a `create_lobby` is pending. No new component vocabulary and no second copy of a sentence: if the doc and the brief disagree by a character, the doc is wrong.
+
+- [ ] **M4.8** Product: when M4.2 lands, `00-product.md` gains `Start a lobby` as the third thing a person can change (it is a human action the milestone acceptance already accepts, and the section currently says there are two), and the nightly loop's step 2 stops saying "someone opens a custom lobby" as if by hand. Same session as M4.2, with a row in `04-decisions.md` only if the behaviour differs from the brief.
 
 Acceptance: from an empty Discord voice channel to a balanced lobby with everyone on the right side and in the right voice channel, with the only human actions being "join voice", "click Start a lobby", and "accept invite".
 
@@ -2304,7 +2815,328 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > How far back the window reaches is unknown — **M5.6**. Until that is answered, the honest claim is
     > "every custom still in the history of someone who runs the companion", which is what
     > `00-product.md` now says.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **Sequencing: this task is pulled forward.** It runs **right after M3.4 and M3.5**, before the first real
+    > night, and M5.2 runs with it. The reason is the group's, not the plan's: the customs in everybody's match
+    > history are the only evidence the ratings have, and a leaderboard that opens empty on night one is a month
+    > of nightly games away from meaning anything. Backfill first, then a rebuild, and the first night starts on
+    > real numbers instead of rank seeds. It keeps the id M5.1; the M5 row in the status table says
+    > "M5.1 and M5.2 pulled forward, ahead of M4". Nothing in it depends on M4, and M4 does not wait for it.
+    >
+    > **The scene.** A friend approves it once on the admin page. Nothing else happens that anyone can see. The
+    > next time they open the tonight page, the leaderboard has the last three weeks of customs in it, with the
+    > right people on the right sides and the right ratings, and nobody typed a score.
+    >
+    > **Where it lives.** `apps/companion/src/backfill.ts` (the walker, its cache and its throttle) with a
+    > `backfill.ts` mapper beside the eog mapper in `packages/lcu`; `apps/web/app/api/companion/backfill/scan/route.ts`
+    > (the "what do you already have" call) reusing the existing `POST /api/companion/game` for the games
+    > themselves; `apps/web/lib/ingest/game.ts` unchanged except for the two rules below; a `Backfill` column on
+    > `/admin/players`. One migration (next unused number) adds two columns to `players`. Both match-history
+    > endpoints are already `verified` on 16.17 — the list and the detail — so nothing here waits on a client
+    > verification pass.
+    >
+    > ### The two facts this is built on
+    >
+    > Both from the 16.17 capture and already in the M4-era note above: **the list carries only the local player**,
+    > so one `GET /lol-match-history/v1/games/{gameId}` per unknown custom is the only road to the ten rosters;
+    > and **match detail is camelCase with `teams[].win` as `"Win"`/`"Fail"`**, so backfill needs its own mapper
+    > into the same payload rather than a reuse of M2.10's eog mapper.
+    >
+    > ### The payload
+    >
+    > The existing `phase: 'eog'` body from `@customs/db/schemas`, with `source: 'backfill'`. Field by field, from
+    > `match-detail`:
+    >
+    > | field | from the detail | rule |
+    > |---|---|---|
+    > | `gameId` | `gameId` | The dedupe key, same as an eog block. |
+    > | `startedAt` | `gameCreation` (epoch ms) | ISO 8601 with an offset. No arithmetic: the detail has a real start time, unlike the eog block. |
+    > | `durationS` | `gameDuration` (seconds) | |
+    > | `winningSide` | `teams[]` where `win === 'Win'` | No winner, or both, → the game is dropped locally and never posted. |
+    > | `gameType` | `gameType` | Only `CUSTOM_GAME` is a candidate at all. |
+    > | `partyId` | — | **Absent.** A backfilled game belongs to no lobby; `games.lobby_id` stays null and M2.5 already rates such games. |
+    > | `participants[].puuid` | `participantIdentities[].player.puuid`, joined on `participantId` | The identity, as everywhere. |
+    > | `participants[].gameName` / `tagLine` | `participantIdentities[].player.gameName` / `tagLine` | Backfill is where a friend the database has never met gets a name. |
+    > | `participants[].side` | `participants[].teamId` | 100 or 200. |
+    > | `participants[].role` | — | **Null.** The detail has no `detectedTeamPosition`; `timeline.lane`/`role` is a different vocabulary and nothing verified maps it. Role is display-only and rating does not read it. M5.4 may revisit with a fixture. |
+    > | stats | `participants[].stats`, camelCase | `kills`, `deaths`, `assists`, `goldEarned`, `totalDamageDealtToChampions`, `cs = totalMinionsKilled + neutralMinionsKilled`. A missing key is 0, as in the eog mapper. |
+    > | `raw` | the whole detail body | Scrubbed on the way in and again in ingest. The detail carries no chat credentials, but `scrubRawEogBlock` is idempotent and `games.raw` is public-read; this is not the place to make an exception. |
+    > | `source` | — | `'backfill'`. |
+    >
+    > `season_id` keeps its default (the active season). A custom from before the season began still lands in the
+    > season that is running, which with one season is exactly right and with several is M5.3's problem — say so
+    > in a comment rather than inventing season attribution here.
+    >
+    > ### What counts as a duplicate
+    >
+    > - **The same `lcu_game_id` already in `games`, from any source.** The insert is the existing
+    >   `onConflict: 'lcu_game_id', ignoreDuplicates: true`: the response says `created: false` and **not one
+    >   column of the stored row changes** — not `raw`, not `started_at`, not `source`, not a `game_players` row.
+    >   A game we captured live is the better record and backfill never overwrites it.
+    > - **The same game backfilled by two friends.** Same rule, no coordination, exactly as two companions in one
+    >   end of game already work.
+    > - **Locally,** `<configDir>/backfill.json`: `{ version: 1, lastRunAt, deepestBegIndex, knownGameIds: number[] }`
+    >   capped at 2000 ids, tmp-file-and-rename like the eog queue. It exists to save **detail fetches**, which are
+    >   the expensive part; deleting it must cost bandwidth and nothing else, and check 4 pins that.
+    > - **No disk queue for backfill posts.** A failed post is simply retried on the next pass, because unlike an
+    >   end-of-game block the source is still on the client tomorrow.
+    >
+    > ### The scan call
+    >
+    > `POST /api/companion/backfill/scan`, companion token, body `{ gameIds: number[] }` (at most 100), answering
+    > `{ approved: boolean, unknown: number[] }`. One round trip tells the companion whether it may act at all and
+    > which ids are worth a detail fetch. When `approved` is false the answer's `unknown` is always `[]`, the
+    > route sets `players.backfill_requested_at` if it is null (once — a second scan does not move it), and the
+    > companion logs one sentence and stops:
+    > `Backfill is waiting for an admin to approve it. Nothing was sent.`
+    >
+    > ### Approval, and why it exists
+    >
+    > `01-architecture.md` makes backfill the exception to "a companion may only report what it was in", and it is
+    > admin-approved the first time per player. The migration adds to `players`:
+    >
+    > ```sql
+    > alter table public.players
+    >   add column backfill_requested_at timestamptz,
+    >   add column backfill_approved_at  timestamptz;
+    > ```
+    >
+    > The reason to say out loud, because "security" on its own sounds like paperwork: an end-of-game post is one
+    > game the server can see a lobby for; a backfill batch is dozens of games from nowhere, and one bad or
+    > mis-mapped batch moves every rating in the group. One person looking at it once, before the first batch, is
+    > cheap. After that the flag stays on and the daily pass is silent forever.
+    >
+    > **`/admin/players` gets a `Backfill` column** with three states — `off`, `asked <date>`, `on since <date>` —
+    > and one control per row, `Allow` / `Revoke`. Copy under the page heading:
+    > `Backfill lets a player's companion send past customs from their client's match history. Turn it on once
+    > you know whose PC it is.` Revoking sets the column back to null and the next scan answers `approved: false`.
+    >
+    > **The participant check has no lobby fallback for backfill.** M2.8 lets a poster who was in the lobby report
+    > a game they are not on the scoreboard of, because the friend sitting out is often the one running the
+    > companion. For `source: 'backfill'` that half does not apply: the token's player must be among the posted
+    > participants or it is a 403 and nothing is written.
+    >
+    > ### Not rated on arrival
+    >
+    > **A backfilled game is stored and not rated inline.** Ratings are a fold in `started_at` order and backfill
+    > delivers games out of order by definition, so rating them as they land would produce numbers that the first
+    > rebuild throws away. The game route rates inline only for `source: 'eog'`; a backfill insert leaves the four
+    > `game_players` rating columns null, moves no `ratings` row, and answers
+    > `{ rated: false, reason: 'backfill' }`. **`pnpm --filter web rebuild-ratings` (M5.2) is what turns a batch
+    > into ratings**, which is why the two tasks ship together and why the admin page says, next to a player who
+    > has just been approved: `Backfilled games are not rated until the ratings are rebuilt.`
+    >
+    > ### The walk, and the rate limit against the client
+    >
+    > The client is somebody's game machine, not a server. The walker is background work and is never on the path
+    > of a lobby post.
+    >
+    > - **When.** 60 seconds after the first connect (so the eog queue and the identity check go first), then
+    >   every 6 hours. A pass that hits its cap with unknown ids left schedules another in 10 minutes.
+    > - **Only while the client is idle.** Phase must be `None` or `Lobby`. Anything else pauses the pass where it
+    >   stands; it resumes on the next tick. Nothing is fetched during champion select or a game.
+    > - **List pages:** `begIndex` in steps of 20, at most **5 pages per pass**. Stop early on an empty page, an
+    >   error, or a page whose custom ids are all already known. The first pass on a fresh install walks to a cap
+    >   of **200 games**; how much history actually exists is unknown and is **M5.6**'s job, not this task's — the
+    >   walker must treat "the page came back short or empty" as the end and log the deepest `begIndex` it reached
+    >   so M5.6 has evidence.
+    > - **Detail fetches:** at most **20 per pass**, at least **2000 ms apart**, one at a time.
+    > - **Drops, each with one log line naming the game id:** anything that is not `CUSTOM_GAME`; anything whose
+    >   `endOfGameResult` is not `GameComplete`; any detail with fewer than ten participants or without a winning
+    >   team; any detail that fails the schema.
+    >
+    > ### Edge cases
+    >
+    > - **Fewer than ten in an old custom.** Dropped locally with a log line. It would have been stored and not
+    >   rated anyway (M2.5's gate); not posting it keeps `games` free of rows nobody will ever look at.
+    > - **More than ten.** A detail with eleven participants fails the mapper's contract and is dropped, logged
+    >   once. It has never been seen; it is a shape check, not a case.
+    > - **Someone left mid-lobby / mid-game, months ago.** Irrelevant here: the detail is the record and a leaver
+    >   is a participant like anyone else.
+    > - **Companion disconnects mid-pass.** The pass stops. Ids already posted are in the local cache and in the
+    >   database; the next pass picks up the rest. Nothing is written to disk except the cache.
+    > - **Unknown player.** The commonest good outcome: backfill is where a friend who has never been in a lobby
+    >   with a companion running gets a `players` row **and** a name, straight from `participantIdentities`.
+    > - **Two friends both approved.** Both walk their own history, both post the same nights, and the second one
+    >   creates nothing. Their histories overlap and that is the point: between them they cover games neither has
+    >   alone.
+    > - **A game already stored from an eog block.** `created: false`, nothing changes. Its rating columns are
+    >   already filled and the rebuild will recompute them anyway.
+    > - **The API is down.** The pass fails, logs one line, and tries again on the next tick. No queue, no files.
+    >
+    > ### Acceptance check
+    >
+    > Fixture-driven against `packages/lcu/fixtures/16.17/` with a stubbed client and stubbed API, except 11.
+    >
+    > 1. Walking `match-history--list.json` yields one candidate per `CUSTOM_GAME` entry and none for anything
+    >    else; the `Abort_TooFewPlayers` entry is dropped with one log line naming its id.
+    > 2. The mapper turns `match-detail.json` into a payload with ten participants, `side` from `teamId`,
+    >    `winningSide` from `teams[].win === 'Win'`, `durationS` from `gameDuration`, `startedAt` from
+    >    `gameCreation`, camelCase stats mapped as in the table, `role: null` on all ten, `source: 'backfill'`, no
+    >    `partyId`, and names on every participant. Pinned field by field in
+    >    `packages/db/src/schemas/companion.contract.test.ts`, beside the eog rules.
+    > 3. Unapproved: the scan answers `{ approved: false, unknown: [] }`, sets `backfill_requested_at` once (a
+    >    second scan does not move it), the companion posts **nothing**, and the log has exactly one sentence.
+    > 4. Approved: exactly one POST per unknown custom game. A second pass posts nothing and makes **zero** detail
+    >    fetches. Delete `backfill.json` and run again: the details are re-fetched, every POST answers
+    >    `created: false`, and no row in `games` or `game_players` changes.
+    > 5. A game already stored from an eog block: after a backfill post of the same id, `source` is still `'eog'`,
+    >    `raw`, `started_at` and all ten `game_players` rows are byte-identical to before.
+    > 6. A backfill POST whose participants do not include the token's player is **403** and writes nothing —
+    >    including when that player is a `lobby_members` row of a live lobby (the M2.8 fallback must not apply).
+    > 7. Not rated inline: a backfilled game has ten `game_players` rows with four null rating columns, no
+    >    `ratings` row moved, and the response says `{ rated: false, reason: 'backfill' }`.
+    > 8. Rate limit: with 40 unknown ids, one pass makes at most 20 detail requests, each at least 2000 ms after
+    >    the last, at most 5 list requests, and **zero** requests while the stubbed phase is `InProgress`,
+    >    `ChampSelect` or `EndOfGame`.
+    > 9. `/admin/players` shows `off` / `asked <date>` / `on since <date>`; `Allow` flips it to on with the date;
+    >    `Revoke` sets it back to null and the next scan answers `approved: false`.
+    > 10. `pnpm -r typecheck` and `pnpm -r test` pass; the migration applies on `pnpm db:reset`; `pnpm db:types` is
+    >     regenerated.
+    > 11. **Live, on a real client (the user).** Approve one player, run the companion, wait one pass: their past
+    >     customs appear once each with `source: 'backfill'` and null rating columns; the deepest `begIndex`
+    >     reached is in the log for M5.6; then `pnpm --filter web rebuild-ratings` (M5.2) and the leaderboard shows
+    >     real numbers before anybody plays a game.
+    >
+    > ### Out of scope
+    >
+    > The rebuild itself (M5.2) — this task rates nothing. How deep history goes (M5.6). Seasons and attributing an
+    > old game to an old season (M5.3). A page showing what backfill found (M5.5). Ranks: backfill posts games, not
+    > ranks, and M2.4 already owns that sweep. Any use of the Riot public API, now or as a fallback: there is no
+    > key in this project and there is not going to be one.
+
 - [ ] **M5.2** Rating rebuild: `pnpm --filter web rebuild-ratings` folds every game in `started_at` order from seeds. Run after any backfill batch. Idempotent.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **Sequencing: pulled forward with M5.1**, to right after M3.4/M3.5. A backfill batch that is never folded is
+    > a table of games and no leaderboard, so these two are one piece of work in two commits.
+    >
+    > **The scene.** Nobody sees this run. It is the promise underneath every number on the board: the ratings are
+    > a pure fold over games in the order they were played, and if that ever stops being true — a batch of old
+    > customs arrives, a bug drops a game, the model changes — one command puts it back. `games.raw` is kept for
+    > exactly this reason (`01-architecture.md`), and this is the command that spends it.
+    >
+    > **Where it lives.** `apps/web/scripts/rebuild-ratings.ts`, run as
+    > `"rebuild-ratings": "node --env-file-if-exists=.env.local scripts/rebuild-ratings.ts"` in
+    > `apps/web/package.json`, beside `mint-token`. **Add the line to `CLAUDE.md`'s command list in the same
+    > commit** — the file says to. The fold itself is not written twice: extract the pure middle of
+    > `apps/web/lib/ingest/rating.ts` — ten rows plus their before-ratings plus the winning side, in, after-ratings
+    > out — into an exported function that both `rateStoredGame` and this script call. That shared function is
+    > what makes "reproduces the incremental fold exactly" a fact about the code rather than a hope about two
+    > copies of it.
+    >
+    > ### What it does
+    >
+    > 1. **Guard.** Refuse to start when any `lobbies` row is `open`, `balanced` or `in_game`, or when any `games`
+    >    row was created in the last 15 minutes. Message:
+    >    `A lobby is live. Run this when nobody is playing, or pass --force.` `--force` skips the guard and
+    >    nothing else.
+    > 2. **Snapshot.** Read every `games` row for the season with a non-null `winning_side`, ordered by
+    >    `started_at` ascending, `lcu_game_id` ascending as the tie-break — the second key matters the moment
+    >    backfill lands two games with the same `gameCreation`, and without it two runs could disagree. Read every
+    >    `game_players` row for those games, and every `players` rank. Keep the id set and the run's start time.
+    > 3. **Fold, in memory, from seeds.** Everyone starts at `seedFromRank(players.rank_tier, players.rank_division)`
+    >    — no rank at all is `mu 20, sigma 10`, exactly as the live fold seeds. For each game in order, apply the
+    >    same gate the live fold applies (ten rows, five a side, `duration_s > 300`) and, when it passes, sort each
+    >    side by puuid ascending and call the shared function. Record the before and after for all ten and bump
+    >    that player's games and wins.
+    > 4. **Write once, at the end.** One batched pass: `game_players` rating columns for every game (set for a game
+    >    that rated, **nulled** for a game that did not — a game that no longer qualifies must not keep stale
+    >    numbers), then a `ratings` upsert per player with `mu`, `sigma`, `games`, `wins`. Nothing is written
+    >    before the fold is complete, so a crash halfway leaves the old numbers standing rather than half of two
+    >    folds.
+    > 5. **Fence.** Re-read the game id set for the season. If it grew, or any game in the snapshot has changed its
+    >    `winning_side` or participant count, print
+    >    `New games landed while this was running. Run it again.` and exit **2**. The command is idempotent, so
+    >    running it again is free — that is the whole reason this design needs no lock.
+    > 6. **Report.** Always print: games considered, games rated, games skipped by reason, players written, and
+    >    the largest single `mu` change. With `--dry-run`, print the same report, plus how many rows *would*
+    >    change, and write nothing.
+    >
+    > ### No lock, and why
+    >
+    > There is no transaction to hold: the API writes through PostgREST with the service role, one statement at a
+    > time, and a session advisory lock taken by a script does not stop it. The alternatives were a lock table
+    > (a migration, and a lock nobody remembers to release after a crash) or a fold version column on every row
+    > (a migration and a second code path forever). Instead: **a guard so it does not overlap in the first place,
+    > an in-memory fold so `ratings` is untouched until the end, and a fence that detects the overlap and tells
+    > you to run it again.** A concurrent end-of-game post during a rebuild cannot corrupt anything — it reads
+    > pre-rebuild ratings, writes its own game's columns, and the rebuild's final pass overwrites both with the
+    > ordered answer; if that game arrived after the snapshot, the fence catches it and the second run includes
+    > it. The rebuild is the one writer allowed to overwrite the `mu_after is null` claim, and that is stated in a
+    > comment on the write.
+    >
+    > ### One season
+    >
+    > `ratings` is keyed `(player_id, season_id)` and `games.season_id` is already set, so the fold is per season
+    > and the script does one season per run: the active one by default, `--season <id>` for another. There is
+    > exactly one season today; the loop exists so M5.3 does not have to rewrite this. **Season carry-over is not
+    > this task**: the rebuild always folds a season from seeds, and when M5.3 makes a new season copy `mu`
+    > forward, the seed for that season stops being the rank and the script gets its second input — that is M5.3's
+    > change to make, and there is a comment on the seeding line saying so. A `ratings` row for a player with no
+    > rated game in the season is reported and left alone; `--prune` deletes it. Deleting rows nobody asked to
+    > delete is not a default.
+    >
+    > ### The one honest caveat
+    >
+    > The rebuild seeds from the player's **current** rank, because that is what `seedFromRank` is given. If
+    > somebody's rank in `players` changed after their first rated game, the rebuild starts them from the new
+    > seed and their whole history moves a little. That is not a bug in the fold — it is the best estimate the
+    > database currently holds — but it means "reproduces the incremental fold exactly" is true only while ranks
+    > have not moved in between, and the acceptance check below controls for it. If the group ever cares, the fix
+    > is to store the seed the first fold used; that is **M5.7**, not this task.
+    >
+    > ### Edge cases
+    >
+    > - **No games at all.** Report says zero, `ratings` is left untouched (with `--prune`, emptied), exit 0.
+    > - **A game with nine participants, or six-and-four, or exactly 300 seconds.** Skipped by the gate, counted in
+    >   the report, and its four rating columns are nulled.
+    > - **A game with a duplicate puuid on the scoreboard.** Skipped and named loudly: it is a data bug, and the
+    >   fold must not average somebody against themselves.
+    > - **A backfilled game older than every rated game.** Folds first and everyone's history shifts. That is the
+    >   point of M5.1 and the reason these two ship together.
+    > - **A player who has left the group.** Their `ratings` row is rebuilt from their games like anyone else.
+    >   Nothing here knows about leaving.
+    > - **The script is run twice at once.** The second run's fence trips on the first run's writes... it does not,
+    >   because the id set did not change. Two simultaneous runs produce the same numbers, which is the definition
+    >   of idempotent; nothing prevents it and nothing needs to.
+    >
+    > ### Acceptance check
+    >
+    > Integration tests against the local stack, seeded through the same ingest path the companion uses.
+    >
+    > 1. **Two runs are identical.** Run the script twice; a canonical dump of every `game_players` rating column
+    >    and every `ratings` row (ordered, serialised) is byte-identical after each.
+    > 2. **It reproduces the incremental fold.** Post ten games in `started_at` order through
+    >    `POST /api/companion/game`, letting the live fold rate each one, then run the rebuild: every
+    >    `mu_before`, `sigma_before`, `mu_after`, `sigma_after` on all 100 `game_players` rows is unchanged, and
+    >    every `ratings` row's `mu`, `sigma`, `games`, `wins` is unchanged. No rank moves during the test.
+    > 3. **Out of order equals in order.** Insert the same ten games in a shuffled arrival order (as backfill
+    >    would), rebuild, and the dump equals the dump from check 2 exactly.
+    > 4. **The tie-break.** Two games sharing a `started_at` to the millisecond produce the same result across ten
+    >    shuffled insert orders.
+    > 5. **The gate.** A 300-second game, a nine-participant game and a six-and-four game are skipped, counted in
+    >    the report, and end with four null rating columns even when they had numbers before the run.
+    > 6. **`--dry-run`** writes nothing: the dump before and after is identical, and the report still names the
+    >    number of rows that would change.
+    > 7. **The guard** refuses with the sentence above while a lobby is `balanced`; `--force` runs anyway.
+    > 8. **The fence.** Insert a game after the snapshot is taken (a test hook between snapshot and write): the run
+    >    exits 2 with `New games landed while this was running. Run it again.`, and a second run includes that
+    >    game and exits 0.
+    > 9. **Seasons.** With two seasons' worth of games, a run rebuilds only the active season's `ratings` and
+    >    leaves the other season's rows untouched; `--season <id>` does the other one.
+    > 10. `pnpm -r typecheck` and `pnpm -r test` pass; `CLAUDE.md`'s command list has the new line.
+    >
+    > ### Out of scope
+    >
+    > Season carry-over (M5.3). Changing the rating model or any constant in it — a model change is what this
+    > command exists to survive, not what it does. Storing the seed used (M5.7, if anybody ever asks). A web or
+    > admin trigger: this is a command somebody runs on purpose, with the output in front of them, and a button
+    > that silently rewrites every rating in the group is not something this product should own.
+
 - [ ] **M5.3** Seasons: admin starts a new season; ratings copy `mu` and reset `sigma`; leaderboard and pages are season-aware.
 - [ ] **M5.4** Stats pages: win rate by role, by side, by duo pairing (min five games together), average game length, longest streaks. Awards at season end: most improved, best off-role, cursed duo.
 - [ ] **M5.5** Missed-game report: a page listing lobbies that reached `in_game` but never `finished`, so someone knows the companion rule was broken that night.
@@ -2320,6 +3152,10 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > **Acceptance check.** `03-lcu-reference.md`'s match-history row states the observed depth with a date
     > and patch, and the over-the-end behaviour. If the depth is shallower than a season, add a note to
     > M5.1 capping the walk and open a product task to rewrite the backfill paragraph in `00-product.md`.
+
+- [ ] **M5.7** Store the seed the first fold used, if the group ever cares. The rebuild (M5.2) seeds every player from their **current** rank, so a rank that moved after a player's first rated game silently rewrites that player's whole history on the next rebuild. Today that is acceptable and documented; it stops being acceptable the first time somebody's board position changes and nobody can say why. The fix is one column — the `{ mu, sigma }` the very first fold gave them, per season — read by both folds instead of `seedFromRank`.
+
+    > **Acceptance check.** A player whose `players.rank_tier` changes between their first rated game and a rebuild has byte-identical `game_players` rating columns before and after the rebuild. Until this ships, the caveat stays written in the M5.2 brief and nowhere else pretends otherwise.
 
 Acceptance: after a backfill of one player's history, games appear once each, ratings rebuild deterministically (same output on two runs), and the stats pages render with real numbers.
 

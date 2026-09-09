@@ -4,7 +4,8 @@ The only code in the repo that talks to the League client (`https://127.0.0.1:<p
 port). Everything else goes through this package. Reference: `docs/03-lcu-reference.md`.
 
 ```
-src/lockfile.ts     discoverLockfile(): override path -> LCU_LOCKFILE_CANDIDATES -> platform default; parses LeagueClient:<pid>:<port>:<password>:https
+src/lockfile.ts     discoverLockfile(): override path -> LCU_LOCKFILE_CANDIDATES -> platform default -> process list (win32); parses LeagueClient:<pid>:<port>:<password>:https. createLockfileDiscovery() is the same with memory for a long-running caller
+src/processDiscovery.ts  the win32 process-list fallback (M2.19): PowerShell Get-CimInstance (then wmic) for LeagueClientUx.exe, lockfile beside its ExecutablePath, else --app-port/--remoting-auth-token off its CommandLine. Never shells out in tests
 src/auth.ts         Basic auth header (riot:<password>) and URL helpers
 src/tls.ts          TLS modes: pinned to certs/riotgames.pem (default), pinned + legacy digests, insecure
 src/client.ts       LcuClient: get/post/put/delete with a zod schema; never throws, returns { ok, status, json } or a typed failure

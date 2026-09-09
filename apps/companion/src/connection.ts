@@ -20,8 +20,7 @@
 import { EventEmitter } from 'node:events';
 import {
   ALL_EVENTS_TOPIC,
-  type DiscoverLockfileOptions,
-  discoverLockfile,
+  createLockfileDiscovery,
   type EogStatsBlock,
   EogStatsBlockSchema,
   GameflowPhaseSchema,
@@ -35,6 +34,8 @@ import {
   type Lobby,
   LobbySchema,
   type LockfileCredentials,
+  type LockfileDiscovery,
+  type LockfileDiscoveryOptions,
   patchFromVersion,
   type RankedStats,
   RankedStatsSchema,
@@ -127,8 +128,11 @@ export interface ConnectionMachineEvents {
 export interface ConnectionMachineOptions {
   readonly logger?: CompanionLogger;
   readonly hooks?: CompanionHooks;
-  /** Passed to `discoverLockfile`: the config's `lockfilePath` as `overridePath`; tests set `candidates`. */
-  readonly lockfile?: DiscoverLockfileOptions;
+  /**
+   * Passed to `createLockfileDiscovery`: the config's `lockfilePath` as `overridePath`; tests set
+   * `candidates` (which also keeps the Windows process-list fallback off; see `@customs/lcu`).
+   */
+  readonly lockfile?: LockfileDiscoveryOptions;
   /** Defaults to pinning Riot's root. Tests pin to the fake client's certificate. */
   readonly tls?: TlsMode;
   /** Lockfile poll while disconnected, and the liveness check while watching. Default 5 s. */
@@ -154,11 +158,16 @@ function quietInfo(logger: CompanionLogger): CompanionLogger {
   };
 }
 
+/** Said with `waiting for the League client` when no `lockfilePath` is configured (M2.19). */
+export const LOCKFILE_HINT = 'If League is installed somewhere else, add lockfilePath to config.json';
+
 export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
   private readonly logger: CompanionLogger;
   private readonly lcuLogger: CompanionLogger;
   private readonly hooks: CompanionHooks;
-  private readonly lockfileOptions: DiscoverLockfileOptions;
+  private readonly lockfileOptions: LockfileDiscoveryOptions;
+  /** One discovery for the machine's lifetime: it remembers a custom install and rate-limits the shell-out. */
+  private readonly discover: LockfileDiscovery;
   private readonly tls: TlsMode | undefined;
   private readonly pollIntervalMs: number;
   private readonly requestTimeoutMs: number;
@@ -179,6 +188,7 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
     this.lcuLogger = quietInfo(this.logger.child({ component: 'lcu' }));
     this.hooks = options.hooks ?? {};
     this.lockfileOptions = options.lockfile ?? {};
+    this.discover = createLockfileDiscovery({ ...this.lockfileOptions, logger: this.lcuLogger });
     this.tls = options.tls;
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 10_000;
@@ -271,17 +281,27 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
 
   private async cycle(): Promise<void> {
     const signal = this.stopSignal;
-    const found = await discoverLockfile(this.lockfileOptions);
+    const found = await this.discover();
     if (found.status !== 'found') {
       const summary = found.tried.map((attempt) => `${attempt.path} (${attempt.reason})`).join(', ');
       if (summary !== this.lastLockfileSummary) {
         this.lastLockfileSummary = summary;
-        this.logger.info('waiting for the League client', { tried: found.tried });
+        this.logger.info('waiting for the League client', {
+          tried: found.tried,
+          ...(this.lockfileOptions.overridePath ? {} : { hint: LOCKFILE_HINT }),
+        });
       }
       await sleep(this.pollIntervalMs, signal);
       return;
     }
     this.lastLockfileSummary = null;
+    if (found.source !== 'path') {
+      // A League installed somewhere other than the default directory (M2.19). Once per connect, on the console.
+      this.logger.info('League client found at a non-default install', {
+        path: found.path,
+        via: found.source,
+      });
+    }
     const credentials = found.credentials;
     this.logger.addSecret(credentials.password);
 
@@ -425,7 +445,7 @@ export class ConnectionMachine extends EventEmitter<ConnectionMachineEvents> {
         if (cycleSignal.aborted) {
           return 'stop';
         }
-        const found = await discoverLockfile(this.lockfileOptions);
+        const found = await this.discover();
         if (found.status !== 'found') {
           this.logger.info('lockfile gone; the client has exited');
           return 'client_lost';
