@@ -2,7 +2,7 @@ import { loadTopPlayersOrNone } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import { nightTimeZone, tonightStart } from '@/lib/tonight/night';
-import { currentViewer } from '@/lib/viewer';
+import { currentViewerState } from '@/lib/viewer';
 import { TonightLive } from '../_tonight/TonightLive';
 import '../tonight.css';
 
@@ -27,7 +27,7 @@ export default async function TonightPage() {
   const client = createPublicClient();
   const [snapshot, viewer, topPlayers] = await Promise.all([
     loadTonight(client, { nightStart: tonightStart(), timeZone: nightTimeZone() }),
-    currentViewer(),
+    currentViewerState(),
     // The rail, read once with the page and never re-read on a Realtime event: it is the one
     // block on this screen that is allowed to be a few minutes old, because it is the only one
     // nobody is watching.
@@ -39,12 +39,5 @@ export default async function TonightPage() {
     loadTopPlayersOrNone(client, { limit: RAIL_BOARD_ROWS }),
   ]);
 
-  return (
-    <TonightLive
-      initial={snapshot}
-      viewerPuuid={viewer?.puuid ?? null}
-      isAdmin={viewer?.isAdmin ?? false}
-      topPlayers={topPlayers}
-    />
-  );
+  return <TonightLive initial={snapshot} viewer={viewer} topPlayers={topPlayers} />;
 }

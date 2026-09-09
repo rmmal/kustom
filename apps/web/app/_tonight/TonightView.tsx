@@ -24,10 +24,12 @@ import type {
   TeamsView,
   TonightSnapshot,
 } from '@/lib/tonight/types';
+import { type ViewerState, viewerIsAdmin, viewerPuuid } from '@/lib/tonight/viewer';
 import { RoleIcon } from '../_icons/RoleIcon';
 import { TopOfBoard } from '../_leaderboard/BoardCard';
 import { CompanionCard, HowThisWorksCard } from '../_shell/HowThisWorks';
 import { RerollControl } from './RerollControl';
+import { RoleTonight } from './RoleTonight';
 import { SeatRack } from './SeatRack';
 
 /**
@@ -56,22 +58,30 @@ const OFF_ROLE_COLOUR_LIMIT = 3;
 
 export interface TonightViewProps {
   snapshot: TonightSnapshot;
-  /** The signed-in viewer's puuid, for the `brand` "you" rule. `null` for everybody else. */
-  viewerPuuid: string | null;
-  /** Decided on the server from the session (`lib/viewer.ts`). Draws the reroll control. */
-  isAdmin: boolean;
+  /**
+   * Who is reading, in three states (`lib/tonight/viewer.ts`): anonymous, signed in with no
+   * player row yet, or linked. Decided on the server from the session, and never a claim the
+   * browser makes — every control it draws posts to a route that checks the session again.
+   */
+  viewer: ViewerState;
   /**
    * The board's first five, for the ≥1080px rail (`loadTopPlayers(client, { limit: 5 })`).
    * Read once with the page: **the rail never carries state**, so these do not move under a
    * thumb the way everything in the column beside them does. Empty until a season exists.
    */
   topPlayers: readonly BoardRow[];
+  /**
+   * Re-read this page's server components. `TonightLive` supplies it; it is how the self-link
+   * (M3.6) turns into a linked viewer — and a footer with `Your games` in it — without a
+   * document load. Undefined everywhere the page is rendered without a router.
+   */
+  onViewerChanged?: (() => void) | undefined;
 }
 
-export function TonightView({ snapshot, viewerPuuid, isAdmin, topPlayers }: TonightViewProps) {
+export function TonightView({ snapshot, viewer, topPlayers, onViewerChanged }: TonightViewProps) {
   const state = tonightState(snapshot);
   const header = tonightHeader(state);
-  const viewer = { puuid: viewerPuuid, isAdmin };
+  const seatViewer = { puuid: viewerPuuid(viewer), isAdmin: viewerIsAdmin(viewer) };
 
   return (
     <div className="cn-grid cn-grid-rail">
@@ -91,25 +101,38 @@ export function TonightView({ snapshot, viewerPuuid, isAdmin, topPlayers }: Toni
         {state.kind === 'idle' ? <Idle /> : null}
         {state.kind === 'filling' ? (
           <section className="cn-block">
-            <SeatRack members={state.lobby.members} viewerPuuid={viewer.puuid} />
+            <SeatRack
+              members={state.lobby.members}
+              viewerPuuid={seatViewer.puuid}
+              isAdmin={seatViewer.isAdmin}
+            />
           </section>
         ) : null}
         {state.kind === 'teams' ? (
-          <TeamsBlock lobby={state.lobby} teams={state.teams} viewer={viewer} />
+          <TeamsBlock lobby={state.lobby} teams={state.teams} viewer={seatViewer} />
         ) : null}
         {state.kind === 'result' ? (
-          <ResultBlock result={state.result} teams={state.teams} viewerPuuid={viewer.puuid} />
+          <ResultBlock result={state.result} teams={state.teams} viewerPuuid={seatViewer.puuid} />
         ) : null}
 
         {/* M3.10's one quiet line, under the block and never per row. */}
         {hasNamelessRow(state) ? <p className="cn-hint">{NAMELESS_HINT}</p> : null}
+
+        {/*
+         * `Your role tonight`, and the `That's me` list behind it (M3.6). **Last in the
+         * column, in every state**, so appearing or disappearing cannot move the primary
+         * block: five 44px targets do not fit inside a 44px rack row, and the rack is ten
+         * rows at every count. It draws nothing at all for the common case — a visitor who
+         * is not signed in and no live lobby.
+         */}
+        <RoleTonight lobby={snapshot.lobby} viewer={viewer} onViewerChanged={onViewerChanged} />
       </main>
 
       <aside className="cn-rail" aria-label="About this page">
         {/* The same five rows as the top of `/leaderboard`, from the same query and the same
             sort: a rail that disagreed with the page it links to about who is first would be
             worse than a rail with two cards in it. */}
-        <TopOfBoard rows={topPlayers} viewerPuuid={viewerPuuid} />
+        <TopOfBoard rows={topPlayers} viewerPuuid={seatViewer.puuid} />
         <HowThisWorksCard />
         <CompanionCard />
       </aside>

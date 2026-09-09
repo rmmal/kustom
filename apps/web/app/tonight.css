@@ -741,3 +741,132 @@
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * `Your role tonight`, and the `That's me` list behind it (M3.6).
+ *
+ * The card is **last in the column and outside the primary block**, because the rack is ten
+ * 44px rows at every count and five 44px targets do not fit inside one of them. Appearing or
+ * disappearing therefore moves nothing a thumb is over: everything above it is unchanged.
+ * ------------------------------------------------------------------------- */
+
+.cn-role-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-3);
+  padding: var(--cn-sp-4);
+  margin-top: var(--cn-sp-5);
+}
+
+/* Dressed exactly like `SEATS` and `rating` — the legend it sits under, two blocks up. */
+.cn-role-heading {
+  margin: 0;
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  color: var(--cn-dim);
+}
+
+/*
+ * Five targets, each at least 44 x 44px. A grid rather than a wrapping row: at 390px three fit
+ * across (`support` in 12px mono with its icon is 77px), so the five land 3 + 2 with every
+ * word on its own column edge, which a `flex-wrap` row does not give.
+ */
+.cn-role-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: var(--cn-sp-2);
+  margin: 0;
+}
+
+.cn-role-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cn-sp-2);
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--cn-sp-3);
+  font-family: var(--cn-font-mono);
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.06em;
+  color: var(--cn-dim);
+  background: var(--cn-raise);
+  border: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius-row);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.cn-role-choice:active {
+  background: var(--cn-pressed);
+}
+
+/*
+ * The chosen role, and the whole receipt for a tap: no toast, no flash, no "saved!". Colour is
+ * not the only signal — the button carries `aria-pressed` for a reader who is listening.
+ */
+.cn-role-on {
+  color: var(--cn-brand);
+  background: var(--cn-brand-tint);
+  border-color: var(--cn-brand);
+}
+
+/* A refusal, beside the control that was pressed. `dim` and `t-sm`, like the reroll's note:
+   this page has no banners and no red alerts, and red here would read as the red side. */
+.cn-role-error {
+  margin: 0;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+}
+
+/* The `That's me` list: the same 44px row shape as the rack, name left, control right. */
+.cn-pick-text {
+  margin: 0;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-text);
+}
+
+.cn-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cn-pick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cn-sp-3);
+  min-height: 44px;
+}
+
+.cn-pick-row + .cn-pick-row {
+  border-top: 1px solid var(--cn-line);
+}
+
+.cn-pick-name {
+  font-size: var(--cn-t-md);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Ten of these full width would be ten amber bars; the name is the row and this is the act. */
+.cn-pick-button {
+  width: auto;
+  padding: 0 var(--cn-sp-3);
+  font-size: var(--cn-t-sm);
+}
+
+.cn-signin {
+  display: flex;
+}
+
+.cn-signin .cn-button {
+  text-align: center;
+}
+
+/* `Set roles`, inside the all-flexible hint and only for an admin. */
+.cn-hint-link {
+  color: var(--cn-brand);
+  text-underline-offset: 3px;
+}

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PLAYERS_PER_GAME } from '@/lib/lobbyState';
 import {
@@ -9,7 +10,9 @@ import {
   RACK_LEGEND,
   rackCount,
   renderWebName,
+  SET_ROLES_LINK,
 } from '@/lib/tonight/copy';
+import { anyRoleShown, tonightRoles } from '@/lib/tonight/roles';
 import type { MemberView } from '@/lib/tonight/types';
 import { RoleIcon } from '../_icons/RoleIcon';
 
@@ -31,9 +34,11 @@ export interface SeatRackProps {
   /** Everybody around, in join order. The spectators past the ten sit under `Around`. */
   members: readonly MemberView[];
   viewerPuuid: string | null;
+  /** Adds `Set roles` to the all-flexible hint. A link to a page only an admin can open. */
+  isAdmin?: boolean;
 }
 
-export function SeatRack({ members, viewerPuuid }: SeatRackProps) {
+export function SeatRack({ members, viewerPuuid, isAdmin = false }: SeatRackProps) {
   const playing = members.filter((member) => !member.isSpectator);
   const around = members.filter((member) => member.isSpectator);
 
@@ -42,7 +47,7 @@ export function SeatRack({ members, viewerPuuid }: SeatRackProps) {
    * the column is not rendered at all and one line under the rack says so once; nine identical
    * grey words in a column is not information, it looks like a field that failed to load.
    */
-  const showRoles = members.some((member) => member.mainRole !== null);
+  const showRoles = anyRoleShown(members);
   const seats = Array.from({ length: PLAYERS_PER_GAME }, (_, index) => playing[index] ?? null);
 
   return (
@@ -93,7 +98,22 @@ export function SeatRack({ members, viewerPuuid }: SeatRackProps) {
 
       {/* Once, under the rack, and never on a rack nobody is in — at zero the strip's sentence
           has already said the only thing there is to say. */}
-      {showRoles || members.length === 0 ? null : <p className="cn-hint">{ALL_FLEXIBLE_HINT}</p>}
+      {showRoles || members.length === 0 ? null : (
+        <p className="cn-hint">
+          {ALL_FLEXIBLE_HINT}
+          {/* Admin only, and only now that M3.6 has shipped the control it points at
+              (`05-design.md`, the copy table). Everybody else's profile roles are an admin's
+              to set; their role for *tonight* is the card under this rack. */}
+          {isAdmin ? (
+            <>
+              {' '}
+              <Link className="cn-hint-link" href="/admin">
+                {SET_ROLES_LINK}
+              </Link>
+            </>
+          ) : null}
+        </p>
+      )}
     </>
   );
 }
@@ -127,23 +147,24 @@ function SeatRow({
  * else has. Never `top / mid`: a slash between two roles reads as a fraction next to a column
  * of numbers.
  *
- * The player's own two roles, as `players` holds them. A role tap for tonight
- * (`lobby_members.role_override`) has no writer until M3.6 and no renderer here: showing it
- * would mean restating core's `resolveRoles` in the web app, and M3.6 lands the control and the
- * resolved pair together.
+ * **Tonight's roles, not the profile's** (M3.6): a role tap writes `lobby_members.role_override`
+ * and core makes that the player's main, so the row has to say the same thing the bot is about
+ * to build teams from. `lib/tonight/roles.ts` asks core rather than restating it, and a row
+ * with an override prints that role alone — see the note there.
  */
 function RoleCell({ member }: { member: MemberView }) {
-  if (member.mainRole === null) {
+  const { main, secondary } = tonightRoles(member);
+  if (main === null) {
     return <span className="cn-num cn-rack-roles">{FLEXIBLE_ROLE}</span>;
   }
 
   return (
     <span className="cn-num cn-rack-roles">
-      <RoleIcon role={member.mainRole} />
-      {member.mainRole}
-      {member.secondaryRole === null ? null : (
+      <RoleIcon role={main} />
+      {main}
+      {secondary === null ? null : (
         // Hidden below 480px by `tonight.css`, where the pair does not fit beside a name.
-        <span className="cn-rack-second">{` · ${member.secondaryRole}`}</span>
+        <span className="cn-rack-second">{` · ${secondary}`}</span>
       )}
     </span>
   );

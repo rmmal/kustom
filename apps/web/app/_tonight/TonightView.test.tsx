@@ -21,6 +21,7 @@ import {
   OFF_ROLE_LEGEND_SUFFIX,
 } from '@/lib/tonight/copy';
 import type { SeatView, TonightSnapshot } from '@/lib/tonight/types';
+import type { ViewerState } from '@/lib/tonight/viewer';
 import { TonightView } from './TonightView';
 
 /**
@@ -40,14 +41,20 @@ function draw(
   state: TonightSnapshot,
   viewer: { puuid?: string; isAdmin?: boolean; topPlayers?: readonly BoardRow[] } = {},
 ) {
-  return render(
-    <TonightView
-      snapshot={state}
-      viewerPuuid={viewer.puuid ?? null}
-      isAdmin={viewer.isAdmin ?? false}
-      topPlayers={viewer.topPlayers ?? []}
-    />,
-  );
+  // Anonymous unless the test names a puuid or an admin: `null` used to mean both "signed
+  // out" and "signed in with no player row", and M3.6 needs the two apart
+  // (`lib/tonight/viewer.ts`). An admin with no puuid is a linked viewer who is not in this
+  // lobby — which is what the reroll tests mean by "an admin is looking".
+  const who: ViewerState =
+    viewer.puuid === undefined && viewer.isAdmin !== true
+      ? { kind: 'anonymous' }
+      : {
+          kind: 'linked',
+          puuid: viewer.puuid ?? 'puuid-not-in-this-lobby',
+          isAdmin: viewer.isAdmin ?? false,
+        };
+
+  return render(<TonightView snapshot={state} viewer={who} topPlayers={viewer.topPlayers ?? []} />);
 }
 
 /**
@@ -118,6 +125,9 @@ describe('idle: no lobby tonight', () => {
       'cn-strip',
       'cn-notice',
       'cn-block',
+      // M3.6's card, and it is deliberately **last**: for a signed-out reader it is the one
+      // control that starts the Discord round trip, and it may never sit above the teams.
+      'cn-card cn-role-card',
     ]);
   });
 

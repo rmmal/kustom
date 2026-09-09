@@ -188,3 +188,56 @@ export function joinWebNames(names: readonly PlayerName[]): string {
   if (rendered.length <= 1) return rendered[0] ?? '';
   return `${rendered.slice(0, -1).join(', ')} and ${rendered[rendered.length - 1]}`;
 }
+
+/* ---------------------------------------------------------------------------
+ * Role for tonight, and picking yourself out of the lobby (M3.6).
+ *
+ * Product's words, from the brief's copy block (2026-09-09), typed here unchanged. The two
+ * sentences that are **not** product's are marked: they are failure text for a request that
+ * never reached the server, which the brief does not cover, and they are written in the same
+ * voice — say what happened, promise nothing, never apologise.
+ * ------------------------------------------------------------------------- */
+
+/** The mono `t-xs` `dim` label above the five role words, dressed like `SEATS` and `rating`. */
+export const ROLE_CONTROL_HEADING = 'Your role tonight';
+
+/**
+ * Under the control, once. The whole meaning of the feature in two sentences: it is a
+ * preference, not a lock, and the page must not promise more than the balancer does.
+ */
+export const ROLE_CONTROL_HINT =
+  'The bot tries for this one. If the teams need it, you can still end up somewhere else.';
+
+/**
+ * Shown from `balanced` on. A tap then is stored and the teams **do not move**: a rebalance on
+ * a role tap would be an unlimited reroll that any one of ten people can pull, and by then
+ * people have already moved to their side in the client. The control says so rather than
+ * pretending.
+ */
+export const ROLE_SAVED_FOR_NEXT_GAME = 'Saved for the next game. Teams are already set.';
+
+/** The control that starts the Discord round trip, back to `/`. Reading is never gated. */
+export const ROLE_SIGN_IN = 'Sign in with Discord to pick your role.';
+
+/** Above the list of tonight's members, for a signed-in visitor who matches no player row. */
+export const PICK_YOURSELF =
+  'Which one of these is you? Pick yourself once and the page knows you from now on.';
+
+/** On every row of that list. */
+export const THATS_ME = "That's me";
+
+/** The same visitor when there is nobody to pick, so the page asks nothing. */
+export const SIGNED_IN_NO_LOBBY =
+  'Signed in. Open the page while the lobby is up and you can pick yourself out of it.';
+
+/** **Not product's**: the request never reached the server. Nothing was written. */
+export const ROLE_TAP_OFFLINE = 'That did not reach the server. Your role is unchanged.';
+
+/** **Not product's**: the same case, on the `That's me` list. */
+export const LINK_OFFLINE = 'That did not reach the server. Nothing changed.';
+
+/**
+ * Appended to {@link ALL_FLEXIBLE_HINT} for an admin, and only now that M3.6 has shipped the
+ * control it points at (`05-design.md`, the copy table).
+ */
+export const SET_ROLES_LINK = 'Set roles';

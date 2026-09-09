@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import type { BoardRow } from '@/lib/board/types';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import { hasNamelessRow, tonightState } from '@/lib/tonight/state';
 import type { TonightSnapshot } from '@/lib/tonight/types';
+import type { ViewerState } from '@/lib/tonight/viewer';
 import { TonightView } from './TonightView';
 
 /**
@@ -44,8 +46,8 @@ const NAME_REREAD_MS = 60_000;
 
 export interface TonightLiveProps {
   initial: TonightSnapshot;
-  viewerPuuid: string | null;
-  isAdmin: boolean;
+  /** Who is reading, decided on the server from the session (`lib/viewer.ts`). */
+  viewer: ViewerState;
   /**
    * The rail's `Top of the board`, read on the server with the page. It is **not** re-read on a
    * Realtime event: the rail never carries state, and a board that reshuffled itself while
@@ -55,8 +57,20 @@ export interface TonightLiveProps {
   topPlayers: readonly BoardRow[];
 }
 
-export function TonightLive({ initial, viewerPuuid, isAdmin, topPlayers }: TonightLiveProps) {
+export function TonightLive({ initial, viewer, topPlayers }: TonightLiveProps) {
   const [snapshot, setSnapshot] = useState(initial);
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  /**
+   * Who the viewer is comes from the **session**, on the server, so the self-link (M3.6) is
+   * the one change on this page that Realtime cannot deliver: it writes `players.discord_id`,
+   * which is in no publication and which the browser may not read. `router.refresh()` re-reads
+   * this route's server components — the page's viewer and the shell's footer — in place. It
+   * is not a navigation: no document load, no scroll, and the pressed control keeps focus.
+   */
+  const onViewerChanged = useCallback(() => {
+    startTransition(() => router.refresh());
+  }, [router]);
   const refresh = useRef<() => void>(() => {});
   const nightStart = initial.nightStart;
   /**
@@ -144,6 +158,11 @@ export function TonightLive({ initial, viewerPuuid, isAdmin, topPlayers }: Tonig
   }, [nameless]);
 
   return (
-    <TonightView snapshot={snapshot} viewerPuuid={viewerPuuid} isAdmin={isAdmin} topPlayers={topPlayers} />
+    <TonightView
+      snapshot={snapshot}
+      viewer={viewer}
+      topPlayers={topPlayers}
+      onViewerChanged={onViewerChanged}
+    />
   );
 }
