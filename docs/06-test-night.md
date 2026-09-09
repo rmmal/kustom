@@ -110,6 +110,22 @@ path, and a true 500 stays covered by that task's stubbed check 6).**
 6. Finish with a winner. The survivor alone logs `end-of-game block captured` and `game posted ...
    created: true`. Restart the killed one afterwards: nothing queued, nothing posted, still one `games` row.
 
+**The tonight page on a real phone (M3.4) — eyeball, not pass or fail.**
+
+Only if the tonight page is deployed by the night. Three things the designer raised in the M3.4 review that
+no laptop can answer, so they ride along on the ten-human night. Look, then say what you saw; each becomes a
+task with its own ID only if the night says it should. None of them blocks M2 or M3.4.
+
+7. **The empty slab.** At about seven in the lobby, on your own phone, at the brightness you actually use in
+   a dark room: the member list holds ten rows' height from the first paint, so three empty rows sit under
+   the last name. Does that read as "three more to come", or as a page that half-loaded? OLED screens make
+   the empty part disappear into the background, which is the whole question.
+8. **Below the fold.** With eleven around, so the sit-out strip is up, on a 390 x 844 phone (iPhone 12/13/14
+   class): is the Blue card's support row on screen without scrolling? If it is not, say how far you had to
+   scroll to find your own name.
+9. **Long names.** Get somebody with a Riot ID past 25 characters into the lobby. Where does the ellipsis
+   land, in the member list and on the team card, and can the group still tell who it is?
+
 ## After each session, paste this back
 
 **After both.** The console from `customs night companion starting` through `watching` (version, `configDir`,

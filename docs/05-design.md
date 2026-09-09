@@ -808,6 +808,21 @@ companion running, the teams show up here.` Under it, a link reading `Last night
 else: no illustration, no spinner, no "check back later". The header strip already says `Nothing tonight`, so
 the body does not repeat it.
 
+**No season active — the tonight page's own sentence (product, 2026-09-09 — final; M3.17).** `/admin`, the
+seasons page and the companion's 503 all say `No season is active, so games cannot be saved. Start a season on
+the Seasons page.` — one constant, `NO_ACTIVE_SEASON_MESSAGE` (M2.18). The tonight page does **not** say that.
+It is the link that gets pasted in WhatsApp, so it is read by the whole group, and it would end by telling
+twenty friends to open a page one of them can open. Its sentence is:
+
+> No season is active, so tonight's games are not being saved. An admin can start one.
+
+Same fact, no instruction the reader cannot follow, and no link to a locked door. It is not a state — it can
+be true while the page is idle, filling, showing teams or showing a result — so it sits at the top of `main`,
+directly under the header strip and above the primary block, in all four states. It is the one element on this
+page that is ever additional to the state table above; it never replaces a block, and it is absent entirely
+whenever a season is active. The treatment is the designer's call; the words are product's, and a change to
+them goes through product.
+
 The rule, in one sentence: **a state change replaces the primary block in place; the page never appends, never
 scrolls itself, and never animates anything but a 150ms opacity fade.** The header strip is always mounted and
 is the only element that survives every transition, so a phone reopened mid-night answers "where are we" in
