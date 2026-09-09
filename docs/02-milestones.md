@@ -3156,10 +3156,529 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > that silently rewrites every rating in the group is not something this product should own.
 
 - [ ] **M5.3** Seasons: admin starts a new season; ratings copy `mu` and reset `sigma`; leaderboard and pages are season-aware.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **Depends on M3.5.** There is no `/leaderboard` and no `/p/[puuid]` to make season-aware until it lands.
+    > The carry-over half (the migration, `startSeason`, the admin copy) depends on nothing and can ship first;
+    > the selector half is a small addition to M3.5's pages.
+    >
+    > **The scene.** First night of a new season. Ten friends in voice, someone opens a lobby, teams appear.
+    > Nobody re-seeded anybody, nobody typed a rank, and the teams are as good as last night's — because the
+    > season starts from what the bot already learned, not from Riot's tiers. One thing changed: the board is
+    > unsure again. Proven has dropped for everyone the board had settled on, everyone carries the
+    > `settling` chip, and a month of games decides the order. That is the product: a fresh board, not a fresh brain.
+    >
+    > Today `/admin/seasons` starts a season atomically (`start_season()`, `0002`) and carries **nothing**, so
+    > the click throws away what the model knows and re-seeds twenty people from rank. This task makes the
+    > button mean what `01-architecture.md` has always said: *"A new season copies `mu` and resets `sigma` to
+    > the starting value."*
+    >
+    > ### The five decisions this task closes
+    >
+    > **1. The carry-over runs inside `start_season`, in SQL, in the same transaction — not as an API step
+    > after it.** `0002` exists because two PostgREST calls can leave the group with no active season. A
+    > carry-over that runs as a second call has the same failure with a worse shape: a live new season and an
+    > empty board, no undo, and no retry anybody can press twice safely (a second attempt would copy from a
+    > season that is already closed, or double-insert). One function, one transaction: close, open, carry.
+    >
+    > **2. "Reset sigma" is the ranked starting sigma, `8.33`, for everyone carried, whatever their rank.**
+    > Not the unranked `10`, not a per-tier value. The 8.33/10 split exists because an unranked player's seed
+    > `mu` of 20 is a guess about a stranger; a carried player is not a stranger — we have a season of our own
+    > games on them. Their `mu` is the best number in the database and it deserves the confident sigma. It is
+    > also one number to explain: *everyone starts the season equally unsure.* The value is
+    > `config.rating.rankedSigma` in `packages/core`; **the API passes it into the SQL function as an
+    > argument** so the constant is not copied into a migration where a future tuning change would miss it.
+    >
+    > **3. The carried pair is stored as the season's seed, in two new nullable columns on `ratings`:
+    > `seed_mu`, `seed_sigma`.** This is what makes a rebuild of the new season reproduce the carry-over
+    > instead of erasing it. M5.2 folds a season from seeds and seeds every player with
+    > `seedFromRank(players.rank_tier, …)`; run that against Season 2 as it stands today and every carried
+    > player is thrown back to their rank on the first rebuild — the exact line in
+    > `apps/web/lib/ingest/rebuild.ts` that carries the comment *"When M5.3 makes a new season carry `mu`
+    > forward, this line is what changes"*. It changes to: **seed = `(ratings.seed_mu, ratings.seed_sigma)`
+    > for this season when they are non-null, otherwise `seedFromRank`.** Nothing else about the rebuild
+    > moves. These are the columns M5.7 wants; M5.3 fills them for carried players only, and M5.7 shrinks to
+    > "fill them for rank-seeded players too, at the first fold".
+    >
+    > **4. The typed confirmation moves into SQL, in the same function.** `start_season` takes
+    > `p_confirm_name` and raises unless it equals the active season's name (trimmed, case-sensitive — M3.9's
+    > rule, unchanged). This closes the known race recorded on 2026-09-08 ("read-then-write, two submits in
+    > the same few milliseconds could both pass"), which stops being cosmetic the moment carry-over exists: a
+    > double-press would start Season 2 **and** Season 3, and Season 3 would carry nothing, because Season 2's
+    > rows have `games = 0`. The board would be empty and the reason invisible. `lib/admin/seasons.ts` keeps
+    > its read-then-write check so the friendly 400 sentence is unchanged; the function is the gate behind it,
+    > and its exception maps to the same 400.
+    >
+    > **5. Starting a season is refused while a lobby is live.** `open`, `balanced` or `in_game` anywhere →
+    > 409 with `A lobby is live. Start the season when nobody is playing.` — the rebuild's guard, the same
+    > sentence shape, for the same reason: a season that starts between the teams post and the end-of-game
+    > block rates that game into a season whose ratings the split never saw, and the result embed's numbers
+    > disagree with the game that produced them. There is no `--force`: nobody starts a season in a hurry.
+    >
+    > ### The migration
+    >
+    > `packages/db/supabase/migrations/0005_season_carryover.sql`. It adds the two columns, drops
+    > `start_season(text)` and creates the three-argument form (drop-and-create in a new file; `0002` is never
+    > edited). `set_active_season` is untouched. The carry itself is one statement:
+    >
+    > ```sql
+    > insert into public.ratings (player_id, season_id, mu, sigma, games, wins, seed_mu, seed_sigma)
+    > select r.player_id, v_new.id, r.mu, p_carry_sigma, 0, 0, r.mu, p_carry_sigma
+    > from public.ratings r
+    > where r.season_id = v_old.id and r.games > 0;
+    > ```
+    >
+    > `p_carry_sigma` is validated (`> 0`, not null) like `p_name` is. The function still returns
+    > `public.seasons`, so the mapping in `startSeason` does not change shape; the API counts the carried rows
+    > with one `count` read afterwards for its response copy. Grants stay service-role only. Run
+    > `pnpm db:migrate` and `pnpm db:types`.
+    >
+    > ### Who carries
+    >
+    > Every `ratings` row of the season being closed with **`games > 0`**. A row with zero games is itself a
+    > carry nobody ever played on, or a seed from a lobby that never became a game; carrying it again would
+    > walk a stale number forward season after season and fill the board with people who left the group in
+    > March. They are not deleted — the closed season keeps its rows, and one game brings them straight back
+    > with a fresh rank seed.
+    >
+    > ### Season-aware pages
+    >
+    > - **The parameter is `?season=<uuid>` on `/leaderboard`, `/p/[puuid]` and (M5.4) `/stats`.** Absent
+    >   means the active season. An id that is not a season is `notFound()` — it can only come from a typed
+    >   URL. With no active season at all and no parameter, the pages read the **most recently started**
+    >   season and print the existing `NO_ACTIVE_SEASON` line from `apps/web/lib/season.ts`; they never render
+    >   blank.
+    > - **The control is a season picker** in the page header of all three pages, listing seasons newest
+    >   first by `starts_at`, the active one first and marked. Selecting one is a normal navigation to
+    >   `?season=…`; no client state, no fetch. Layout is the designer's (**M5.8**).
+    > - **A past season is read-only and complete**: its board, its rows, its numbers, its date range. Nothing
+    >   on a past season's page offers an action.
+    > - **`/p/[puuid]` is scoped the same way.** The rating chart plots that season's games only, in that
+    >   season's order, and the `seed` reference line (`05-design.md`, "Rating history") is
+    >   `round(seed_mu × 60)` when the season carried them and `round(seedFromRank(...).mu × 60)` when it did
+    >   not. That line is the sentence "you started the season here" drawn once, and it is the first
+    >   user-visible use of the new column.
+    > - **A player with no row in the selected season** renders the page with their name and one line:
+    >   `<Name> did not play in <Season>.` Not a 404 — the same person exists in another season and the
+    >   picker is right there.
+    >
+    > ### The nightly Discord post
+    >
+    > It names the season, from the database, never a constant: title `<season name> · standings`
+    > (`05-design.md` already draws `Season 1 · standings`). It always posts the **active** season. With no
+    > active season, or with a season that has no games in it yet, **no post goes out** and the skip is one
+    > log line — an empty ranked list is not news, and "Season 2 · standings" with nothing under it on the
+    > first evening reads like a broken bot. If M3.5 lands with the name hard-coded, this task fixes it.
+    >
+    > ### Copy on `/admin/seasons` (product-owned; use these words)
+    >
+    > The page currently promises the leaderboard is emptied. That becomes false the moment this lands.
+    >
+    > - Above the form: `Starting a season keeps everybody's rating and makes the board unsure about it
+    >   again. Nobody is re-seeded from their rank. Proven drops for anyone the board had settled on, and
+    >   climbs back over about a month of games.`
+    > - Under the confirmation field, unchanged in spirit: `Type the name of the season you are ending. There
+    >   is no undo.`
+    > - The success response: `<New season> is live. <N> players carried their rating over. The board starts
+    >   again from there.` With nothing to carry: `<New season> is live. Nobody had a rating to carry, so the
+    >   board starts empty.`
+    > - The live-lobby refusal: `A lobby is live. Start the season when nobody is playing.`
+    >
+    > `docs/00-product.md` has a paragraph ("One admin-only piece landed earlier…") that says nothing carries
+    > over. It becomes untrue when this ships. **Do not edit it** — say so in the report and product rewrites
+    > it the same session.
+    >
+    > ### Edge cases
+    >
+    > - **No active season when the button is pressed.** Nothing to close, nothing to carry, confirmation
+    >   skipped (the 2026-09-08 rule). The response says the board starts empty.
+    > - **The closed season had no rated games.** Zero rows carry; same response.
+    > - **A carried player who never plays the new season.** Their row stays at `games 0`, they sit at the
+    >   bottom of the board with the `settling` chip and their carried Rating — which is M3.5's accepted
+    >   "zero games this season" rule, arriving for twenty people at once on night one. Do not special-case
+    >   it and do not hide them.
+    > - **A rebuild of the new season on night one, before any game.** Folds nothing, writes nothing, leaves
+    >   every carried row standing. `--prune` must **not** delete a row with a non-null `seed_mu` and zero
+    >   games: it is the carry-over, not an orphan. The report counts them on their own line, `carried`.
+    > - **An admin starts a season by mistake and uses `set_active_season` to go back.** The wrong season's
+    >   carried rows stay behind, harmless and unread; the next real start carries from the season that is
+    >   active then. Nothing to clean up.
+    > - **A game arrives after the season started, from a lobby balanced before it.** The guard makes this
+    >   rare, not impossible (a queued end-of-game block from days ago). It rates into the new season from
+    >   the carried numbers, which is self-consistent; the split it was played from stays on the old season's
+    >   pages. Accept it, do not build attribution logic here.
+    > - **Backfill posting an old custom into the new season.** Out of scope and a real problem — filed as
+    >   **M5.9**. Do not start a second season in production until it lands.
+    > - **A player whose rank changed during the closed season.** Irrelevant now: their new season is seeded
+    >   from `seed_mu`, not from rank. Carry-over quietly removes the M5.7 caveat for every carried player.
+    >
+    > ### Acceptance check
+    >
+    > Integration tests against the local stack, in a season of their own (the M5.2 pattern), plus the two
+    > page checks.
+    >
+    > 1. **One transaction.** Starting a season closes the old one, opens the new one and writes the carried
+    >    `ratings` rows; there is no observable moment with an open season and no carried rows. Forcing the
+    >    insert to fail (a carried `mu` violating a check) leaves the old season active and no new season row.
+    > 2. **The numbers.** For every player with `games > 0` in the closed season, the new season's row has
+    >    `mu` equal to the old `mu` **exactly** (bit for bit; no rounding), `sigma = 8.33`, `games 0`,
+    >    `wins 0`, `seed_mu` = the carried `mu`, `seed_sigma = 8.33`, and `ordinal = mu - 16.66`.
+    > 3. **Who does not carry.** A player with a `games = 0` row in the closed season has no row in the new
+    >    season. The closed season's rows are all still there afterwards, unchanged.
+    > 4. **A rebuild reproduces the carry-over.** Start a season with carried players, post five games
+    >    through `POST /api/companion/game` so the live fold rates them, then run
+    >    `pnpm --filter web rebuild-ratings --season <new>`: every `game_players` rating column and every
+    >    `ratings` row is unchanged, and each carried player's first game has `mu_before` equal to their
+    >    carried `mu` and `sigma_before` 8.33. Run it a second time: byte-identical. **This is the check that
+    >    the whole design exists for.**
+    > 5. **The rebuild does not erase a carry.** With one carried player who has played no game in the new
+    >    season, a rebuild leaves their row exactly as it was, and `--prune` leaves it too, reporting it as
+    >    `carried`.
+    > 6. **The confirmation is atomic.** Two `start_season` calls issued together with the same confirmation
+    >    name produce exactly one new season; the loser gets the 400 sentence and writes nothing.
+    > 7. **The guard.** With a lobby at `balanced`, the start is refused 409 with the sentence above and
+    >    nothing is written. With no live lobby it succeeds.
+    > 8. **The selector.** `/leaderboard` with no parameter renders the active season and names it in the
+    >    heading; `?season=<closed id>` renders the closed season's final board, in Proven order, with the
+    >    same numbers it had the night it closed; an unknown id is a 404. The same three for `/p/[puuid]`.
+    > 9. **The player page.** For a carried player, the chart's `seed` line equals `round(seed_mu × 60)` and
+    >    their first game's point sits on it. A player with no row in the selected season gets the one-line
+    >    message, not a 404.
+    > 10. **The nightly post** prints the active season's name in the title and is skipped entirely when the
+    >    active season has no games.
+    > 11. `pnpm -r typecheck`, `pnpm -r test`, `pnpm --filter web build` pass; `0005` is applied to the
+    >    hosted project and `packages/db/src/types.ts` is regenerated; a decision row per decision above.
+    >
+    > ### Out of scope
+    >
+    > Attributing a game to the season its `started_at` falls in (**M5.9**). Ending a season without starting
+    > another (there is no such button and nobody has asked). A carry-over toggle: one button, one behaviour —
+    > two behaviours behind a control with no undo is how the wrong one gets pressed. Season-aware tonight
+    > page or embeds; they read the active season and that is correct. Stats and awards (M5.4). Posting the
+    > closed season's final board to Discord (**M5.10**).
+
 - [ ] **M5.4** Stats pages: win rate by role, by side, by duo pairing (min five games together), average game length, longest streaks. Awards at season end: most improved, best off-role, cursed duo.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **Depends on M3.5** (the shared header, the `Proven`/`Rating` vocabulary and `/p/[puuid]` itself) and
+    > on **M5.3** for the season parameter. **Needs a designer pass: M5.8.** Build the numbers first; the
+    > layout lands with M5.8.
+    >
+    > **The scene.** It is not the ten-in-voice scene — nothing here happens during a night. This is the page
+    > someone opens at work the next morning to say "I told you I win on red", and the page the group reads
+    > once, together, on the last night of a season. It adds no step to the nightly loop and must not: no
+    > input, no toggles, no filters beyond the season picker.
+    >
+    > ### The universe: what counts as a game, everywhere on this page
+    >
+    > **A game counts here if and only if the rating fold counted it.** Ten `game_players` rows, five a side,
+    > `duration_s > 300` — the shared gate `gateGame` in `apps/web/lib/ingest/fold.ts`. Import it; do not
+    > re-implement the predicate in SQL. The reason is one rule the product cannot break: **the games number
+    > on `/stats` equals the games number on `/leaderboard` equals `ratings.games`.** A page that counts
+    > remakes would put two different game counts for the same player on two pages, and every number under
+    > both would be argued with.
+    >
+    > Scope is one season: `games.season_id = <selected season>`, the M5.3 picker, active by default.
+    >
+    > ### Where it lives, and how it is computed
+    >
+    > - **`/stats`**, public, anon key, same as `/leaderboard`. Linked from the header beside Leaderboard.
+    > - **Per-player sections on `/p/[puuid]`**, below the rating chart: their role record, their side record,
+    >   their partners, their streaks, their average game length.
+    > - **Computed at request time, from `games` and `game_players`, with a cap.** One loader,
+    >   `apps/web/lib/stats/load.ts`, reading the season's games (`id, started_at, duration_s, winning_side,
+    >   lcu_game_id`), their `game_players` (`game_id, player_id, side, role, mu_before, mu_after`) and
+    >   `players_public` (`id, puuid, display_name, game_name, tag_line, main_role`), paging at PostgREST's
+    >   1000 like the rebuild does, then folding it in TypeScript. The player page calls the same loader and
+    >   picks one player out of the answer.
+    > - **The cap is `STATS_MAX_GAMES = 2000`, most recent first.** Twenty friends playing four games a night
+    >   reach that in a year and a half; a season will be two to four hundred. Over the cap, the page prints
+    >   one line: `Showing the most recent 2000 games of this season.` Nothing silently drops.
+    > - **`export const revalidate = 300`.** Five minutes is invisible on a page about a season and it means
+    >   a refresh war costs one query. No precomputed table, no materialised view, no migration: precomputing
+    >   would be a second thing that can disagree with `game_players`, and `game_players` is the truth. If the
+    >   page ever gets slow, the fix is the cap, not a cache table.
+    >
+    > ### The numbers, exactly
+    >
+    > A "row" below means one `game_players` row of a counted game. A row **won** when its `side` equals its
+    > game's `winning_side`.
+    >
+    > 1. **Win rate by role.** Role is `game_players.role` — the position the client detected, which is what
+    >    they actually played. Rows with `role = null` are **excluded from every role number** and counted
+    >    once in a footnote (see "Games with no role" below). Per player and role: numerator = won rows at
+    >    that role, denominator = rows at that role. **Minimum 5 rows for a percentage**; under 5 the record
+    >    prints without one (`3W 1L`), so nobody is "100% mid" off one game.
+    >    **A group-wide win rate by role does not exist and must not be built**: every game has a blue top and
+    >    a red top, so any group-level role rate is 50.0% by construction. `/stats` instead shows five blocks,
+    >    one per role, each a ranked list of the players with ≥5 rows at that role: `1  Rami · 12W 5L · 71%`.
+    > 2. **Win rate by side.** Per player: their rows on side 100 and on side 200, same 5-row minimum for the
+    >    percentage. Group-wide **is** meaningful and is the headline of the section: blue wins ÷ counted
+    >    games, printed with the count (`Blue wins 53% of the time · 214 games`).
+    > 3. **Duo pairing.** A pair `{A, B}` is credited with a game when both have a counted row in it **on the
+    >    same side**. Numerator = games where that side won; denominator = games together. **Minimum 5 games
+    >    together** to appear at all. `/stats` shows the five best and the five worst qualifying pairs, sorted
+    >    by the tie rule below; `/p/[puuid]` shows that player's three best and three worst partners. The full
+    >    190-pair table is not a page anybody reads.
+    > 4. **Average game length.** Arithmetic mean of `duration_s` over counted games, rounded to the nearest
+    >    minute, printed with the count it is over (`Average game 32 min · 214 games`). Per player: the mean
+    >    over their counted games. Zero games → the empty line, never `NaN` and never `0 min`.
+    > 5. **Streaks.** Order a player's counted rows by their game's `started_at` ascending, `lcu_game_id`
+    >    ascending as the tie-break — the rebuild's ordering, so the streak and the rating history tell the
+    >    same story. A streak is a maximal run of consecutive rows with the same outcome.
+    >    - **Current streak**: the run ending at their most recent counted game, printed `W3` / `L2`, the
+    >      form the leaderboard row already uses (`05-design.md`). A single game is `W1`.
+    >    - **Longest win streak** and **longest losing streak** of the season, per player, and on `/stats` the
+    >      group's best and worst with the holder's name.
+    >    This is the same definition the `L2` on the leaderboard row must use. Whichever of M3.5 and M5.4
+    >    lands first owns the helper; the second imports it. Two definitions of a streak in one app is a bug.
+    >
+    > **The tie rule, used everywhere on this page, stated once:** win rate descending, then games
+    > descending, then display name A–Z (case-insensitive), then `puuid`. Percentages are
+    > `Math.round(wins / games * 100)` and print as `71%`.
+    >
+    > **Games with no role.** Backfilled games carry `role: null` on every participant (M5.1) and an
+    > end-of-game block can too. One line under the role section, and only when the number is above zero:
+    > `<N> games are not in the role numbers — the client did not record who played where. Backfilled games
+    > never do.`
+    >
+    > ### The awards
+    >
+    > **They appear only on a season that has ended.** `seasons.ends_at` non-null. On the active season the
+    > block renders its heading and one line: `Awards are handed out when the season ends.` An award that
+    > changes every night is a statistic, not an award, and this gives the last night of a season something to
+    > read together.
+    >
+    > **They are computed at request time from the closed season's games, never stored.** A late backfill or
+    > a rebuild then corrects an award instead of freezing a wrong one in a table forever.
+    >
+    > Section intro: `Three end-of-season awards. Nobody votes; the numbers pick.`
+    >
+    > **Most improved.** The biggest climb in Rating across the season: `round(mu_after × 60)` of their **last**
+    > counted game minus `round(mu_before × 60)` of their **first** counted game (both from `game_players`, so
+    > it is the number the pages printed, and the subtraction of two rounded numbers — the rule in
+    > `00-product.md`). **Minimum 15 counted games.** Ties: more games wins; still tied, both are named.
+    > - Rule line: `Biggest climb in Rating from a first game to a last one, over at least 15 games.`
+    > - Winner line: `Nadia · +212 · 1266 → 1478`
+    > - Nobody qualifies: `Nobody played 15 games this season.`
+    >
+    > **Best off-role.** Best record in counted games where the role they played was **not** their
+    > `players.main_role` — secondary counts as off-role, exactly as the balancer counts it
+    > (`offRolePenalty` applies to anyone not on a main role). Needs `main_role` and `role` both non-null.
+    > **Minimum 10 off-role games.** Ranked by win rate, then the tie rule.
+    > - Rule line: `Best record away from their main role, over at least 10 of those games.`
+    > - Winner line: `Omar · 9W 3L · 75% · his main is top`
+    > - Nobody qualifies: `Nobody spent 10 games off their main. That is the balancer doing its job.`
+    > - Always under it, when any player has no main role: `Players with no main role are not in this one —
+    >   every role is theirs.`
+    >
+    > **Cursed duo.** The qualifying pair with the **lowest** win rate on the same side. **Minimum 8 games
+    > together** — the browsing table's 5 is for looking, an award needs a little more before it crowns
+    > anybody. Ties: more games together; still tied, both pairs are named.
+    > - Rule line: `The pair with the worst record on the same team, over at least 8 games together.`
+    > - Winner line: `Yuki and Theo · 2W 9L · 18%`
+    > - Nobody qualifies: `No pair played 8 games together this season.`
+    >
+    > On `/p/[puuid]`, a player who won an award in a closed season gets one line in their season section:
+    > `Most improved, Season 1.` No badge, no icon.
+    >
+    > ### `/stats`, in order
+    >
+    > 1. Season name, its dates, counted games, players who played.
+    > 2. Awards (closed season) or the one-line placeholder (active season).
+    > 3. Group numbers: blue win rate, average game length.
+    > 4. By role: five blocks, ranked lists, the no-role footnote.
+    > 5. Duos: `Best together` and `Worst together`, five each.
+    > 6. Streaks: longest win streak and longest losing streak of the season with holders, then anyone whose
+    >    current streak is 3 or longer.
+    >
+    > ### Edge cases
+    >
+    > - **A season with no games.** The page renders its header and one line: `No games in <Season> yet.`
+    >   Not an empty page, not a spinner — the M3.5 rule.
+    > - **A season with two games.** Every minimum bites and every block prints its "not enough yet" line.
+    >   That is correct and it is what the first week of a season looks like; do not lower a threshold to
+    >   make the page look full.
+    > - **Every role number null (a season of pure backfill).** The role section prints only the footnote.
+    > - **A player in one game who then left the group.** Appears in the numbers they qualify for and nowhere
+    >   else. Nothing here knows about leaving.
+    > - **A player with no display name** (M3.10's fallback) uses the same fallback as every other surface,
+    >   never a raw PUUID.
+    > - **A pair that played 5 games together and 40 against each other.** Only same-side games count.
+    >   Rivalries are not in this milestone.
+    > - **A game with a duplicate player on the scoreboard** is already excluded — `gateGame` rejects it.
+    > - **Someone opens `/stats` mid-game.** The game in progress is not in `games` yet and appears after it
+    >   lands, up to five minutes later. Say nothing on the page about it; it is a season page.
+    >
+    > ### Acceptance check
+    >
+    > Unit tests on the pure fold with a hand-built fixture (this is arithmetic; it should not need the
+    > database), plus one integration test that the page renders from a seeded season.
+    >
+    > 1. **The universe.** A season with one rated game, one 300-second game, one nine-player game and one
+    >    backfilled ten-player game produces `counted games = 2`, and every player's games number on `/stats`
+    >    equals their `ratings.games` on `/leaderboard` for the same season, for every player.
+    > 2. **By role.** A fixture where one player is 12W 5L on jungle and 1W 0L on mid shows `71%` for jungle,
+    >    the bare record `1W 0L` for mid, and the group's jungle list ranks them by the tie rule. Null-role
+    >    rows change no role number and are named in the footnote with the right count.
+    > 3. **By side.** The group blue rate equals blue wins ÷ counted games in the fixture, to the printed
+    >    percent; a player with 4 games on red shows a record and no percentage.
+    > 4. **Duos.** A pair with 4 games together does not appear; at 5 it appears; a game where they were on
+    >    opposite sides does not count for either the numerator or the denominator.
+    > 5. **Average game length** equals the mean of `duration_s` over counted games, rounded to the minute,
+    >    and a season with no counted games prints the empty line rather than `0 min`.
+    > 6. **Streaks.** A sequence W W L W W W with two games sharing a `started_at` produces the same
+    >    `longest = 3` and `current = W3` under ten shuffled insert orders (the `lcu_game_id` tie-break).
+    > 7. **Awards on a closed season only.** The active season shows the placeholder line and no winner; the
+    >    same fixture with `ends_at` set shows all three, each matching a hand-computed answer, with the exact
+    >    copy above.
+    > 8. **Award minimums and ties.** A player with 14 games and a huge climb does not win most improved; two
+    >    players tied on climb and games are both named; the same for the duo award at 7 and 8 games.
+    > 9. **The cap.** With `STATS_MAX_GAMES` lowered in the test, the page uses the most recent N games and
+    >    prints the cap line; under the cap the line is absent.
+    > 10. **The season parameter.** `/stats?season=<closed>` shows that season's numbers and awards;
+    >    unknown id is a 404; no parameter is the active season.
+    > 11. `pnpm -r typecheck` and `pnpm -r test` pass; the status table row is updated; **M5.8 is filed and
+    >    open** — this task ships correct numbers in a plain layout and does not invent one.
+    >
+    > ### Out of scope
+    >
+    > Champion stats, KDA, gold, damage and CS — the columns exist and none of them is a question this group
+    > asks out loud; a page of them is a different product. Head-to-head records and rivalries. Anything
+    > per-night. Filters, search, sorting controls, CSV. A precomputed stats table or a materialised view.
+    > Posting stats or awards to Discord (**M5.10**). Changing the rating model, the leaderboard sort, or the
+    > two names `Proven` and `Rating`.
+
 - [ ] **M5.5** Missed-game report: a page listing lobbies that reached `in_game` but never `finished`, so someone knows the companion rule was broken that night.
 
     > **Candidate for this page (product, 2026-09-08), not a task.** A read-only `/admin/games` list — one row per `games` row with its `lcu_game_id`, participant count, duration and whether it was rated. There is no such surface today, so the M2 test night is verified by reading row counts out of the database by hand (`docs/06-test-night.md`). If M5.5 gets built, "the games we did capture" is the same query as "the lobbies we did not", and one page can answer both. Nobody needs it before then.
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene, failing.** Ten friends played, the game ended, and nothing appeared. Everybody who was
+    > going to run the companion had closed it, or the one person running it alt-F4'd on the defeat screen.
+    > The rating did not move and nobody can say which night it was, because there is no surface anywhere in
+    > this app that says "a game started here and never came back". Backfill (M5.1) usually fixes it the next
+    > day; when it does not, this page is the only way anybody finds out the rule was broken. It is one
+    > read-only admin page and it adds no step to the nightly loop.
+    >
+    > **The facts it rests on** (both already true, both verified):
+    >
+    > - **A `lobbies` row is one game cycle** (M2.14, `0003`), so an `in_game` row is one specific game that
+    >   started.
+    > - **`in_game` is never swept** (M2.5): the two-hour abandon sweep covers `open` and `balanced` only,
+    >   because `abandoned` keeps replace semantics and an `in_game` roster is frozen (M2.9). So **a lobby
+    >   that reached `in_game` and never got an end-of-game block stays `in_game` forever**, with the exact
+    >   ten who were in it. That is not a leak; it is the record. This page is the query over it.
+    > - A late end-of-game block still lands: `findLobbyId` resolves a game to the newest lobby row that
+    >   existed when the game started, so a queued block from days ago closes its own cycle and the row
+    >   leaves this page by itself.
+    >
+    > ### One page, two lists
+    >
+    > **`/admin/games`**, admin-only, under the existing dashboard layout, with a nav entry `Games`. Admin and
+    > not public: this is operational, and "we missed one" is not a thing the group needs on a phone at 21:30.
+    > Read-only — no buttons, no writes, nothing that edits a lobby or a game.
+    >
+    > **List 1 — `Missed`.** Every `lobbies` row with `status = 'in_game'`, newest `updated_at` first, capped
+    > at 100 — and `dropped` too once **M5.11** adds that status, which is the same list under a name that
+    > says so. Write the status filter as a named constant with both values in it from the start, so M5.11
+    > is a one-line change here and no query anywhere says `'in_game'` twice. One row each:
+    >
+    > - the night it belongs to (`nightStart` over `lobbies.created_at`, `CUSTOMS_NIGHT_TZ` — the same night
+    >   definition as everything else), as `Tue 9 Sep`
+    > - when it went in-game (`updated_at`), as a time
+    > - who reported it (`reported_by_player_id` → display name, M3.10's fallback)
+    > - the frozen roster: how many members, and their names
+    > - the party id, short (first 8 characters), so it can be matched against a companion log
+    > - a state note, one of:
+    >   - `no game` — the ordinary case, and the whole point of the page
+    >   - `game landed, lobby never closed` — a `games` row exists with this `lobby_id` while the lobby is
+    >     still `in_game`. A different bug (the finish transition failed after the insert) and it must not
+    >     hide inside the same word as the first one.
+    >
+    > **List 2 — `Captured`.** The most recent 200 `games` rows, any season, newest `started_at` first. One
+    > row each: night, start time, `duration_s` as `m:ss`, `source` (`eog` / `backfill`), participant count
+    > (`10`, or the real number in a warning tone when it is not 10), `rated` (yes when every `game_players`
+    > row has a non-null `mu_after`; `no` otherwise), the season's name, and the lobby's short party id or
+    > `—` when `lobby_id` is null (every backfilled game).
+    >
+    > This is the read-only games list the 2026-09-08 note above proposed, built here because "the games we
+    > did capture" and "the lobbies we did not" are the same query against the same two tables, and because
+    > it retires the row-counting by hand in `docs/06-test-night.md`.
+    >
+    > ### Copy (product-owned; use these words)
+    >
+    > - Page heading: `Games`
+    > - Under `Missed`: `These lobbies started a game and no result ever arrived. Somebody's companion was
+    >   closed at the final whistle. Backfill usually picks the game up the next day and the row disappears
+    >   on its own.`
+    > - Empty `Missed`: `Nothing missing. Every game that started has a result.`
+    > - Under `Captured`: `The last 200 games the server has. Backfilled games are rated by
+    >   pnpm --filter web rebuild-ratings, not on arrival.`
+    > - Empty `Captured`: `No games yet.`
+    > - The `game landed, lobby never closed` note, once under the list when any row has it: `A result
+    >   arrived for this game but the lobby never moved to finished. The rating is fine; the lobby row is
+    >   stuck.`
+    >
+    > ### Edge cases
+    >
+    > - **A lobby stuck `in_game` from tonight, while the game is still being played.** It is listed, and it
+    >   is right to list it — the page is a list of games without results, and one of them is thirty minutes
+    >   old. Do not add a "settling" delay or hide recent rows: an admin reading this page at midnight can
+    >   read a clock. The `updated_at` column is what tells them.
+    > - **A stuck lobby whose roster is empty or short.** Possible if the freeze happened on a partial post.
+    >   Print the real count; do not filter the row out. A missed game with three members recorded is worse
+    >   news than one with ten, not better.
+    > - **The same party stuck twice on one night.** Two rows, two cycles, both listed. That is M2.14
+    >   working.
+    > - **A backfilled game with no lobby.** `—` in the lobby column, always. It is not a missed lobby and it
+    >   never appears in list 1.
+    > - **A game with 9 or 11 participants.** Shows in `Captured` with the real count and `rated: no`,
+    >   because `gateGame` skipped it. This page is where that becomes visible for the first time.
+    > - **Hundreds of stuck rows.** Cap at 100 with a line saying how many there are in total. If that number
+    >   is ever above ten, the news is not the list, it is that the companion rule is not being followed at
+    >   all.
+    > - **No season / a season boundary.** Neither list is season-scoped. Missed lobbies have no season, and
+    >   the point of `Captured` is the last two hundred games whatever season they are in; the season is a
+    >   column, not a filter.
+    >
+    > ### Acceptance check
+    >
+    > Integration tests against the local stack, seeded through the ingest path.
+    >
+    > 1. **The list is the query.** Drive a lobby to `in_game` and post no game: it appears in `Missed` with
+    >    `no game`, the right night, the reporter's name, ten member names and the short party id.
+    > 2. **It disappears when the game lands.** Post the end-of-game block for that lobby: the lobby is
+    >    `finished`, it is gone from `Missed`, and the game is in `Captured` with `eog`, `10`, `rated: yes`.
+    > 3. **The other bug is named.** A `games` row whose `lobby_id` points at a lobby left at `in_game`
+    >    renders `game landed, lobby never closed`, not `no game`.
+    > 4. **`open`, `balanced`, `abandoned` and `finished` lobbies never appear in `Missed`** — including an
+    >    `abandoned` row that went through `balanced`, which is not a missed game.
+    > 5. **`Captured` reads truthfully.** A backfilled game shows `backfill`, `—` for the lobby and
+    >    `rated: no` before a rebuild; after `pnpm --filter web rebuild-ratings --force` the same row shows
+    >    `rated: yes`. A 200-second game shows its duration and `rated: no`.
+    > 6. **Ordering and caps.** `Missed` is newest `updated_at` first and stops at 100 with the total
+    >    printed; `Captured` is newest `started_at` first and stops at 200.
+    > 7. **Access.** A signed-in non-admin and an anonymous visitor get whatever the other admin pages give
+    >    them today, by the same guard; nothing here invents its own.
+    > 8. **Read-only.** The page issues no write of any kind: no route under `/api/admin/games` exists that
+    >    is not a GET.
+    > 9. `pnpm -r typecheck`, `pnpm -r test` and `pnpm --filter web build` pass; the status table is updated;
+    >    `docs/06-test-night.md`'s "read the row counts by hand" step is replaced by a line pointing at this
+    >    page.
+    >
+    > ### Out of scope
+    >
+    > **Any write.** No "mark abandoned", no re-ingest, no delete. The stuck row is evidence, and a button
+    > that clears evidence on the only page that shows it is the wrong shape. The real cost of a stuck row —
+    > that the party's later lobby posts land on the frozen row and the group gets no more teams that night —
+    > is a server rule, not an admin chore: **M5.11**. Alerting, Discord posts, or a badge anywhere else.
+    > Match-history depth or anything backfill decides (M5.1, M5.6). Editing a game or its result — no
+    > surface in this product may do that; the fold is the only writer of ratings.
+
 - [ ] **M5.6** Find out how far back match history goes. M0 only ever read the default window (`begIndex=0&endIndex=20`, which returned 21 games, inclusive) and never paged past it, so the reach of backfill is a guess. Walk `begIndex` back in pages of 20 on a real client until the client stops returning games or starts erroring, and write the answer into `03-lcu-reference.md`: how many games deep it goes, whether `gameCount` is the true total or just the window, and what an over-the-end request does (empty `games[]`, 400, or a repeat of the last page).
 
     > **Why (product).** The product doc promises backfill "recovers it" when the companion misses a game.
@@ -3174,6 +3693,67 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
 - [ ] **M5.7** Store the seed the first fold used, if the group ever cares. The rebuild (M5.2) seeds every player from their **current** rank, so a rank that moved after a player's first rated game silently rewrites that player's whole history on the next rebuild. Today that is acceptable and documented; it stops being acceptable the first time somebody's board position changes and nobody can say why. The fix is one column — the `{ mu, sigma }` the very first fold gave them, per season — read by both folds instead of `seedFromRank`.
 
     > **Acceptance check.** A player whose `players.rank_tier` changes between their first rated game and a rebuild has byte-identical `game_players` rating columns before and after the rebuild. Until this ships, the caveat stays written in the M5.2 brief and nowhere else pretends otherwise.
+
+    > **Scope shrank (product, 2026-09-09).** M5.3 adds `ratings.seed_mu` and `ratings.seed_sigma` and makes
+    > the rebuild prefer them over `seedFromRank`, because a season that carries `mu` forward has no other way
+    > to survive a rebuild. Every carried player therefore already has a stored seed. What is left for this
+    > task is the players the seed columns are still null for — the ones a season seeded from rank — and one
+    > rule: **the first fold that rates a player in a season writes their seed columns and nothing ever
+    > rewrites them.** The acceptance check above is unchanged.
+
+- [ ] **M5.8** Designer pass on `/stats`, the awards block and the season picker (M5.3, M5.4). The numbers and the copy are product's and are pinned in the M5.4 brief; the layout is not. Needs: the five role blocks and the duo lists on a phone without becoming a table; the awards block reading as three statements, not three cards competing with the season header; the season picker on `/leaderboard`, `/p/[puuid]` and `/stats` as one control that looks the same on all three and does not compete with the still-settling sentence for the top of the page; the per-player stats sections on `/p/[puuid]` below the rating chart. Written into `docs/05-design.md` beside the leaderboard row.
+
+    > **Acceptance check.** `05-design.md` has a `/stats` section with the same level of detail as "Leaderboard row" — type sizes, the order of the blocks, what a block looks like with nothing in it, and the picker's placement on all three pages — and it invents no number, no threshold and no wording that the M5.4 brief has not already fixed.
+
+- [ ] **M5.9** Attribute a game to the season its `started_at` falls in. `games.season_id` defaults to `active_season_id()` (`0001`), which was exactly right with one season and becomes wrong the day there are two: backfill (M5.1) posts customs that were played weeks ago, and the first night after a season starts, every old custom nobody had captured lands in the **new** season and the next `rebuild-ratings` folds month-old games into a board that is one night old. The M5.1 brief calls this "M5.3's problem"; it is the same size either way and it belongs on its own.
+
+    > **Approach.** A SQL function `public.season_at(ts timestamptz) returns uuid` — the season whose
+    > `starts_at <= ts` and (`ends_at is null` or `ts < ends_at`), newest first, falling back to the oldest
+    > season for a game older than every season, and to `active_season_id()` when there are no seasons at
+    > all — and the game ingest sets `season_id` explicitly from it instead of leaning on the column default.
+    > The default stays as the safety net for anything that inserts without one.
+    >
+    > **Acceptance check.** (1) With two seasons, a `source: 'backfill'` post whose `startedAt` is inside the
+    > closed season's range is stored with the **closed** season's `season_id`, and `rebuild-ratings` on the
+    > active season does not see it. (2) An end-of-game post during the active season is unchanged. (3) A game
+    > older than the first season's `starts_at` lands in the first season, not the active one. (4) A game
+    > posted in the seconds after a season starts lands in the new season (its `started_at` is after
+    > `starts_at`), which is the M5.3 edge case, unchanged. (5) Nothing rewrites the `season_id` of a game
+    > that is already stored — the dedupe rule from M5.1 still touches no column of an existing row.
+
+- [ ] **M5.10** Post the closed season's final board and its three awards to Discord when a season starts (M5.3, M5.4). Candidate, not accepted: it is the one moment in the year the group would actually read a Discord post twice, and the data is already computed for `/stats`. Needs a decision row before it is built — it is a feature the milestones did not ask for, and the nightly post already exists.
+
+- [ ] **M5.11** A lobby stuck at `in_game` must stop swallowing that party's later posts. Found while briefing M5.5 (product, 2026-09-09) and it is worse than the report it was found in: `selectLiveLobby` resolves a party to its `open`/`balanced`/`in_game` row, and a post landing on an `in_game` row is answered with `rosterFrozen: true`, `balanced: null`, `recheckInMs: null` (`apps/web/lib/ingest/lobby.ts`). The client keeps the same `partyId` all night (M2.14, verified in the 16.17 capture). So **one missed end-of-game block costs the group every remaining game of that night**: game two's roster is never read, no split is ever produced, and the companion is told nothing is wrong. Nobody would guess the cause from inside Discord.
+
+    > **The fix is a new terminal status, `dropped`, not a button and not a new row alongside the old one.**
+    > A new lobby row cannot simply be started next to the stuck one: `lobbies_active_party_idx` (`0003`) is
+    > unique per party `where status in ('open', 'balanced', 'in_game')`, so two live rows for one party is
+    > exactly what the schema forbids. So the stuck row has to leave the live set, and it must not leave it
+    > as `abandoned` — `abandoned` means "dissolved before it ever started", keeps replace semantics (M2.9),
+    > and would erase the one fact M5.5 exists to show.
+    >
+    > `dropped`: reached `in_game`, never got a result. Terminal, roster frozen forever, outside the partial
+    > index. The same sweep that abandons a stale `open` or `balanced` lobby gains one statement —
+    > `in_game` and `updated_at` older than the same two hours (no game runs two hours) becomes `dropped` —
+    > and the party's next post then starts a clean cycle by the rules M2.14 already wrote. **`dropped ->
+    > finished` stays a legal transition**, so a queued end-of-game block from days ago still closes its own
+    > lobby and the row leaves the missed list by itself, which is the behaviour M5.5's brief describes.
+    > M5.5's `Missed` list becomes `status in ('in_game', 'dropped')` — an `in_game` row is a game that may
+    > still be being played, a `dropped` one is a game nobody will ever see a result for.
+    >
+    > An admin pressing "unstick" on an admin page would also work, and it would be a step in the scene at
+    > 21:30 with nine friends waiting. That is the thing this product does not do.
+    >
+    > **Acceptance check.** (1) A lobby driven to `in_game` and left there, then posted again 2h1m later with
+    > the same party id: the stuck row is `dropped` with its frozen roster intact, a new `lobbies` row is
+    > created for the party, its roster is written, and ten stable members balance it. (2) The same post at
+    > 1h59m still lands on the frozen row and answers `rosterFrozen: true` — nothing changes for a game in
+    > progress. (3) A late end-of-game block for the dropped game still resolves to that row (`findLobbyId`
+    > takes the newest row that existed when the game started), moves it `dropped -> finished`, rates it
+    > normally, and leaves the new cycle alone. (4) `GET /api/cron/sweep` alone, with no companion post, is
+    > enough to drop the row. (5) The tonight page treats `dropped` exactly as it treats `abandoned` —
+    > `Nothing tonight` — and no other surface gains a new word for it. (6) A migration adds the enum value
+    > and `packages/db/src/types.ts` is regenerated; `LobbyStatus` in the shared schemas carries it.
 
 Acceptance: after a backfill of one player's history, games appear once each, ratings rebuild deterministically (same output on two runs), and the stats pages render with real numbers.
 
