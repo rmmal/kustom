@@ -8,12 +8,13 @@
  *
  * Flags: `--version` / `-v` prints the version and exits 0; `--help` / `-h` prints the usage and exits 0.
  * Both are answered before anything is read or written, so the build's smoke test can run the bundle on any
- * machine.
+ * machine. `--show-token` makes the first-run token prompt echo what is typed (M2.19).
  *
  * Environment:
  *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json, logs/ and queue/).
  *  - `CUSTOMS_NIGHT_LOG_LEVEL` sets the console level (`debug`, `info`, `warn`, `error`; default `info`).
  *    The file always gets `debug`.
+ *  - `CUSTOMS_NIGHT_SHOW_TOKEN=1` is `--show-token` for a shortcut that cannot pass flags.
  *  - `LCU_LOCKFILE_CANDIDATES` (from `@customs/lcu`) replaces the default lockfile paths.
  */
 
@@ -48,10 +49,13 @@ export function usage(): string {
     'Flags:',
     '  --version, -v   print the version and exit',
     '  --help, -h      print this text and exit',
+    '  --show-token    show the token as you type it at the first-run prompt (for a terminal that',
+    '                  cannot paste into a hidden prompt); it is still never written to the log',
     '',
     'Environment:',
     '  CUSTOMS_NIGHT_CONFIG_DIR   config directory (config.json, logs/, queue/)',
     '  CUSTOMS_NIGHT_LOG_LEVEL    console level: debug | info | warn | error (default info)',
+    '  CUSTOMS_NIGHT_SHOW_TOKEN   1 is the same as --show-token',
     '',
     `Config: ${configDir()}`,
   ].join('\n');
@@ -69,7 +73,11 @@ async function holdWindowOpen(): Promise<void> {
   await io.ask('Press Enter to close this window. ');
 }
 
-async function resolveConfig(dir: string, logger: CompanionLogger): Promise<CompanionConfig | null> {
+async function resolveConfig(
+  dir: string,
+  logger: CompanionLogger,
+  showToken: boolean,
+): Promise<CompanionConfig | null> {
   const loaded = loadConfig(dir);
   switch (loaded.status) {
     case 'ok':
@@ -81,10 +89,17 @@ async function resolveConfig(dir: string, logger: CompanionLogger): Promise<Comp
       });
       return null;
     case 'missing': {
+      if (loaded.reason === 'bad_token') {
+        // Never the value: the file is where the token lives, and the log is what gets sent around.
+        logger.warn('the saved companion token cannot be a token from the admin page; asking again', {
+          path: loaded.path,
+        });
+      }
       const config = await promptFirstRun({
-        io: stdioPrompt(),
+        io: stdioPrompt(process.stdin, process.stdout, { showToken }),
         partial: loaded.partial,
         checkApiBase: healthCheck(),
+        reason: loaded.reason,
       });
       const path = saveConfig(dir, config);
       logger.info('config saved', { path });
@@ -114,7 +129,8 @@ async function main(): Promise<number> {
     logDir: logsDir(dir),
   });
 
-  const config = await resolveConfig(dir, logger);
+  const showToken = args.includes('--show-token') || process.env.CUSTOMS_NIGHT_SHOW_TOKEN === '1';
+  const config = await resolveConfig(dir, logger, showToken);
   if (config === null) {
     await holdWindowOpen();
     return 1;

@@ -4,18 +4,30 @@
  * The League client writes `<install dir>/lockfile` with `LeagueClient:<pid>:<port>:<password>:https`
  * while it runs and removes it on exit. See docs/03-lcu-reference.md "Connecting".
  *
- * Discovery never throws on absence: the companion polls this forever while the client is closed.
+ * Discovery never throws on absence: the companion polls this forever while the client is closed. When every
+ * known path is missing, the process list is asked where the client is (M2.19, `processDiscovery.ts`), which
+ * covers a League installed somewhere other than the default directory.
  */
 
 import { readFile as fsReadFile } from 'node:fs/promises';
 import { delimiter } from 'node:path';
 import { z } from 'zod';
+import type { Logger } from './log.js';
+import {
+  LEAGUE_UX_PROCESS_NAME,
+  type LeagueProcess,
+  lockfilePathFromExecutable,
+  type ProcessLister,
+  type ProcessListResult,
+  parseUxCommandLine,
+  resolveProcessLister,
+} from './processDiscovery.js';
 
 /**
  * Environment override for the platform default candidates: a `path.delimiter`-separated list of lockfile
  * paths that replaces the defaults (not the `--lockfile` override, which is still tried first). Exists so
  * unit tests and CI can point discovery away from a real install; set it to a path that does not exist and
- * a running client on the same machine is invisible. Unset for users.
+ * a running client on the same machine is invisible (the process-list fallback is off too). Unset for users.
  */
 export const LOCKFILE_CANDIDATES_ENV = 'LCU_LOCKFILE_CANDIDATES';
 
@@ -104,6 +116,11 @@ export function lockfileCandidatesFromEnv(
 export interface DiscoverLockfileOptions {
   /** A configured path (companion config or `--lockfile`). Tried first when set. */
   readonly overridePath?: string | undefined;
+  /**
+   * Paths tried after the override and before the platform defaults. `createLockfileDiscovery` puts the
+   * lockfile it last found through the process list here, so a custom install is read like a default one.
+   */
+  readonly extraCandidates?: readonly string[];
   /** Defaults to `process.platform`. Injected in tests. */
   readonly platform?: NodeJS.Platform;
   /** Replaces the platform defaults entirely. Injected in tests. Wins over the environment override. */
@@ -114,6 +131,15 @@ export interface DiscoverLockfileOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Injected in tests. */
   readonly readFile?: (path: string) => Promise<string>;
+  /**
+   * The process-list fallback (M2.19), tried when every path is missing. `undefined` picks the platform one
+   * (PowerShell/wmic on a real Windows host, nothing elsewhere) unless `candidates` or `LCU_LOCKFILE_CANDIDATES`
+   * replaced the defaults, which is what tests and CI do to stay away from a real client. `null` disables it.
+   * Tests inject a fake; nothing in a test may shell out.
+   */
+  readonly listProcesses?: ProcessLister | null;
+  /** Where discovery reports what it did with the process list. Never the command line. */
+  readonly logger?: Logger;
 }
 
 export interface LockfileAttempt {
@@ -122,8 +148,25 @@ export interface LockfileAttempt {
   readonly reason: string;
 }
 
+/**
+ * Where the credentials came from: a candidate path, the lockfile beside the running client's executable,
+ * or the client's command line (`--app-port` / `--remoting-auth-token`) when no file could be read.
+ */
+export type LockfileSource = 'path' | 'process_path' | 'process_args';
+
+/** The `path` reported for credentials read off the command line; there is no file. */
+export const PROCESS_ARGS_PATH = `${LEAGUE_UX_PROCESS_NAME} command line`;
+
+/** The `path` of the attempt that records what the process list said when nothing was found. */
+export const PROCESS_LIST_PATH = `${LEAGUE_UX_PROCESS_NAME} (process list)`;
+
 export type DiscoverLockfileResult =
-  | { readonly status: 'found'; readonly path: string; readonly credentials: LockfileCredentials }
+  | {
+      readonly status: 'found';
+      readonly path: string;
+      readonly credentials: LockfileCredentials;
+      readonly source: LockfileSource;
+    }
   | { readonly status: 'not_found'; readonly tried: readonly LockfileAttempt[] };
 
 function errorCode(error: unknown): string {
@@ -133,43 +176,214 @@ function errorCode(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+type ReadFile = (path: string) => Promise<string>;
+
+type CandidateRead =
+  | { readonly ok: true; readonly credentials: LockfileCredentials }
+  | { readonly ok: false; readonly attempt: LockfileAttempt };
+
+async function readCandidate(path: string, readFile: ReadFile): Promise<CandidateRead> {
+  let text: string;
+  try {
+    text = await readFile(path);
+  } catch (error) {
+    const code = errorCode(error);
+    return { ok: false, attempt: { path, reason: code === 'ENOENT' ? 'missing' : code } };
+  }
+  const parsed = parseLockfile(text);
+  if (!parsed.ok) {
+    return { ok: false, attempt: { path, reason: `malformed: ${parsed.reason}` } };
+  }
+  return { ok: true, credentials: parsed.credentials };
+}
+
+async function listSafely(listProcesses: ProcessLister): Promise<ProcessListResult> {
+  try {
+    return await listProcesses();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /**
- * Finds and parses the first readable, well-formed lockfile among the override and the platform defaults
- * (or `candidates`, or `LCU_LOCKFILE_CANDIDATES`, in that order of precedence).
- * A present-but-malformed file is reported and skipped, so a stale or partially written lockfile does not
- * stop discovery. Never throws.
+ * The process-list fallback: for each running `LeagueClientUx.exe`, the lockfile beside its executable, then
+ * its command line. Appends what it tried to `tried`. Never throws.
+ */
+async function discoverFromProcesses(
+  listProcesses: ProcessLister,
+  readFile: ReadFile,
+  logger: Logger | undefined,
+  tried: LockfileAttempt[],
+): Promise<DiscoverLockfileResult | null> {
+  const listed = await listSafely(listProcesses);
+  if (!listed.ok) {
+    logger?.warn('process list unavailable; polling the lockfile paths only', { reason: listed.error });
+    tried.push({ path: PROCESS_LIST_PATH, reason: `unavailable: ${listed.error}` });
+    return null;
+  }
+  if (listed.processes.length === 0) {
+    tried.push({ path: PROCESS_LIST_PATH, reason: 'not running' });
+    return null;
+  }
+  for (const proc of listed.processes) {
+    const found = await discoverFromProcess(proc, readFile, logger, tried);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+async function discoverFromProcess(
+  proc: LeagueProcess,
+  readFile: ReadFile,
+  logger: Logger | undefined,
+  tried: LockfileAttempt[],
+): Promise<DiscoverLockfileResult | null> {
+  const pidLabel = `pid ${proc.pid ?? '?'}`;
+  const lockfilePath = proc.executablePath === null ? null : lockfilePathFromExecutable(proc.executablePath);
+  if (lockfilePath !== null) {
+    const read = await readCandidate(lockfilePath, readFile);
+    if (read.ok) {
+      logger?.info('League client found through the process list', { path: lockfilePath, uxPid: proc.pid });
+      return { status: 'found', path: lockfilePath, credentials: read.credentials, source: 'process_path' };
+    }
+    tried.push(read.attempt);
+  } else {
+    tried.push({ path: PROCESS_LIST_PATH, reason: `${pidLabel}: no executable path` });
+  }
+  // The command line carries the client password: parsed here, never logged, never quoted in `tried`.
+  const args = proc.commandLine === null ? null : parseUxCommandLine(proc.commandLine);
+  if (args === null) {
+    tried.push({ path: PROCESS_ARGS_PATH, reason: `${pidLabel}: no --app-port/--remoting-auth-token` });
+    return null;
+  }
+  const pid = args.appPid ?? proc.pid;
+  if (pid === null) {
+    tried.push({ path: PROCESS_ARGS_PATH, reason: 'no pid' });
+    return null;
+  }
+  logger?.info('League client found through its command line', { port: args.port, uxPid: proc.pid });
+  return {
+    status: 'found',
+    path: PROCESS_ARGS_PATH,
+    source: 'process_args',
+    credentials: { name: 'LeagueClient', pid, port: args.port, password: args.password, protocol: 'https' },
+  };
+}
+
+interface ResolvedCandidates {
+  readonly paths: readonly string[];
+  /** True when the platform defaults are in play, i.e. neither `candidates` nor the env replaced them. */
+  readonly usingDefaults: boolean;
+}
+
+function resolveCandidates(options: DiscoverLockfileOptions): ResolvedCandidates {
+  const fromEnv =
+    options.candidates === undefined ? lockfileCandidatesFromEnv(options.env ?? process.env) : null;
+  const defaults =
+    options.candidates ?? fromEnv ?? defaultLockfileCandidates(options.platform ?? process.platform);
+  return {
+    paths: [
+      ...(options.overridePath ? [options.overridePath] : []),
+      ...(options.extraCandidates ?? []),
+      ...defaults,
+    ],
+    usingDefaults: options.candidates === undefined && fromEnv === null,
+  };
+}
+
+function resolveLister(options: DiscoverLockfileOptions, usingDefaults: boolean): ProcessLister | null {
+  if (options.listProcesses !== undefined) {
+    return options.listProcesses;
+  }
+  return usingDefaults ? resolveProcessLister(options.platform ?? process.platform) : null;
+}
+
+/**
+ * Finds and parses the first readable, well-formed lockfile among the override, the extra candidates and the
+ * platform defaults (or `candidates`, or `LCU_LOCKFILE_CANDIDATES`, in that order of precedence). When every
+ * path fails, the process-list fallback runs (see `listProcesses`). A present-but-malformed file is reported
+ * and skipped, so a stale or partially written lockfile does not stop discovery. Never throws.
  *
- * TODO(M2): Windows process-args fallback. `LeagueClientUx` is started with `--app-port=` and
- * `--remoting-auth-token=` on its command line (confirmed in this Mac's LeagueClientUx log as well), which
- * covers a non-default install directory. Needs `wmic`/PowerShell on Windows; out of scope for M0.1.
+ * Stateless: every call re-reads every path and, on a miss, re-lists processes. Long-running callers use
+ * `createLockfileDiscovery`, which remembers the path it found and rate-limits the shell-out.
  */
 export async function discoverLockfile(
   options: DiscoverLockfileOptions = {},
 ): Promise<DiscoverLockfileResult> {
   const readFile = options.readFile ?? ((path: string) => fsReadFile(path, 'utf8'));
-  const defaults =
-    options.candidates ??
-    lockfileCandidatesFromEnv(options.env ?? process.env) ??
-    defaultLockfileCandidates(options.platform);
-  const paths = options.overridePath ? [options.overridePath, ...defaults] : [...defaults];
+  const { paths, usingDefaults } = resolveCandidates(options);
   const tried: LockfileAttempt[] = [];
 
   for (const path of paths) {
-    let text: string;
-    try {
-      text = await readFile(path);
-    } catch (error) {
-      const code = errorCode(error);
-      tried.push({ path, reason: code === 'ENOENT' ? 'missing' : code });
-      continue;
+    const read = await readCandidate(path, readFile);
+    if (read.ok) {
+      return { status: 'found', path, credentials: read.credentials, source: 'path' };
     }
-    const parsed = parseLockfile(text);
-    if (!parsed.ok) {
-      tried.push({ path, reason: `malformed: ${parsed.reason}` });
-      continue;
+    tried.push(read.attempt);
+  }
+
+  const listProcesses = resolveLister(options, usingDefaults);
+  if (listProcesses !== null) {
+    const found = await discoverFromProcesses(listProcesses, readFile, options.logger, tried);
+    if (found) {
+      return found;
     }
-    return { status: 'found', path, credentials: parsed.credentials };
   }
 
   return { status: 'not_found', tried };
+}
+
+export interface LockfileDiscoveryOptions extends DiscoverLockfileOptions {
+  /**
+   * The least time between two process-list shell-outs; the previous answer is reused in between. Default
+   * 15 s: discovery is polled every 5 s while the client is closed, and a PowerShell start on every poll is
+   * not a fair price for a friend's idle PC. 0 in tests.
+   */
+  readonly processListMinIntervalMs?: number;
+  /** Injected clock for the rate limit. Defaults to `Date.now`. */
+  readonly now?: () => number;
+}
+
+export type LockfileDiscovery = () => Promise<DiscoverLockfileResult>;
+
+/**
+ * A `discoverLockfile` for a long-running caller (the companion's connection machine): the same options every
+ * call, plus memory. A lockfile found beside the running client's executable is tried as a plain path on the
+ * next calls (no shell-out while the client is up), and the process list is asked at most once per
+ * `processListMinIntervalMs`. Never throws.
+ */
+export function createLockfileDiscovery(options: LockfileDiscoveryOptions = {}): LockfileDiscovery {
+  const minIntervalMs = options.processListMinIntervalMs ?? 15_000;
+  const now = options.now ?? Date.now;
+  const inner = resolveLister(options, resolveCandidates(options).usingDefaults);
+
+  let learnedPath: string | null = null;
+  let lastListedAt: number | null = null;
+  let lastListed: ProcessListResult = { ok: true, processes: [] };
+  const throttled: ProcessLister | null =
+    inner === null
+      ? null
+      : async () => {
+          const at = now();
+          if (lastListedAt !== null && at - lastListedAt < minIntervalMs) {
+            return lastListed;
+          }
+          lastListedAt = at;
+          lastListed = await listSafely(inner);
+          return lastListed;
+        };
+
+  return async () => {
+    const result = await discoverLockfile({
+      ...options,
+      extraCandidates: [...(learnedPath ? [learnedPath] : []), ...(options.extraCandidates ?? [])],
+      listProcesses: throttled,
+    });
+    if (result.status === 'found' && result.source === 'process_path') {
+      learnedPath = result.path;
+    }
+    return result;
+  };
 }

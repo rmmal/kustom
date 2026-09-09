@@ -147,6 +147,7 @@ describe('discoverLockfile', () => {
       platform: 'win32',
       env: {},
       readFile: enoent,
+      listProcesses: null,
     });
     expect(result.status).toBe('not_found');
     if (result.status === 'not_found') {
@@ -194,6 +195,7 @@ describe('discoverLockfile', () => {
     expect(result).toEqual({
       status: 'found',
       path,
+      source: 'path',
       credentials: {
         name: 'LeagueClient',
         pid: 12345,
