@@ -104,9 +104,11 @@ it is. Two numbers come out of that, and they have fixed names everywhere in the
   tonight page, and it is what the balancer works from.
 - **Proven** is `round(ordinal * 60)`, where `ordinal = mu - 2 * sigma`. It is the leaderboard's number. The
   board sorts on Proven and shows it as the primary column, with Rating underneath in smaller type, so the
-  order on the page always matches the number the page is showing. Proven is deliberately cautious: a new
-  player sits below their Rating until the board has watched about 30 games. The page says that in one
-  sentence rather than leaving people to guess.
+  order on the page always matches the number the page is showing. Proven is deliberately cautious: it sits
+  below your Rating by how unsure the model still is about you, so the player the board has watched least
+  carries the biggest subtraction. That gap shrinks as you play and settles after about 30 games. It does
+  not close — a settled player is still a few hundred points below their Rating, and is meant to be. The
+  page says all of that in one sentence rather than leaving people to guess.
 
 A printed change is always the difference of the two displayed numbers — `1469` becoming `1512` prints
 `(+43)`, never a separately rounded figure that makes the row fail to add up.
@@ -165,5 +167,5 @@ together, not a button someone presses to tidy up. Carrying `mu` over and resett
 - Ratings visibly converge: a player's predicted win chance across their last twenty games averages near 50%.
 - A new player rises in strength faster than they rise on the board. Their Rating settles in about ten
   nightly games, but the leaderboard sorts on Proven, the deliberately cautious number
-  (`ordinal = mu - 2 * sigma`), which takes roughly a month of nightly games to catch up. That is on
-  purpose: the board makes you prove it.
+  (`ordinal = mu - 2 * sigma`), which stays behind Rating and takes roughly a month of nightly games to
+  settle there. That is on purpose: the board makes you prove it.

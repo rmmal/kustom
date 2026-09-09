@@ -797,8 +797,8 @@ the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc,
 | nightly embed title | `Season 1 · leaderboard` | **amended, designer 2026-09-09** — same row |
 | back link on `/p/[puuid]` | `← Leaderboard`, and deleted when the shell lands | **amended, designer 2026-09-09** — same row |
 | still-settling chip | `settling` | *(shipped, M3.8)* kept |
-| still-settling sentence, once per page | `The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.` | **amended, product 2026-09-10 (M3.19)** — was `… which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.`, which is false on a season's first board; `04-decisions.md`. **This row is now the canonical wording** — the quote under "Still-settling marker (M3.8)" below is superseded and still needs the same two sentences pasted into it |
-| still-settling sentence, embed footer | `Proven stays below a new player's rating until the board has seen about 30 games.` | *(shipped, M3.8)* kept |
+| still-settling sentence, once per page | `The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.` | **amended, product 2026-09-10 (M3.19)** — the 2026-09-08 pair told a new player they begin at the bottom and rise, which is false on a season's first board, where every row is a rank seed and Proven orders exactly as rank does. The ruling is in `04-decisions.md`; "Still-settling marker (M3.8)" below quotes the same words |
+| still-settling sentence, embed footer | `Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.` | **amended, product 2026-09-10 (M3.19)** — `until … has seen about 30 games` said the gap closes then; it never closes. Same ruling row |
 | season active, no games yet — and a player with none, where the chart would be | `No games this season yet.` | **new**, product 2026-09-09 — kept as written |
 | no season is active, on both pages | `No season is active, so there is no board yet. An admin can start one.` | **new**, product 2026-09-09 — kept as written |
 | a recent game's result, on `/p/[puuid]` | `Won` / `Lost` | **new**, product 2026-09-09 — kept as written |
@@ -1288,11 +1288,15 @@ and the group say them in lower case).
   horizontal padding. No colour, no dot, no emoji, no asterisk. It reads as a label, not a warning.
 - Placed after the meta on line 2 of the leaderboard row, and beside the rating on `/p/[puuid]`.
 - The sentence appears **once per page**, under the leaderboard heading and under the rating chart on the
-  player page — not per row. Copy (product, 2026-09-08 — final):
-  `The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players
-  start low on purpose and climb as they play.`
+  player page — not per row. Copy (product, 2026-09-08; **both sentences amended 2026-09-10**, M3.19 —
+  the old pair said the gap closes at 30 games and that new players start at the bottom, and neither is
+  true; `04-decisions.md`):
+  `The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.`
   Short form, for the one-line Discord footer where two sentences will not fit:
-  `Proven stays below a new player's rating until the board has seen about 30 games.`
+  `Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.`
+- Both sentences say **settles**, never *catches up*: Proven stays below Rating for good — sigma flattens
+  near 4.5, which is 540 display points on a settled player (Lena, 41 games: Rating `2088`, Proven `1548`).
+  What changes with games is how far below, and most of that movement is in the first 30.
 - Disappears at 30 games with no ceremony.
 
 ### The player page (`/p/[puuid]`) — settled 2026-09-09
@@ -1682,7 +1686,7 @@ field 1 value  `1` Lena · 1548 · 41 games
                `2` Bilal · 1137 · 44 games
                ...
 timestamp    the moment the post is made, ISO 8601
-footer       Proven stays below a new player's rating until the board has seen about 30 games.
+footer       Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.
 ```
 
 The timestamp is what tells a reader scrolling back next week *which* night's board this was; both other
@@ -1720,7 +1724,7 @@ Filled in with the worked example's ten (`docs/02-milestones.md` M1.4 table — 
 > `9` Nadia · 654 · 28 games
 > `10` Yuki · 534 · 24 games
 >
-> Proven stays below a new player's rating until the board has seen about 30 games.
+> Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.
 
 The arithmetic, so nobody has to redo it: Lena `34.80 − 2 × 4.50 = 25.80`, `× 60 = 1548`. Omar
 `24.49 − 9.20 = 15.29`, `× 60 = 917.4 → 917`. Iris and Karim land 3 points apart (`990` / `987`) on a `1578` /
