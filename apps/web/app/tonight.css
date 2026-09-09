@@ -221,13 +221,29 @@
   display: none;
 }
 
+/*
+ * 10rem, not 8.5: with its icon, `jungle · support` measures 149px and was cut mid-word to
+ * `suppo` at every width above 480 (the designer, 2026-09-09). A role column that clips is
+ * exactly the "field that failed to load" this design keeps arguing against.
+ */
 @media (min-width: 480px) {
   .cn-rack-roled .cn-rack-row {
-    grid-template-columns: 1fr 8.5rem 4.5rem;
+    grid-template-columns: 1fr 10rem 4.5rem;
   }
 
   .cn-rack-second {
     display: inline;
+  }
+}
+
+/*
+ * On a desktop the main column is wide and a `1fr` name column pushed the role and the rating
+ * 450px away from it. The name is capped and ellipsised instead, the role sits beside it, and
+ * the rating stays right-aligned under its own legend.
+ */
+@media (min-width: 720px) {
+  .cn-rack-roled .cn-rack-row {
+    grid-template-columns: minmax(0, 16rem) 10rem minmax(4.5rem, 1fr);
   }
 }
 
@@ -354,6 +370,16 @@
   .cn-idle-cards {
     grid-template-columns: 1fr 1fr;
     align-items: start;
+  }
+}
+
+/*
+ * The rail is the desktop home for these two cards. Where it is on screen, the inline pair is
+ * the same two cards a second time on one page (the designer, 2026-09-09).
+ */
+@media (min-width: 1080px) {
+  .cn-grid-rail .cn-idle-cards {
+    display: none;
   }
 }
 

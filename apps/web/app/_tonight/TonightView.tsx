@@ -8,7 +8,6 @@ import {
   NAMELESS_HINT,
   renderWebName,
   SIT_OUT_VIEWER,
-  SITTING_OUT_LABEL,
   sitOutGeneral,
 } from '@/lib/tonight/copy';
 import { hasNamelessRow, tonightHeader, tonightState } from '@/lib/tonight/state';
@@ -216,10 +215,9 @@ function SitOutNotice({
   const youSit = viewerPuuid !== null && sitters.some((member) => member.puuid === viewerPuuid);
 
   return (
+    // No header bar: the 3px brand rule and the sentence are the card (the designer,
+    // 2026-09-09). `SITTING OUT` over `Sitting out this game: …` was the same words twice.
     <section className="cn-card cn-sitout">
-      <header className="cn-card-head">
-        <span className="cn-num cn-card-label">{SITTING_OUT_LABEL}</span>
-      </header>
       <p className="cn-sitout-text">
         {youSit ? SIT_OUT_VIEWER : sitOutGeneral(joinWebNames(sitters.map((member) => member.name)))}
       </p>

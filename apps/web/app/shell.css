@@ -192,13 +192,18 @@
   gap: var(--cn-sp-2);
 }
 
+/*
+ * A card's title is language, not data: Archivo, `text`, no tracking (the designer,
+ * 2026-09-09). The mono micro-label is for legends — `SEATS`, `rating`, `AROUND`, `live`,
+ * `open` — and `How this works` is a heading.
+ */
 .cn-rail-title {
   margin: 0;
-  font-size: var(--cn-t-xs);
-  font-weight: 500;
-  font-family: var(--cn-font-mono);
-  letter-spacing: 0.08em;
-  color: var(--cn-dim);
+  font-family: var(--cn-font-sans);
+  font-size: var(--cn-t-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--cn-text);
 }
 
 /* ---------------------------------------------------------------------------
@@ -247,12 +252,15 @@
   min-width: 100%;
 }
 
+/* Underlined like the links beside it: two things in a row of links, dressed the same. */
 .cn-how-summary {
   display: flex;
   align-items: center;
   min-height: 44px;
   color: var(--cn-brand);
   cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .cn-how-lines {

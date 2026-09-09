@@ -320,7 +320,9 @@ describe('the sit-out strip', () => {
     );
 
     expect(blocks).toEqual(['cn-sitout', 'cn-cards', 'cn-explain']);
-    expect(screen.getByText('SITTING OUT')).toBeInTheDocument();
+    // The card is its 3px brand rule and the sentence: no header bar saying the same words
+    // again (the designer, 2026-09-09).
+    expect(screen.queryByText('SITTING OUT')).not.toBeInTheDocument();
   });
 
   it('reads the general sentence for everybody who is not sitting', () => {

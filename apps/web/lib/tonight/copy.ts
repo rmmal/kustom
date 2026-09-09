@@ -116,9 +116,6 @@ export const NAMELESS_HINT = "Names fill in after someone's first game.";
  * Teams, the sit-out strip and the result.
  * ------------------------------------------------------------------------- */
 
-/** The sit-out strip's `raise` header bar, so it reads as a card and not a loose paragraph. */
-export const SITTING_OUT_LABEL = 'SITTING OUT';
-
 /** `05-design.md`, "Explanation line": the ghost button on the strip. */
 export const REROLL_LABEL = 'Reroll';
 
