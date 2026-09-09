@@ -206,7 +206,9 @@ watching: on lobby event -> POST /api/companion/lobby
 - Every LCU response is parsed with zod. Unknown shapes are logged with the endpoint and dropped.
 - Logs to `%APPDATA%/customs-night/logs/` with daily rotation, and queues captured end-of-game payloads in
   `%APPDATA%/customs-night/queue/` until the API has them (M2.3: written before the first POST, replayed on
-  start, deleted on a 2xx or a permanent 4xx). Nothing else is written to disk.
+  start, deleted on a 2xx or a permanent 4xx), and keeps the backfill cache in
+  `%APPDATA%/customs-night/backfill.json` (M5.1: which past customs were handled; deleting it costs fetches,
+  nothing else). Nothing else is written to disk.
 
 ## Web (`apps/web`)
 

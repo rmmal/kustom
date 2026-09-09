@@ -34,6 +34,8 @@ export interface CannedRoute {
 }
 
 export interface RecordedRequest {
+  /** `Date.now()` when the request arrived; the companion's rate-limit tests measure spacing with it. */
+  readonly receivedAt: number;
   readonly method: string;
   readonly path: string;
   readonly authorization: string | undefined;
@@ -97,6 +99,7 @@ export async function startFakeLcu(options: FakeLcuOptions = {}): Promise<FakeLc
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => {
         const record: RecordedRequest = {
+          receivedAt: Date.now(),
           method: req.method ?? '',
           path: req.url ?? '',
           authorization: req.headers.authorization,
@@ -147,6 +150,7 @@ export async function startFakeLcu(options: FakeLcuOptions = {}): Promise<FakeLc
     // `connect()` fails instead of opening and then closing.
     verifyClient: ({ req }: { req: IncomingMessage }) => {
       requests.push({
+        receivedAt: Date.now(),
         method: 'WS',
         path: req.url ?? '',
         authorization: req.headers.authorization,

@@ -113,7 +113,48 @@ export const companionRankResponseSchema = z.object({
   stored: z.boolean(),
 });
 
+/** Ids per scan call. The companion batches at this size; the route refuses more. */
+export const BACKFILL_SCAN_BATCH_SIZE = 100;
+
+/**
+ * `POST /api/companion/backfill/scan` (M5.1): "which of these games do you already have, and may I send
+ * the rest?" **This comment is the whole backfill contract**; the companion (`apps/companion/src/backfill.ts`)
+ * and the route implement it and nothing else restates it.
+ *
+ * Request: `{ gameIds: number[] }`, 1 to 100 positive integer `lcu_game_id`s, companion bearer token.
+ *
+ * Answer, 2xx: `{ ok: true, approved, unknown }`.
+ * - `approved: true`: `unknown` is the subset of `gameIds` with no `games` row, in any order. The
+ *   companion fetches a match detail for each and posts it; the others go into its local cache and are
+ *   never asked about again.
+ * - `approved: false`: `unknown` is always `[]`, the route sets `players.backfill_requested_at` once
+ *   (a second scan does not move it), and the companion logs one sentence and stops until its next pass.
+ *
+ * Not approved is **either** `approved: false` **or** an HTTP 403. Any other non-2xx, a network error, or
+ * a 2xx body that does not match this schema is "the scan failed": one log line and the pass comes back in
+ * ten minutes with the same ids. A 404 while the route is not deployed is therefore a wait, never a refusal.
+ *
+ * The games themselves go to the existing `POST /api/companion/game` as the unchanged `phase: 'eog'` body
+ * with `source: 'backfill'`, **no `partyId` key** and `role: null` on every participant
+ * (`companionGamePayloadSchema`, `mapMatchDetail` in `@customs/lcu`). The route stores such a game without
+ * rating it inline, requires the token's player among the participants with no lobby fallback (403
+ * otherwise), never overwrites a row it already has, and **must answer 2xx with the usual
+ * `companionGameResponseSchema` fields (`created` true or false) for a stored-but-unrated game**: a 2xx is
+ * what deletes the companion's queue file, and a 400/403/404/422 deletes it as a permanent refusal.
+ */
+export const companionBackfillScanRequestSchema = z.object({
+  gameIds: z.array(z.number().int().positive()).min(1).max(BACKFILL_SCAN_BATCH_SIZE),
+});
+
+export const companionBackfillScanResponseSchema = z.object({
+  ok: z.literal(true),
+  approved: z.boolean(),
+  unknown: z.array(z.number().int().positive()),
+});
+
 export type CompanionErrorResponse = z.infer<typeof companionErrorResponseSchema>;
+export type CompanionBackfillScanRequest = z.infer<typeof companionBackfillScanRequestSchema>;
+export type CompanionBackfillScanResponse = z.infer<typeof companionBackfillScanResponseSchema>;
 export type CompanionMeResponse = z.infer<typeof companionMeResponseSchema>;
 export type CompanionLobbyResponse = z.infer<typeof companionLobbyResponseSchema>;
 export type CompanionGameResponse = z.infer<typeof companionGameResponseSchema>;

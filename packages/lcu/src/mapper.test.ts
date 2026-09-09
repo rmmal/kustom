@@ -13,12 +13,24 @@ import {
 } from '@customs/db/schemas';
 import { describe, expect, it } from 'vitest';
 import { FIXTURES_DIR, readFixture } from './fixtures.js';
-import { isEogBot, isLobbyBot, mapEog, mapLobby, mapRank, nameFromSummoner } from './mapper.js';
+import {
+  isEogBot,
+  isLobbyBot,
+  mapEog,
+  mapLobby,
+  mapMatchDetail,
+  mapRank,
+  matchDetailWinningSide,
+  nameFromSummoner,
+} from './mapper.js';
 import {
   type EogStatsBlock,
   EogStatsBlockSchema,
   type Lobby,
   LobbySchema,
+  type MatchDetail,
+  MatchDetailSchema,
+  MatchHistoryListSchema,
   RankedStatsSchema,
   SummonerSchema,
 } from './schemas.js';
@@ -400,5 +412,141 @@ describe('mapRank against fixtures/16.17/ranked-stats-by-puuid--other.json', () 
       division: 'IV',
       lp: 30,
     });
+  });
+});
+
+describe('mapMatchDetail against fixtures/16.17/match-detail.json (M5.1 backfill)', () => {
+  const detail: MatchDetail = MatchDetailSchema.parse(body('match-detail'));
+  const XETA = 'aebd7c57-83d8-551d-a7b2-7caa7e8b1960';
+
+  it('maps game 4000769615: ten participants, side from teamId, winner from teams[].win, start from gameCreation', () => {
+    const payload = mapMatchDetail(detail);
+
+    expect(payload).toMatchObject({
+      phase: 'eog',
+      gameId: 4_000_769_615,
+      source: 'backfill',
+      gameType: 'CUSTOM_GAME',
+      startedAt: '2026-09-07T22:59:03.159Z',
+      durationS: 2936,
+      winningSide: 200,
+    });
+    // A backfilled game belongs to no lobby: the key is absent, not null.
+    expect('partyId' in payload).toBe(false);
+    expect(payload.participants).toHaveLength(10);
+    expect(payload.participants[0]).toEqual({
+      puuid: XETA,
+      side: 100,
+      role: null,
+      championId: 516,
+      kills: 7,
+      deaths: 10,
+      assists: 19,
+      gold: 17704,
+      damageToChamps: 36779,
+      cs: 245,
+      win: false,
+      gameName: 'XETA',
+      tagLine: 'EUNE',
+      summonerId: 52699007,
+    });
+    expect(payload.participants.map((participant) => participant.side)).toEqual([
+      100, 100, 100, 100, 100, 200, 200, 200, 200, 200,
+    ]);
+    expect(payload.participants.every((participant) => participant.role === null)).toBe(true);
+    expect(payload.participants.every((participant) => participant.gameName !== null)).toBe(true);
+    expect(payload.participants.map((participant) => participant.win)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    // The local player of the capture is on the red side, participant 8.
+    expect(payload.participants[7]).toMatchObject({
+      puuid: LEADER,
+      side: 200,
+      cs: 176,
+      summonerId: 47890856,
+    });
+
+    const parsed = companionGamePayloadSchema.parse(payload);
+    if (parsed.phase !== 'eog') throw new Error('unreachable');
+    expect(parsed.source).toBe('backfill');
+    expect(parsed.partyId).toBeUndefined();
+    expect(parsed.participants).toHaveLength(10);
+    expect(parsed.participants[0]).toMatchObject({ summonerId: '52699007', role: null, win: false });
+    expect(parsed.winningSide).toBe(200);
+    expect(Date.parse(parsed.startedAt)).toBe(detail.gameCreation);
+    expect(parsed.durationS).toBe(detail.gameDuration);
+  });
+
+  it('keeps raw as the whole detail (nothing to scrub here, but scrubbing is idempotent)', () => {
+    const payload = mapMatchDetail(detail);
+    expect(payload.raw.gameId).toBe(4_000_769_615);
+    expect((payload.raw.participants as unknown[]).length).toBe(10);
+    expect(JSON.stringify(payload.raw)).not.toContain(REDACTED);
+    expect(payload.raw).toEqual(JSON.parse(JSON.stringify(detail)));
+  });
+
+  it('reads the winner from teams[].win only: no Win, or two, is null', () => {
+    expect(matchDetailWinningSide(detail)).toBe(200);
+    expect(
+      matchDetailWinningSide({ teams: detail.teams.map((team) => ({ ...team, win: 'Fail' })) }),
+    ).toBeNull();
+    expect(
+      matchDetailWinningSide({ teams: detail.teams.map((team) => ({ ...team, win: 'Win' })) }),
+    ).toBeNull();
+    expect(matchDetailWinningSide({ teams: [] })).toBeNull();
+  });
+
+  it('the aborted list entry (4000965483, Abort_TooFewPlayers) has one team, no winner, one participant', () => {
+    const list = MatchHistoryListSchema.parse(body('match-history'));
+    const aborted = list.games.games.find((game) => game.gameId === 4_000_965_483);
+    if (aborted === undefined) throw new Error('fixture changed');
+    expect(aborted.endOfGameResult).toBe('Abort_TooFewPlayers');
+    const payload = mapMatchDetail(aborted);
+    expect(payload.winningSide).toBeNull();
+    expect(payload.participants).toHaveLength(1);
+  });
+
+  it('drops a participant with no identity row or a placeholder puuid, and reads a missing stat as 0', () => {
+    const identities = detail.participantIdentities.map((identity) =>
+      identity.participantId === 3
+        ? { ...identity, player: { ...identity.player, puuid: '00000000-0000-0000-0000-000000000000' } }
+        : identity,
+    );
+    const participants = detail.participants.map((participant) => {
+      if (participant.participantId !== 1) return participant;
+      const { neutralMinionsKilled: _dropped, ...rest } = participant.stats;
+      return { ...participant, stats: rest as MatchDetail['participants'][number]['stats'] };
+    });
+    const trimmed: MatchDetail = {
+      ...detail,
+      participants,
+      participantIdentities: identities.filter((identity) => identity.participantId !== 10),
+    };
+    const payload = mapMatchDetail(trimmed);
+    expect(payload.participants).toHaveLength(8);
+    expect(payload.participants.map((participant) => participant.summonerId)).not.toContain(2836230018958496);
+    expect(payload.participants[0]).toMatchObject({ puuid: XETA, cs: 244 });
+  });
+
+  it('parses through the same wire schema as the eog mapper, with every participant key in common', () => {
+    const fromDetail = companionGamePayloadSchema.parse(mapMatchDetail(detail));
+    const fromBlock = companionGamePayloadSchema.parse(
+      mapEog(EogStatsBlockSchema.parse(body('eog-stats-block'))),
+    );
+    if (fromDetail.phase !== 'eog' || fromBlock.phase !== 'eog') throw new Error('unreachable');
+    expect(Object.keys(fromDetail.participants[0] ?? {}).sort()).toEqual(
+      Object.keys(fromBlock.participants[0] ?? {}).sort(),
+    );
+    expect(fromBlock.source).toBe('eog');
+    expect(fromDetail.source).toBe('backfill');
   });
 });

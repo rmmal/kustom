@@ -26,6 +26,7 @@ import {
   type EogStatsBlock,
   type Lobby,
   type LobbyMember,
+  type MatchDetail,
   type RankedQueueEntry,
   RankedQueueEntrySchema,
   type RankedStats,
@@ -174,6 +175,78 @@ export function mapEog(block: EogStatsBlock, options: MapEogOptions = {}): Compa
     winningSide: winner === undefined ? null : winner.teamId,
     participants,
     raw: scrubValue(block) as Record<string, unknown>,
+  };
+}
+
+/** `teams[].win` of the team that won a match-history game. The eog block says `isWinningTeam: true` instead. */
+export const MATCH_TEAM_WIN = 'Win';
+
+/**
+ * The side that won a match-history game: the one team whose `win` is `"Win"`. `null` when no team has it
+ * (an aborted game has one team, `"Fail"`) or when both do (never seen; not a game we can rate).
+ */
+export function matchDetailWinningSide(detail: Pick<MatchDetail, 'teams'>): SideValue | null {
+  const winners = detail.teams.filter((team) => team.win === MATCH_TEAM_WIN);
+  const winner = winners[0];
+  return winners.length === 1 && winner !== undefined ? winner.teamId : null;
+}
+
+/**
+ * `GET /lol-match-history/v1/games/{gameId}` -> the body of `POST /api/companion/game`, `phase: 'eog'`,
+ * `source: 'backfill'` (M5.1). Same payload as `mapEog`, different rules, because the detail is a different
+ * shape: camelCase stats, `teams[].win` as a string, a real start time, no `detectedTeamPosition`.
+ *
+ * - `gameId` is the detail's own. `partyId` is **absent**: a backfilled game belongs to no lobby.
+ * - `startedAt` is `gameCreation` (epoch ms) as ISO 8601; no arithmetic. `durationS` is `gameDuration`.
+ * - `winningSide` is `matchDetailWinningSide`; `null` means the caller drops the game and never posts it.
+ * - Participants are `participants[]` joined to `participantIdentities[]` on `participantId`; `side` is the
+ *   participant's `teamId`; names come from `player.gameName`/`tagLine`. A participant with no identity row,
+ *   or a placeholder puuid (a bot), is dropped before validation.
+ * - `role` is `null` on every participant: the detail has no `detectedTeamPosition`, and `timeline.lane`/
+ *   `role` is a different vocabulary nobody has verified a mapping for (`04-decisions.md`, 2026-09-09).
+ * - Stats are the camelCase keys; `cs` is `totalMinionsKilled + neutralMinionsKilled`; `win` is `stats.win`.
+ * - `raw` is the whole detail, scrubbed: it carries no chat credentials, but `scrubValue` is idempotent and
+ *   `games.raw` is public-read, so this is not the place for an exception.
+ */
+export function mapMatchDetail(detail: MatchDetail): CompanionGameEogPayloadInput {
+  const players = new Map(
+    detail.participantIdentities.map((identity) => [identity.participantId, identity.player] as const),
+  );
+  const participants: CompanionGameParticipantInput[] = [];
+  for (const participant of detail.participants) {
+    const player = players.get(participant.participantId);
+    if (player === undefined || isPlaceholderPuuid(player.puuid)) {
+      continue;
+    }
+    const stats: Record<string, unknown> = participant.stats;
+    participants.push({
+      puuid: player.puuid,
+      side: participant.teamId,
+      role: null,
+      championId: participant.championId,
+      kills: stat(stats, 'kills'),
+      deaths: stat(stats, 'deaths'),
+      assists: stat(stats, 'assists'),
+      gold: stat(stats, 'goldEarned'),
+      damageToChamps: stat(stats, 'totalDamageDealtToChampions'),
+      cs: stat(stats, 'totalMinionsKilled') + stat(stats, 'neutralMinionsKilled'),
+      win: participant.stats.win === true,
+      gameName: player.gameName || null,
+      tagLine: player.tagLine || null,
+      summonerId: player.summonerId,
+    });
+  }
+
+  return {
+    phase: 'eog',
+    gameId: detail.gameId,
+    source: 'backfill',
+    gameType: detail.gameType,
+    startedAt: new Date(detail.gameCreation).toISOString(),
+    durationS: detail.gameDuration,
+    winningSide: matchDetailWinningSide(detail),
+    participants,
+    raw: scrubValue(detail) as Record<string, unknown>,
   };
 }
 
