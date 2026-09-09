@@ -3675,10 +3675,11 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     >
     > - **A `lobbies` row is one game cycle** (M2.14, `0003`), so an `in_game` row is one specific game that
     >   started.
-    > - **`in_game` is never swept** (M2.5): the two-hour abandon sweep covers `open` and `balanced` only,
-    >   because `abandoned` keeps replace semantics and an `in_game` roster is frozen (M2.9). So **a lobby
-    >   that reached `in_game` and never got an end-of-game block stays `in_game` forever**, with the exact
-    >   ten who were in it. That is not a leak; it is the record. This page is the query over it.
+    > - **`in_game` is swept to `dropped`, not `abandoned`** (M5.11 superseded M2.5's rule on 2026-09-09): two
+    >   hours idle at `in_game` becomes `dropped`, which keeps the frozen ten (M2.9) and never gets replace
+    >   semantics. So **a lobby that reached `in_game` and never got an end-of-game block ends as `dropped`**,
+    >   with the exact ten who were in it. That is not a leak; it is the record. This page is the query over
+    >   it: the `Missed` list is `status in ('in_game', 'dropped')`.
     > - A late end-of-game block still lands: `findLobbyId` resolves a game to the newest lobby row that
     >   existed when the game started, so a queued block from days ago closes its own cycle and the row
     >   leaves this page by itself.

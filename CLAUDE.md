@@ -80,7 +80,7 @@ If a command above does not exist yet, the milestone that creates it is in `docs
 
 ## Conventions
 
-- Discriminated unions over booleans for state. `LobbyStatus = 'open' | 'balanced' | 'in_game' | 'finished' | 'abandoned'`.
+- Discriminated unions over booleans for state. `LobbyStatus = 'open' | 'balanced' | 'in_game' | 'dropped' | 'finished' | 'abandoned'` (`dropped` is an `in_game` lobby nobody posted about for two hours; a late end-of-game block still finishes it).
 - Side is `100` (blue) or `200` (red), matching the client. Roles are `'top' | 'jungle' | 'mid' | 'adc' | 'support'`.
 - Ratings are OpenSkill `{ mu, sigma }`. Balance on `mu`. Rank leaderboards on `ordinal = mu - 2 * sigma`. Display rating is `round(mu * 60)`.
 - API routes under `apps/web/app/api/`. Companion routes use a bearer companion token; admin routes use the Supabase session and `players.is_admin`.
