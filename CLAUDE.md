@@ -50,7 +50,7 @@ pnpm --filter web rebuild-ratings [--dry-run] [--force] [--prune] [--season <id>
                              # batch, so pass --force (or wait 15 minutes) then.
                              # Exit 2 means games landed mid-run, so run it again.
 pnpm --filter companion dev  # needs the League client running on this machine (M2.1)
-pnpm --filter companion build:win   # bundle + Node SEA -> apps/companion/dist/CustomsNight.exe + CustomsNight.exe.sha256 (from any host; build:exe is an alias)
+pnpm --filter companion build:win   # bundle + Node SEA -> apps/companion/dist/Kustom.exe + Kustom.exe.sha256 (from any host; build:exe is an alias)
 pnpm --filter companion build:host  # the same pipeline for this machine's platform, to check the exe before a Windows run
 pnpm --filter companion publish:gh  # GitHub release v<version> on suyaser/kustom-releases via the gh CLI (gh auth login first)
 pnpm --filter companion release     # build:win + publish:gh

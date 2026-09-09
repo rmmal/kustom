@@ -12,10 +12,10 @@ describe('publishPlan', () => {
   it('names the tag, the title and the three assets the brief lists', () => {
     const plan = publishPlan('1.2.3');
     expect(plan.tag).toBe('v1.2.3');
-    expect(plan.title).toBe('Customs Night companion 1.2.3');
+    expect(plan.title).toBe('Kustom companion 1.2.3');
     expect(plan.assets.map((asset) => asset.split('/').pop())).toEqual([
-      'CustomsNight.exe',
-      'CustomsNight.exe.sha256',
+      'Kustom.exe',
+      'Kustom.exe.sha256',
       'README.txt',
     ]);
     expect(plan.command.slice(0, 7)).toEqual([
@@ -28,13 +28,13 @@ describe('publishPlan', () => {
       '--title',
     ]);
     expect(plan.latestUrl).toBe(
-      'https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe',
+      'https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe',
     );
     expect(plan.latestUrl).toBe(RELEASE_LATEST_URL);
     expect(plan.assetUrls[0]).toBe(
-      'https://github.com/suyaser/kustom-releases/releases/download/v1.2.3/CustomsNight.exe',
+      'https://github.com/suyaser/kustom-releases/releases/download/v1.2.3/Kustom.exe',
     );
-    expect(commandLine(plan)).toContain(`--title 'Customs Night companion 1.2.3'`);
+    expect(commandLine(plan)).toContain(`--title 'Kustom companion 1.2.3'`);
   });
 });
 
@@ -43,7 +43,7 @@ describe('friendReadme', () => {
     const text = friendReadme();
     const whole = readFileSync(README_FILE, 'utf8');
     expect(whole.startsWith(text.trimEnd())).toBe(true);
-    expect(text).toContain('# Customs Night companion');
+    expect(text).toContain('# Kustom companion');
     expect(text).toContain('## 3. Leave it running');
     expect(text).toContain('join one of our custom');
     expect(text).not.toContain('---');

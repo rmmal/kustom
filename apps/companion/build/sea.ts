@@ -1,8 +1,8 @@
 /**
- * Step two of the release build: wrap `dist/customs-night.cjs` in a Node single-executable application.
+ * Step two of the release build: wrap `dist/kustom.cjs` in a Node single-executable application.
  *
- *   pnpm --filter companion build:win     -> dist/CustomsNight.exe (+ .sha256)   (Windows x64, from any host)
- *   pnpm --filter companion build:host    -> dist/customs-night-<version>-<platform>  (this machine; a check)
+ *   pnpm --filter companion build:win     -> dist/Kustom.exe (+ .sha256)   (Windows x64, from any host)
+ *   pnpm --filter companion build:host    -> dist/kustom-<version>-<platform>  (this machine; a check)
  *
  * How (docs: nodejs.org/api/single-executable-applications.html):
  *  1. Download the pinned Node release (`config.ts` `NODE_RELEASE`) twice if needed: a copy that runs on this
@@ -57,7 +57,7 @@ export type SeaTarget = 'win-x64' | 'host';
 
 export interface SeaOptions {
   readonly target?: SeaTarget;
-  /** Reuse `dist/customs-night.cjs` instead of bundling again. */
+  /** Reuse `dist/kustom.cjs` instead of bundling again. */
   readonly skipBundle?: boolean;
   readonly version?: string;
 }
@@ -229,7 +229,7 @@ export async function buildSea(options: SeaOptions = {}): Promise<SeaResult> {
     console.log(`bundled ${result.outfile} (${(result.bytes / 1024).toFixed(0)} KiB, api ${result.apiBase})`);
   }
 
-  const blobFile = join(DIST_DIR, 'customs-night.blob');
+  const blobFile = join(DIST_DIR, 'kustom.blob');
   const seaConfig = join(DIST_DIR, 'sea-config.json');
   writeFileSync(
     seaConfig,
@@ -260,7 +260,7 @@ export async function buildSea(options: SeaOptions = {}): Promise<SeaResult> {
     output = join(DIST_DIR, EXE_NAME);
   } else {
     source = host;
-    output = join(DIST_DIR, `customs-night-${version}-${process.platform}-${process.arch}`);
+    output = join(DIST_DIR, `kustom-${version}-${process.platform}-${process.arch}`);
   }
   copyFileSync(source, output);
   if (target === 'win-x64') {

@@ -5,9 +5,9 @@
  *   pnpm --filter companion publish:gh         # after build:win; needs `gh auth login` once
  *   (`publish:gh`, not `publish`: pnpm intercepts a script named `publish` with its own command)
  *
- * One release per version: tag `v<version>`, title `Customs Night companion <version>`, notes = the friend
- * README, assets `CustomsNight.exe`, `CustomsNight.exe.sha256` and `README.txt`. The stable link for the group
- * chat is `https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe`.
+ * One release per version: tag `v<version>`, title `Kustom companion <version>`, notes = the friend
+ * README, assets `Kustom.exe`, `Kustom.exe.sha256` and `README.txt`. The stable link for the group
+ * chat is `https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe`.
  *
  * Nothing here needs a token in the environment. When `gh` is not logged in (or not installed) the script
  * prints the exact command to run by hand and exits 1; it never half-publishes.
@@ -50,7 +50,7 @@ export interface PublishPlan {
 /** The `gh release create` invocation, as argv. Pure: no I/O beyond reading the version. */
 export function publishPlan(version: string = companionVersion()): PublishPlan {
   const tag = releaseTag(version);
-  const title = `Customs Night companion ${version}`;
+  const title = `Kustom companion ${version}`;
   const notesFile = join(DIST_DIR, README_ASSET_NAME);
   const assets = [join(DIST_DIR, EXE_NAME), join(DIST_DIR, EXE_SHA256_NAME), notesFile];
   return {

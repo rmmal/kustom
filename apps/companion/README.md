@@ -1,4 +1,4 @@
-# Customs Night companion
+# Kustom companion
 
 This little app watches your League client and tells the bot who is in the lobby and who won, so nobody
 has to pick teams or report scores. It only reads the client — it never plays for you and never clicks
@@ -6,8 +6,8 @@ anything in a game.
 
 ## 1. Download it
 
-Get `CustomsNight.exe` from the link in the group chat —
-<https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe>, which always
+Get `Kustom.exe` from the link in the group chat —
+<https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe>, which always
 gives you the newest one — and put it somewhere you will find it again. Your desktop is fine. You do not
 need a GitHub account.
 
@@ -81,8 +81,8 @@ again with `the saved token does not look like one from the admin page`, and `ap
 fixes the PC that ran 0.1.0: start 0.1.1, paste again.
 
 ```
-CustomsNight.exe --show-token                # echo the token as it is typed (console only; never the log)
-set CUSTOMS_NIGHT_SHOW_TOKEN=1 && CustomsNight.exe   # the same, for a shortcut that cannot pass flags
+Kustom.exe --show-token                # echo the token as it is typed (console only; never the log)
+set CUSTOMS_NIGHT_SHOW_TOKEN=1 && Kustom.exe   # the same, for a shortcut that cannot pass flags
 ```
 
 `--show-token` exists for a terminal that cannot paste into a hidden prompt (some remote-desktop and
@@ -93,8 +93,8 @@ to the log, which knows it only as a secret to redact.
 
 ```
 pnpm --filter companion verify-commands       # from the repo: fixtures land in packages/lcu/fixtures/<patch>/
-CustomsNight.exe --verify-commands            # packaged: fixtures land in %APPDATA%\customs-night\fixtures\<patch>\
-set CUSTOMS_NIGHT_VERIFY_COMMANDS=1 && CustomsNight.exe   # the same, for a shortcut that cannot pass flags
+Kustom.exe --verify-commands            # packaged: fixtures land in %APPDATA%\customs-night\fixtures\<patch>\
+set CUSTOMS_NIGHT_VERIFY_COMMANDS=1 && Kustom.exe   # the same, for a shortcut that cannot pass flags
 ```
 
 The three lobby writes (create, invite, switch side) are community-documented and `unverified` in
@@ -136,11 +136,17 @@ CUSTOMS_NIGHT_LOG_LEVEL=debug pnpm --filter companion dev      # everything the 
 
 ### Building the exe
 
-One file, `dist/CustomsNight.exe`, no installer, no sidecar. The version is `package.json` `version`.
+One file, `dist/Kustom.exe`, no installer, no sidecar. The version is `package.json` `version`.
+
+The product is Kustom and the exe, the console banner (`Kustom companion <version> starting`), `--help`, the
+first-run prompt and the release title all say so (M2.20, 0.1.3). `Customs Night` stays the repo's codename:
+the package name, the `CUSTOMS_NIGHT_*` environment variables and esbuild defines, the `User-Agent`
+(`customs-night-companion/<version>`), the API's `service: customs-night` health literal, and the
+`%APPDATA%\customs-night` config directory, which is a path an existing install already has its token in.
 
 ```
-pnpm --filter companion bundle       # esbuild: src/main.ts + workspace deps -> dist/customs-night.cjs
-pnpm --filter companion build:win    # bundle, then Node SEA -> dist/CustomsNight.exe + CustomsNight.exe.sha256
+pnpm --filter companion bundle       # esbuild: src/main.ts + workspace deps -> dist/kustom.cjs
+pnpm --filter companion build:win    # bundle, then Node SEA -> dist/Kustom.exe + Kustom.exe.sha256
 pnpm --filter companion build:host   # the same, for this machine (macOS/Linux): a runnable check of the pipeline
 pnpm --filter companion publish:gh   # GitHub release v<version> with the exe, its hash and README.txt
 pnpm --filter companion release      # build:win, then publish:gh
@@ -167,11 +173,11 @@ for a build against another deployment. A `config.json` with its own `apiBase` a
 
 Releases are GitHub release assets on the public repo `suyaser/kustom-releases` (the app repo stays
 private; the Supabase bucket could not take a 90 MB object on the Free plan). One release per version, tag
-`v<version>`, assets `CustomsNight.exe`, `CustomsNight.exe.sha256` and `README.txt`. The link for the group
+`v<version>`, assets `Kustom.exe`, `Kustom.exe.sha256` and `README.txt`. The link for the group
 chat never changes:
 
 ```
-https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe
+https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe
 ```
 
 `pnpm --filter companion publish:gh` runs `gh release create` (the script is `publish:gh` because pnpm intercepts a script named `publish`) with the `gh` CLI's own login (`gh auth login`

@@ -21,7 +21,7 @@ export const DIST_DIR = join(COMPANION_DIR, 'dist');
 export const CACHE_DIR = join(COMPANION_DIR, 'build', 'cache');
 
 /** The bundle the exe wraps. CommonJS: Node's SEA loads only CommonJS main scripts. */
-export const BUNDLE_FILE = join(DIST_DIR, 'customs-night.cjs');
+export const BUNDLE_FILE = join(DIST_DIR, 'kustom.cjs');
 
 export const RIOT_ROOT_CA_FILE = join(REPO_ROOT, 'packages', 'lcu', 'certs', 'riotgames.pem');
 
@@ -74,7 +74,7 @@ export function companionVersion(): string {
 }
 
 /** The one file a friend downloads, named as the README names it. */
-export const EXE_NAME = 'CustomsNight.exe';
+export const EXE_NAME = 'Kustom.exe';
 export const EXE_SHA256_NAME = `${EXE_NAME}.sha256`;
 export const README_ASSET_NAME = 'README.txt';
 
