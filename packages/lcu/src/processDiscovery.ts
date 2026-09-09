@@ -34,8 +34,12 @@ export interface LeagueProcess {
 
 export type ProcessListResult =
   | { readonly ok: true; readonly processes: readonly LeagueProcess[] }
-  /** The process list could not be read (no PowerShell, timeout, access denied). A reason, never a throw. */
-  | { readonly ok: false; readonly error: string };
+  /**
+   * The process list could not be read (no PowerShell, timeout, access denied). A reason, never a throw.
+   * `cached` marks a rate-limited repeat of an earlier failure (`createLockfileDiscovery`): reported in
+   * `tried` again, but not warned about again.
+   */
+  | { readonly ok: false; readonly error: string; readonly cached?: boolean };
 
 /** Lists the running `LeagueClientUx.exe` processes. Injected in tests; never shells out there. */
 export type ProcessLister = () => Promise<ProcessListResult>;

@@ -290,6 +290,40 @@ describe('createLockfileDiscovery', () => {
     expect(list.calls).toBe(2);
   });
 
+  it('warns once per real shell-out, not on the cached repeats inside the interval', async () => {
+    let clock = 0;
+    const logger = recordingLogger();
+    const list = lister({ ok: false, error: 'powershell: ENOENT; wmic: ENOENT' });
+    const discover = createLockfileDiscovery({
+      platform: 'win32',
+      env: {},
+      readFile: fs({}),
+      listProcesses: list,
+      logger,
+      processListMinIntervalMs: 15_000,
+      now: () => clock,
+    });
+    for (const at of [0, 5_000, 10_000]) {
+      clock = at;
+      const result = await discover();
+      expect(result.status).toBe('not_found');
+      if (result.status === 'not_found') {
+        // Every poll still says the list is unavailable; only the log is deduplicated.
+        expect(result.tried.at(-1)).toEqual({
+          path: PROCESS_LIST_PATH,
+          reason: 'unavailable: powershell: ENOENT; wmic: ENOENT',
+        });
+      }
+    }
+    expect(list.calls).toBe(1);
+    expect(logger.lines.filter((line) => line.level === 'warn')).toHaveLength(1);
+
+    clock = 15_000;
+    await discover();
+    expect(list.calls).toBe(2);
+    expect(logger.lines.filter((line) => line.level === 'warn')).toHaveLength(2);
+  });
+
   it('keeps going when the lister rejects', async () => {
     const discover = createLockfileDiscovery({
       platform: 'win32',

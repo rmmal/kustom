@@ -217,7 +217,11 @@ async function discoverFromProcesses(
 ): Promise<DiscoverLockfileResult | null> {
   const listed = await listSafely(listProcesses);
   if (!listed.ok) {
-    logger?.warn('process list unavailable; polling the lockfile paths only', { reason: listed.error });
+    // Once per real attempt: a rate-limited repeat of the same failure is not news (one warn per 5 s poll
+    // all night on a PC where PowerShell and wmic both fail would be).
+    if (!listed.cached) {
+      logger?.warn('process list unavailable; polling the lockfile paths only', { reason: listed.error });
+    }
     tried.push({ path: PROCESS_LIST_PATH, reason: `unavailable: ${listed.error}` });
     return null;
   }
@@ -368,7 +372,7 @@ export function createLockfileDiscovery(options: LockfileDiscoveryOptions = {}):
       : async () => {
           const at = now();
           if (lastListedAt !== null && at - lastListedAt < minIntervalMs) {
-            return lastListed;
+            return lastListed.ok ? lastListed : { ...lastListed, cached: true };
           }
           lastListedAt = at;
           lastListed = await listSafely(inner);
