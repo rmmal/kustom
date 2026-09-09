@@ -221,7 +221,7 @@ product rather than a document that happens to be dark.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ▍CUSTOMS NIGHT           Tonight  Leaderboard  Stats  Get ↗  │  top bar: raise, 1px line under
+│  ▍KUSTOM            Tonight  Leaderboard  Stats  Companion ↗  │  top bar: raise, 1px line under
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
 │   … page content, on the ink, under the floodlight …          │
@@ -231,13 +231,16 @@ product rather than a document that happens to be dark.
 └───────────────────────────────────────────────────────────────┘
 ```
 
-- **Wordmark.** `CUSTOMS NIGHT` in the display cut at `t-md`, upper case, letter-spacing `0.02em`, in `text`,
+- **Wordmark.** `KUSTOM` in the display cut at `t-md`, upper case, letter-spacing `0.02em`, in `text`,
   preceded by a 3px × 18px `brand` bar (`▍`). That bar is the lamp and it is the entire logo. No image, no
-  favicon work beyond a 32px version of the bar on ink.
+  favicon work beyond a 32px version of the bar on ink. **The product is called Kustom** (the user, 2026-09-09:
+  the group says "kustom"); `Customs Night` is the repo's codename and stays in `CLAUDE.md`, the docs and the
+  package names. Every friend-facing surface — wordmark, `<title>`, embed footers, README, console — says
+  Kustom. Six letters at 800 weight is also a better wordmark than thirteen.
 - **Nav.** Tabs, mono `t-xs`, `0.08em`, lower case is wrong here — these are destinations, so Archivo `t-sm`
   500 in `dim`, the current one in `text` with a 2px `brand` underline. Order: `Tonight`, `Leaderboard`,
-  `Stats`, `Get the app ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
-  `Stats` with M5.4, `Get the app` is external and always there. A nav item that 404s is worse than a missing
+  `Stats`, `Companion ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
+  `Stats` with M5.4, `Companion` is external and always there. A nav item that 404s is worse than a missing
   one. Keep the list in one exported array (`lib/nav.ts`) so no page hand-writes it.
 - **Phone.** Two rows: wordmark row (44px), then the tab row (44px, tabs left aligned, horizontally scrollable
   with no scrollbar if a fifth destination ever exists). Not sticky — a sticky bar costs 88px of a 700px
@@ -249,7 +252,7 @@ product rather than a document that happens to be dark.
   status strip's slug line and are not repeated here. `Your games` appears only for a signed-in viewer and points at
   `/p/<their puuid>`. `Get the companion` points at the **releases page**, not the `.exe` — the tonight page
   is opened on a phone, and a link that starts a 90MB Windows download on a phone is a bug:
-  `https://github.com/suyaser/kustom-releases/releases/latest`. The direct `.../latest/download/CustomsNight.exe`
+  `https://github.com/suyaser/kustom-releases/releases/latest`. The direct `.../latest/download/Kustom.exe`
   link stays on `/admin` and in the group chat, where the reader is on the PC that needs it.
 - **`How this works`** is a `<details>` in the footer, closed by default, four short lines. No new route, no
   new data, and the one place on the page allowed to change height — because a person tapped it.
@@ -507,7 +510,7 @@ placement are the designer's and are untouched.
 
 | Where | String | Status |
 |---|---|---|
-| wordmark | `CUSTOMS NIGHT` (the amber bar is the logo, not a word) | product 2026-09-09 |
+| wordmark | `KUSTOM` (the amber bar is the logo, not a word; `Customs Night` is the repo codename and appears on no friend-facing surface) | product 2026-09-09 |
 | strip headline, idle | `NOBODY IN YET` | product 2026-09-09 — **changed**, code says `Nothing tonight` |
 | strip headline, filling | `<n> IN THE LOBBY` | product 2026-09-09 |
 | strip headline, balanced | `TEAMS ARE SET` | product 2026-09-09 — code says `Teams set` |
@@ -707,7 +710,7 @@ Build order is not this order: item 4 is the foundation and lands first. This or
 
 1. **The app shell.** New `apps/web/app/_shell/TopBar.tsx`, `Footer.tsx`, `HowThisWorks.tsx`, `lib/nav.ts`,
    `app/shell.css`; mounted in `app/layout.tsx` around `{children}`, with `/admin` opting out (it already
-   scopes itself with `.admin`). Wordmark `▍CUSTOMS NIGHT`, tabs for routes that exist, footer links. This is
+   scopes itself with `.admin`). Wordmark `▍KUSTOM`, tabs for routes that exist, footer links. This is
    the whole "what is this page and where else can I go" gap in one commit.
 2. **The status strip.** `lib/tonight/state.ts`: `tonightHeader` returns `{ headline, count, sentence, live }`.
    `lib/tonight/types.ts` + `load.ts`: the snapshot gains `seasonName: string | null` (select `name` alongside
@@ -736,7 +739,7 @@ Build order is not this order: item 4 is the foundation and lands first. This or
 9. **Safe areas.** `env(safe-area-inset-top)` on the top bar and `-bottom` on the footer. The current page's
    16px top padding puts the count under a notch.
 10. **The companion link points at the releases page**, `https://github.com/suyaser/kustom-releases/releases/latest`,
-    not at `…/latest/download/CustomsNight.exe`. This page is opened on a phone.
+    not at `…/latest/download/Kustom.exe`. This page is opened on a phone.
 
 ### What to keep — do not rewrite these
 
@@ -1127,7 +1130,7 @@ field 2      name "Seats"         block   value: one line per move      [only if
 field 3      name "Blue · 7695"   inline  value: five lines, lane order
 field 4      name "Red · 7595"    inline  value: five lines, lane order
 field 5      name "Lobby"         block   value: name and password      [only if known]
-footer       Customs Night · more on the tonight page
+footer       Kustom · more on the tonight page
 timestamp    now
 ```
 
@@ -1167,7 +1170,7 @@ Filled in with the worked example (`docs/00-product.md`, split 1):
 > **Lobby**
 > `customs-night` · password `4471`
 >
-> Customs Night · more on the tonight page
+> Kustom · more on the tonight page
 
 The exact strings the API builds:
 
@@ -1192,7 +1195,7 @@ field 4 value  `top` Omar · 1469
 field 5 name   Lobby
 field 5 value  `customs-night` · password `4471`
 
-footer         Customs Night · more on the tonight page
+footer         Kustom · more on the tonight page
 ```
 
 Budget: a side field is ~110 characters against a 1024 limit, so a name would have to be ~180 characters to
@@ -1236,7 +1239,7 @@ correct: there it starts the sentence, where in the first shape it is mid-line a
 
 **When there is no `url`** — a dev machine, or any origin that resolves to localhost, which `tonightPageUrl`
 drops rather than post a link that works for one person — the title is not a link, so the footer must not
-promise one. The footer is then `Customs Night` alone. A footer that says "more on the tonight page" over an
+promise one. The footer is then `Kustom` alone. A footer that says "more on the tonight page" over an
 unlinked title is the message telling a friend to tap something that is not there.
 
 Sit-out fields, when they exist — copy (product, **M2.15**, 2026-09-08; shipped verbatim by M3.1). Two
@@ -1297,7 +1300,7 @@ Filled in, eleven around, all tied at zero games tonight (this is the case
 > **Lobby**
 > `customs-night`
 >
-> Customs Night · more on the tonight page
+> Kustom · more on the tonight page
 
 Two fields, not one line: the sitter reads the first and stops, the mover reads the second and acts, and
 neither has to work out which half of a compound sentence is about them.

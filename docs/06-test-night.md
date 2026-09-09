@@ -30,7 +30,7 @@ post it".
    never paste it into a thread. And **the M2.11 pass first** on that PC (`git clone`, `pnpm install`,
    `smoke --diff`): a client-shape difference found later, with ten people waiting, is the worst place for it.
 4. **The exe**, when M2.6 lands, from
-   <https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe> — no GitHub account
+   <https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe> — no GitHub account
    needed. Until then `pnpm --filter companion dev` on the same PC. At the first-run prompt:
    `https://kustom-delta.vercel.app`, then the token.
 
@@ -67,7 +67,7 @@ path, and a true 500 stays covered by that task's stubbed check 6).**
    `api not reachable now; calls will retry`.
 8. Play a second short custom and end it with a winner. Wait for `end-of-game block captured`, click past the
    scoreboard so the client drops the block, confirm `%APPDATA%\customs-night\queue\<gameId>.json` exists,
-   then kill it hard: `taskkill /f /im CustomsNight.exe` (or `/im node.exe` on the dev path).
+   then kill it hard: `taskkill /f /im Kustom.exe` (or `/im node.exe` on the dev path).
 9. Put the real `apiBase` back and start it: it replays the queue (`game posted ... created: true`) and
    `queue\` is empty. Start it once more — still empty, still one `games` row for that `gameId`.
 10. **No spam (M2.6 check 7).** An hour with the client open and no lobby: at most 20 console lines, and none

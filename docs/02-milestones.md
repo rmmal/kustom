@@ -1327,11 +1327,11 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > costs them a second evening they will not run it, and a night with nobody running it is a night the bot
     > does not exist.
     >
-    > **What ships, and where it lives.** One file, `CustomsNight.exe`, and the README below. Releases are
+    > **What ships, and where it lives.** One file, `Kustom.exe`, and the README below. Releases are
     > **GitHub release assets on the public repo `suyaser/kustom-releases`** (lead, 2026-09-09); the code repo
-    > stays private. One tag per version, `v<version>`, carrying `CustomsNight.exe` and `README.txt`, and the
+    > stays private. One tag per version, `v<version>`, carrying `Kustom.exe` and `README.txt`, and the
     > link in the group chat is the stable one GitHub keeps pointed at the newest tag:
-    > `https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe`. It needs no
+    > `https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe`. It needs no
     > GitHub account to download. This replaces the Supabase `releases` bucket, whose free plan caps an object
     > at 50 MB against a 90 MB exe — see `04-decisions.md`. `/admin` links to it (the tonight page later). The
     > upload is part of the build step, not a manual drag: `pnpm --filter companion build:exe` produces the
@@ -1378,7 +1378,7 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     > follow the three steps, below a horizontal rule.
     >
     > ```markdown
-    > # Customs Night companion
+    > # Kustom companion
     >
     > This little app watches your League client and tells the bot who is in the lobby and who won, so nobody
     > has to pick teams or report scores. It only reads the client — it never plays for you and never clicks
@@ -1386,8 +1386,8 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >
     > ## 1. Download it
     >
-    > Get `CustomsNight.exe` from the link in the group chat —
-    > <https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe>, which always
+    > Get `Kustom.exe` from the link in the group chat —
+    > <https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe>, which always
     > gives you the newest one — and put it somewhere you will find it again. Your desktop is fine. You do not
     > need a GitHub account.
     >
@@ -1442,8 +1442,8 @@ Goal: a friend runs one exe, and every lobby and game they are in lands in the d
     >    contains the token, a lockfile password or a raw event body. The log file has the rest.
     > 8. **One URL, everywhere.** The download link printed in `apps/companion/README.md`, in this brief, in
     >    `docs/06-test-night.md` and on `/admin` is byte-identical to
-    >    `https://github.com/suyaser/kustom-releases/releases/latest/download/CustomsNight.exe`, the tag
-    >    `v<version>` carries both `CustomsNight.exe` and `README.txt`, and `curl -IL` on the link answers 200
+    >    `https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe`, the tag
+    >    `v<version>` carries both `Kustom.exe` and `README.txt`, and `curl -IL` on the link answers 200
     >    from a signed-out session before it goes into the group chat.
     > 9. `pnpm -r typecheck` and `pnpm -r test` still pass, and `pnpm --filter companion dev` still starts
     >    against `http://localhost:3000` with no config file present.
@@ -1673,6 +1673,8 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 > the acceptance run, not a task that blocks it.
 
 - [x] **M2.19** Windows first-run fixes from the 0.1.0 field test (2026-09-09): the hidden token prompt discards terminal escape sequences and validates the token shape before saving (re-prompts, `--show-token`); a custom League install is found via the process list when the default lockfile is missing (`lockfilePath` still wins). Ships as companion 0.1.1.
+- [ ] **M2.20** Rename to Kustom. The user, 2026-09-09: the group says "kustom", so the product is **Kustom**; `Customs Night` stays the repo's codename in `CLAUDE.md`, the docs and the package names, and appears on no surface a friend sees. The companion half: the exe becomes `Kustom.exe` (and `Kustom.exe.sha256`), the download link becomes `https://github.com/suyaser/kustom-releases/releases/latest/download/Kustom.exe`, the console banner becomes `Kustom companion <version> starting`, the first-run prompt lines, `--help` and every other printed string drop "Customs Night", `apps/companion/README.md` is retitled `Kustom companion` throughout, the release title is `Kustom companion <version>`, and the `kustom-releases` README line names the new asset. Ships as companion **0.1.3**, rebuilt and re-published. Owner: `companion-engineer`, **before the first published release** — after a friend has the old file in their downloads folder this costs everybody a re-download. `%APPDATA%/customs-night/config.json` does **not** move: it is a path, not a surface, and moving it would make an existing install ask for its token again. **Acceptance:** `grep -ri "customs night" apps/companion packages/lcu` returns only codename comments and the config path, never a printed string; the built `Kustom.exe` prints `Kustom companion 0.1.3 starting` and its `--help` says Kustom; the download URL is byte-identical in `apps/companion/README.md`, the M2.6 brief, `docs/06-test-night.md`, `/admin` and the releases-repo README; `Kustom.exe.sha256` is published beside it and matches; `CLAUDE.md`'s `build:win` line and `docs/03-lcu-reference.md`'s `verify-commands` line name `Kustom.exe`; `pnpm -r typecheck` and `pnpm -r test` pass.
+
 ## M3 Teams in Discord and on the web (2 to 3 days, needs M2)
 
 Goal: first real night. Ten join the lobby, teams appear in Discord with an explanation, results and leaderboard follow.
@@ -1738,7 +1740,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >    join: accent bar (`14721854`), title `Teams are set`, the stored explanation string verbatim as the
     >    description, two inline fields named `Blue · <sum>` and `Red · <sum>`, five lines each in lane order
     >    `top jungle mid adc support` with the role in inline code, footer
-    >    `Customs Night · more on the tonight page`.
+    >    `Kustom · more on the tonight page`.
     > 2. `splits` has three rows for that lobby with their three explanation strings, exactly one `is_chosen`.
     > 3. Eleven around: the embed also carries the `Sitting out` field with the product copy verbatim, and the
     >    ten in the team fields are the ten with the fewest games tonight.
@@ -2321,31 +2323,33 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >
     > **Acceptance.**
     >
-    > 1. All ten items of the designer's list are in, each identifiable in the diff: `tokens.css` is the v2 file
+    > 1. The shell says **KUSTOM** and nothing under `apps/web` says `Customs Night` (M3.21, which lands inside
+    >    this task).
+    > 2. All ten items of the designer's list are in, each identifiable in the diff: `tokens.css` is the v2 file
     >    verbatim, `app/_shell/` has `TopBar`, `Footer`, `HowThisWorks` and `lib/nav.ts`, `app/_tonight/SeatRack.tsx`
     >    exists, `app/_icons/RoleIcon.tsx` has five paths, the shell's grid has the three widths and the rail.
-    > 2. Every string on the page matches the final copy table character for character, including the four
+    > 3. Every string on the page matches the final copy table character for character, including the four
     >    changed headlines and sentences, and a test pins the strip's label for each of the five states.
-    > 3. `rowHeight.test.ts` asserts ten `<li>` in the rack at counts 0, 6, 9, 10 and 12, and keeps its 44px
+    > 4. `rowHeight.test.ts` asserts ten `<li>` in the rack at counts 0, 6, 9, 10 and 12, and keeps its 44px
     >    arithmetic.
-    > 4. The role column is absent and the one hint line present when no member on screen has a role; present on
+    > 5. The role column is absent and the one hint line present when no member on screen has a role; present on
     >    every row, with `flexible` on the ones without, as soon as one member has one. The word `flexible` never
     >    appears nine times in a column.
-    > 5. `grep -r "cn-accent" apps/web` returns nothing outside `admin.css`, and `admin.css` is byte-identical to
+    > 6. `grep -r "cn-accent" apps/web` returns nothing outside `admin.css`, and `admin.css` is byte-identical to
     >    its state before this task.
-    > 6. The nav renders only routes that exist; with M3.5 merged that is four tabs, and no tab 404s. The
+    > 7. The nav renders only routes that exist; with M3.5 merged that is four tabs, and no tab 404s. The
     >    footer's `Get the companion` and the nav's `Companion ↗` both point at
-    >    `https://github.com/suyaser/kustom-releases/releases/latest`; the string `latest/download/CustomsNight.exe`
+    >    `https://github.com/suyaser/kustom-releases/releases/latest`; the string `latest/download/Kustom.exe`
     >    appears nowhere under `apps/web/app` outside `/admin`.
-    > 7. `Your games` renders only for a signed-in viewer with a player row, and points at `/p/<their puuid>`.
+    > 8. `Your games` renders only for a signed-in viewer with a player row, and points at `/p/<their puuid>`.
     >    The `Set roles` link inside the all-flexible hint is not rendered until M3.6 ships the control.
-    > 8. One primary block per state, no layout shift inside a state: a join, a leave, a name arriving and a
+    > 9. One primary block per state, no layout shift inside a state: a join, a leave, a name arriving and a
     >    reroll each move nothing above the fold on a 390px viewport.
-    > 9. Exactly one gradient and one glow exist in `apps/web`: the shell radial and the live pill. `grep` for
+    > 10. Exactly one gradient and one glow exist in `apps/web`: the shell radial and the live pill. `grep` for
     >    `gradient(` and `box-shadow` in the web CSS returns those two plus `--cn-lit` and nothing else.
-    > 10. `pnpm -r typecheck`, `pnpm -r test` and `pnpm --filter web build` pass; `TonightView.test.tsx` is
+    > 11. `pnpm -r typecheck`, `pnpm -r test` and `pnpm --filter web build` pass; `TonightView.test.tsx` is
     >     updated in the same commit as the heading change, not after it.
-    > 11. **Screenshots at 390px and 1280px of all five states** (idle, filling at 6, filling at 11, balanced,
+    > 12. **Screenshots at 390px and 1280px of all five states** (idle, filling at 6, filling at 11, balanced,
     >     result) are reviewed by the `designer` against `05-design.md` and **shown to the user before the lead
     >     ticks this task.** A tick without those two rounds is not a tick.
     >
@@ -2359,6 +2363,8 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
 - [ ] **M3.19** Floodlit follow-up on `/leaderboard` and `/p/[puuid]`, once M3.5 has landed against v1. The six changes in `05-design.md`, "What changes on the leaderboard and the player page (M3.5)": mount the shell, adopt the nine tokens (`accent` → `brand`, rows inside a card with a `raise` header carrying the `Proven · Rating` legend), the type changes, role icons wherever a role is named, the board row extracted as `app/_leaderboard/BoardRow.tsx` with `loadTopPlayers(client, { limit })` so the tonight page's rail can reuse it, and the sparkline kept hand-drawn. Owner: `web-engineer`, straight after M3.18. **No content decision moves**: `Proven` stays the primary number and the sort key, `Rating` stays on line 2, the two names stay fixed, the legend stays a legend and not a sticky header row, the `settling` chip stays a chip, and the history chart still plots `Rating` only, with the seed line in the same units. **Acceptance:** both pages render inside the shell with the correct tab underlined; no `--cn-accent` reference survives; the board row is one component used by both `/leaderboard` and the tonight page's rail, and the rail's `Top of the board` shows the same five rows as the top of the board; every number, label and sort order is byte-identical to M3.5's shipped output; screenshots at 390px and 1280px reviewed by the `designer`.
 
 - [ ] **M3.20** Interactions without full-page reloads. The user, 2026-09-09: *"experience sucks, page refreshes on any button I press."* Cause: `/admin`'s forms post and 303-redirect back with `?notice=`/`?error=` (decision rows 2026-09-08), and the tonight page's no-JS path does the same. Every action on `/admin` — main and secondary role, display name, Discord link and unlink, admin flag, mint token, revoke token, Discord config, season start, backfill approval — and on the tonight page — reroll, and later M3.6's role tap and self-link — submits **in place** via React form actions (`useActionState`/`useTransition`, or `fetch` to the existing route), shows its notice or error inline next to the control it belongs to, updates that row optimistically or re-fetches that row only, and never navigates. The existing route handlers stay the API and keep their tests unchanged; the plain form post stays as the degraded no-JS path. Owner: `web-engineer`, with or right after M3.18. **Acceptance:** pressing any button on `/admin` or the tonight page changes no URL and triggers no document load — asserted by a component test on the action and checked in a browser where the page's `load` event count stays 1 across a full round of controls; a refused write renders its sentence inline beside the control, not as a banner at the top of the page and not in the query string; keyboard focus stays on the control that was pressed; with JavaScript disabled every form still posts and still works through the 303 path; `pnpm -r test` passes with the route tests untouched. **Note:** the tonight page's reroll already posts with `fetch` and never navigates (decision row 2026-09-09), so it is a check here, not a rewrite — the work is `/admin`.
+
+- [ ] **M3.21** The Kustom name on the web. Wordmark `▍KUSTOM` in the shell, the tonight page's `<title>` and every other `<title>` under `apps/web` outside `/admin`, the teams and result embed footers (`Kustom · more on the tonight page`, and `Kustom` alone when there is no tonight-page URL), and the nightly leaderboard embed's footer. Owner: `web-engineer`, **lands inside M3.18** — the shell is where the wordmark is born, so this is not a separate commit, it is the name the shell is built with. The embed footers are the one part that is not Floodlit: they are two strings in `apps/web/lib/discord/embeds.ts` and their snapshots. `Customs Night` stays in `CLAUDE.md`, the docs and the package names. **Acceptance:** `grep -r "Customs Night" apps/web` returns nothing; the teams embed snapshot, the result embed snapshot and the nightly leaderboard embed all read `Kustom · more on the tonight page`, and the no-URL case reads `Kustom`; the browser tab and the WhatsApp link preview say Kustom.
 
 Acceptance: a full night with real players, teams posted within 15 seconds of the tenth join, results within 60 seconds of end of game, no human action beyond joining the lobby.
 
@@ -2515,7 +2521,7 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > (`CLAUDE.md`, "Verify before you claim"). So M4.1 ships two things: the queue, which is fully testable
     > against stubs, and the tool that turns the rows green.
     >
-    > `pnpm --filter companion verify-commands` (packaged: `CustomsNight.exe --verify-commands`). It is run by a
+    > `pnpm --filter companion verify-commands` (packaged: `Kustom.exe --verify-commands`). It is run by a
     > person, with the League client up and one friend online, and it is the **only** code allowed to POST to the
     > client while the rows are unverified. It makes no API calls, prompts before each probe, prints a report and
     > writes it to `<configDir>/verify-commands-<patch>-<date>.txt`.
