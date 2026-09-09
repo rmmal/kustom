@@ -32,22 +32,25 @@ describe('the member list reserves exactly ten rows', () => {
   const PADDING_PX = 8;
   const ROW_PX = 44;
   const HAIRLINE_PX = 1;
+  /** `05-design.md`, "Scale": the line height `t-md` is specified with. */
+  const LINE_HEIGHT = 1.3;
 
   it('states the reserved height in rows and hairlines, not in a guessed pixel count', () => {
     expect(block('.cn-members')).toContain(`min-height: calc(10 * ${ROW_PX}px + 9px)`);
     expect(10 * ROW_PX + 9 * HAIRLINE_PX).toBe(449);
   });
 
-  it('keeps a row inside 44px: the line height is 1.2, not the body 1.5', () => {
+  it("keeps a row inside 44px: the line height is the scale's 1.3, not the body 1.5", () => {
     const row = block('.cn-member,\n.cn-seat');
     expect(row).toContain('min-height: 44px');
-    expect(row).toContain('line-height: 1.2');
+    expect(row).toContain(`line-height: ${LINE_HEIGHT}`);
     expect(row).toContain('padding: var(--cn-sp-2) var(--cn-sp-3)');
 
     // One line of `t-md` plus the padding, which is what the browser lays out when the content
     // is shorter than `min-height`. At the body's 1.5 this is 46px and the list overflows its
-    // reservation by 2-3px a row.
-    const content = Math.ceil(NAME_PX * 1.2) + 2 * PADDING_PX;
+    // reservation by 2-3px a row; at the scale's own 1.3 it is 42px and fits.
+    const content = Math.ceil(NAME_PX * LINE_HEIGHT) + 2 * PADDING_PX;
+    expect(content).toBe(42);
     expect(content).toBeLessThanOrEqual(ROW_PX);
     expect(Math.ceil(NAME_PX * 1.5) + 2 * PADDING_PX).toBeGreaterThan(ROW_PX);
   });

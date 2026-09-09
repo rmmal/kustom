@@ -1,8 +1,10 @@
+import { loadBoard } from '../board/load';
+import type { BoardView } from '../board/types';
 import { activeSeasonId, loadPool } from '../ingest/balance';
 import type { GameFinishedEvent, LobbyBalancedEvent, LobbyHook } from '../ingest/hooks';
 import { compareForSitOut, type PoolMember, planSeats } from '../ingest/selection';
 import { DEFAULT_NIGHT_TIME_ZONE } from '../night';
-import { tonightPageUrl } from '../siteUrl';
+import { leaderboardPageUrl, tonightPageUrl } from '../siteUrl';
 import { getServiceClient, type ServiceClient } from '../supabase';
 import {
   buildResultInput,
@@ -13,7 +15,7 @@ import {
   type TeamsSource,
   teamsPuuids,
 } from './assemble';
-import { resultEmbed, teamsEmbed } from './embeds';
+import { type LeaderboardEntry, leaderboardEmbed, resultEmbed, TOP_N, teamsEmbed } from './embeds';
 import { postToWebhook, type WebhookOptions, type WebhookOutcome } from './webhook';
 
 /**
@@ -109,6 +111,70 @@ export async function postResultForGame(
   if (input === null) return SKIPPED('game is not rated');
 
   return postToWebhook(client, resultEmbed(input), 'result embed', options);
+}
+
+/**
+ * The nightly board (M3.5). One post: the season's top ten by Proven, in the same order
+ * `/leaderboard` puts them in, because it is the same `loadBoard`.
+ *
+ * **Three ways to say nothing**, all of them `skipped`, and none of them an empty message:
+ *
+ * - no active season;
+ * - nobody on the board at all;
+ * - **a season nobody has played yet** (product, 2026-09-09). The board seeds every known
+ *   player from their rank, so the morning a new season starts this would post
+ *   `Season 2 · leaderboard` over ten lines all reading `0 games` — a ranking of a season that
+ *   has not happened, in a channel, while `/leaderboard` correctly says `No games this season
+ *   yet.` One rated game and it posts as it does today.
+ *
+ * That is the result embed's rule applied here: a message that says nothing is worse than
+ * silence. Anything else is the webhook's answer, and a webhook that is down costs a log line.
+ *
+ * **The schedule is not here.** This is a function and a route; something outside the app
+ * calls it at a configured time (`GET /api/cron/leaderboard`, bearer `CRON_SECRET`), exactly
+ * as the idle sweep works. No Vercel cron config ships with this milestone.
+ */
+export async function postNightlyLeaderboard(
+  client: ServiceClient,
+  options: PostOptions = {},
+): Promise<WebhookOutcome> {
+  const board = await loadBoard(client);
+  const skip = nightlyLeaderboardSkip(board);
+  if (skip !== null) return SKIPPED(skip);
+
+  const entries: LeaderboardEntry[] = board.rows.slice(0, TOP_N).map((row) => ({
+    puuid: row.puuid,
+    name: row.name,
+    proven: row.proven,
+    games: row.games,
+  }));
+
+  const payload = leaderboardEmbed({
+    // `nightlyLeaderboardSkip` has already refused a board with no season.
+    seasonName: (board.season as NonNullable<BoardView['season']>).name,
+    entries,
+    url: leaderboardPageUrl(options.requestOrigin),
+    timestamp: (options.now ?? new Date()).toISOString(),
+  });
+  return postToWebhook(client, payload, 'leaderboard embed', options);
+}
+
+/**
+ * Why tonight's board is not worth posting, or `null` when it is. Pure, so the three rules are
+ * a unit test rather than a season nobody can arrange.
+ *
+ * The third one is the one that is easy to miss: the board seeds every known player from their
+ * rank, so a season nobody has played yet is a full list of real names with real Proven numbers
+ * and `0 games` against every one of them. Posting that is a ranking of a season that has not
+ * happened.
+ */
+export function nightlyLeaderboardSkip(board: BoardView): string | null {
+  if (board.season === null) return 'no active season';
+  if (board.rows.length === 0) return 'nobody on the board';
+  // Asked of the whole board rather than of the ten printed: a season is played or it is not,
+  // and `loadBoard`'s `games` is the fold's own count for the active season.
+  if (board.rows.every((row) => row.games === 0)) return 'no games this season';
+  return null;
 }
 
 /**

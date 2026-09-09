@@ -1,4 +1,4 @@
-import { displayRating } from '@customs/core';
+import { displayRating, ordinal, type Rating } from '@customs/core';
 
 /**
  * The display boundary for ratings (M3.3), in one place.
@@ -46,4 +46,44 @@ export function formatWebDelta(delta: number): string {
 /** A gain is `text` at 600, a loss is `dim` at 400. Never coloured by sign (05-design.md). */
 export function isGain(delta: number): boolean {
   return !Object.is(delta, -0) && delta >= 0;
+}
+
+/**
+ * **Proven**, as it is printed: `round(ordinal * 60)`, floored at zero (M3.5; the designer's
+ * review, 2026-09-09).
+ *
+ * One helper, because three surfaces print it — `/leaderboard`, `/p/[puuid]` and the nightly
+ * Discord embed. It is composed from core's own `ordinal` and `displayRating` rather than
+ * multiplying by 60 here: the sixty is `config.rating.displayMultiplier` and the two is
+ * `config.rating.ordinalSigmaWeight`, and neither is this package's number to hold.
+ *
+ * **The floor.** `ordinal = mu - 2σ` is negative for anybody whose uncertainty is larger than
+ * half their skill, which is not an edge case: an Iron IV seed is `14 - 2 × 8.33 = -2.66`, so
+ * `-160` on the board, and a low seed after two losses gets there too. A negative rating on a
+ * scoreboard reads as a penalty a friend has been given rather than as "the board has not seen
+ * you play yet" — which is the sentence M3.8 already prints beside them. Zero is the honest
+ * floor: it is what "no evidence yet" looks like, and the `settling` chip is the explanation.
+ *
+ * **The sort does not use this number.** Rows are ordered by the raw `ordinal` from core, so
+ * two players who both display `0` keep their true order rather than falling back to the
+ * name tie-break. `Math.max` is monotonic, so the displayed column is still non-increasing
+ * down the page and product's rule — the order matches the number shown — holds either way.
+ * See `lib/board/order.ts`.
+ *
+ * `ratings.ordinal` is also a generated column in Postgres (`mu - 2 * sigma`), and it is what
+ * the index sorts on. The number a reader sees still comes through here, so the page cannot
+ * print a value SQL and core would disagree about.
+ */
+export function provenRating(rating: Rating): number {
+  return Math.max(0, displayRating(ordinal(rating)));
+}
+
+/**
+ * The unfloored `ordinal`, for ordering only. Never printed.
+ *
+ * Exported so the board's comparator and this file's floor cannot drift apart: the sort key
+ * and the displayed number come from the same two lines of code.
+ */
+export function provenSortKey(rating: Rating): number {
+  return ordinal(rating);
 }

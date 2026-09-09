@@ -1,4 +1,5 @@
 import type { Role, Side } from '@customs/core';
+import { gamesLabel, LEADERBOARD_LABEL, SETTLING_SENTENCE_SHORT } from '../board/copy';
 import { inLaneOrder } from '../laneOrder';
 
 /**
@@ -143,6 +144,27 @@ export interface ResultEmbedInput {
   timestamp: string;
 }
 
+/** One line of the nightly board. Ordered by `proven` before it gets here, never after. */
+export interface LeaderboardEntry {
+  puuid: string;
+  name: PlayerName;
+  /** `round(ordinal * 60)`: the number the list is ordered by and the only one it prints. */
+  proven: number;
+  games: number;
+}
+
+export interface LeaderboardEmbedInput {
+  seasonName: string;
+  /** Already ordered by Proven, descending. {@link TOP_N} is the most that will be printed. */
+  entries: readonly LeaderboardEntry[];
+  /** The board, or `undefined` when there is no honest URL to post. */
+  url?: string | undefined;
+  timestamp: string;
+}
+
+/** `05-design.md`, "Nightly leaderboard embed": one field, and it is called `Top ten`. */
+export const TOP_N = 10;
+
 /**
  * The teams embed: two columns with role and display rating, the explanation verbatim, the
  * sit-out copy when somebody sits, and the lobby name and password so a straggler can get in.
@@ -226,6 +248,45 @@ export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
       },
     ],
   };
+}
+
+/**
+ * The nightly board (M3.5, `05-design.md`, "Nightly leaderboard embed").
+ *
+ * **One field, block, no columns.** A ranked list is a single column by nature and inline
+ * fields would break it across a row.
+ *
+ * The number after the name is **Proven** (`round(ordinal * 60)`) and the list is ordered by
+ * it: where only one number fits, it is the one the order is made of, because a list ordered
+ * by a number it does not show is exactly the complaint this rule exists to prevent (M3.5
+ * brief). `Rating` is on the web page, where there is a column for it.
+ *
+ * The footer is the short still-settling sentence, on **every** one of these posts and not
+ * just the first: the reason Yuki is last by more than her rating suggests is her sigma, and a
+ * post without the sentence is a post that invites the question again (M3.8). There is no
+ * `settling` chip per line — it would double the length of the two lines that are already
+ * about the newest players.
+ */
+export function leaderboardEmbed(input: LeaderboardEmbedInput): WebhookPayload {
+  const entries = input.entries.slice(0, TOP_N);
+
+  return {
+    embeds: [
+      {
+        color: ACCENT_COLOR,
+        title: `${input.seasonName} · ${LEADERBOARD_LABEL.toLowerCase()}`,
+        ...(input.url === undefined ? {} : { url: input.url }),
+        fields: [{ name: 'Top ten', value: entries.map(leaderboardLine).join('\n') }],
+        footer: { text: SETTLING_SENTENCE_SHORT },
+        timestamp: input.timestamp,
+      },
+    ],
+  };
+}
+
+/** `` `1` Lena · 1548 · 41 games ``. The rank is in code, like a role, so the column reads. */
+function leaderboardLine(entry: LeaderboardEntry, index: number): string {
+  return `\`${index + 1}\` ${renderName(entry.name)} · ${entry.proven} · ${gamesLabel(entry.games)}`;
 }
 
 /**

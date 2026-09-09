@@ -6,6 +6,9 @@ The Next.js app: the API the companion posts to, the public pages, and `/admin`.
 app/api/companion/*   bearer companion token, zod-validated (M1.5)
 app/api/admin/*       Supabase session + players.is_admin, zod-validated (M1.6)
 app/api/cron/sweep    bearer CRON_SECRET: the scheduled half of the 2-hour idle sweep (M2.5)
+app/api/cron/leaderboard  bearer CRON_SECRET: posts the nightly board to Discord (M3.5)
+app/leaderboard       the season table, ordered by Proven. Anon key, server-rendered (M3.5)
+app/p/[puuid]         one player: the two numbers, the Rating history, the last few games (M3.5)
 app/admin/*           the admin pages. Server components, plain forms, no client JavaScript
 app/auth/*            sign in with Discord, the OAuth callback, sign out
 lib/                  auth, the service-role client, ingest, admin reads and writes
@@ -109,16 +112,16 @@ so two companions posting the same lobby produce one transition. An illegal move
 - **`CUSTOMS_NIGHT_TZ`** (default `Africa/Cairo`) is the timezone "tonight" is measured in: a
   night runs 06:00 to 06:00 there, so a session that ends at 01:30 is one night.
 
-## Discord (M3.1, M3.3)
+## Discord (M3.1, M3.3, M3.5)
 
-Two messages, both posted by the API to the webhook URL in `discord_config`. There is no bot here — that is
-`apps/discord` in M4 — and nobody types anything to make either message happen.
+Three messages, all posted by the API to the webhook URL in `discord_config`. There is no bot here — that is
+`apps/discord` in M4 — and nobody types anything to make any of them happen.
 
 ```
-lib/discord/embeds.ts    pure: teamsEmbed(input) / resultEmbed(input) -> the webhook JSON. No I/O, no clock.
+lib/discord/embeds.ts    pure: teamsEmbed / resultEmbed / leaderboardEmbed -> the webhook JSON. No I/O, no clock.
 lib/discord/assemble.ts  rows and hook events -> those inputs. Names are read fresh; `Someone` is the fallback.
 lib/discord/webhook.ts   the only I/O: one POST, 5 s, one retry, never throws.
-lib/discord/post.ts      postTeamsForEvent / postTeamsForSplit / postResultForGame, and the hook object.
+lib/discord/post.ts      postTeamsForEvent / postTeamsForSplit / postResultForGame / postNightlyLeaderboard.
 lib/ingest/discord.ts    registers the hooks at module load. The companion routes import it for the side effect.
 ```
 
@@ -142,6 +145,43 @@ lib/ingest/discord.ts    registers the hooks at module load. The companion route
 - **Configuring it**: `/admin/discord`, one row per guild. The webhook URL is a secret and `discord_config` has
   no read policy at all; the API reads it with the service role and never logs it.
 - **Reroll (M3.2)** re-posts with one call: `postTeamsForSplit(client, splitId)` after promoting the split.
+- **The nightly board (M3.5)** is the third message and the only one with no trigger inside the app:
+
+  ```
+  curl -H "authorization: Bearer $CRON_SECRET" https://<host>/api/cron/leaderboard
+  ```
+
+  Whatever calls that decides what time the board lands in the channel; **no cron configuration ships with
+  M3.5**. It is one block field, the season's top ten by **Proven** with their game counts, and the short
+  still-settling sentence as the footer — the same order and the same numbers `/leaderboard` shows, because it
+  is the same `loadBoard`. No season or nobody on the board is `skipped`, not an empty message. Calling it
+  twice posts twice; there is no dedupe, which is what makes a scheduler debuggable.
+
+## The public pages (M3.4, M3.5)
+
+`/` (tonight), `/leaderboard` and `/p/[puuid]` are server components read with the **anon key** through RLS
+(`lib/publicClient.ts`), so what they can see is exactly what an anonymous phone can see. Names come from
+`players_public`; the base `players` table is service-role only. None of them writes anything. Only the tonight
+page has a client component, and only for the Realtime subscription.
+
+- **Two numbers, two names, everywhere.** **Proven** is `round(ordinal * 60)` **floored at zero** — the
+  primary number on a board row — and **Rating** is `round(mu * 60)`, the number the embeds print beside a
+  name. Both come from `lib/ratingDisplay.ts` (`provenRating`, `displayRating`); no page multiplies anything
+  by sixty. `ratings.ordinal` is a generated column and the index the season is stored under, but the integer
+  on the page comes through core, so SQL and core cannot disagree about where a row sits.
+- **The board sorts on `sortKey`, not on the printed Proven.** `ordinal` is negative for anybody whose sigma
+  outweighs half their mu — an Iron IV seed is `-160` — so the printed number is floored and the raw ordinal
+  (`provenSortKey`) rides along unprinted to keep rows that all display `0` in their true order. The floor is
+  monotonic, so the printed column still never goes up as you read down it.
+- **The `settling` chip (M3.8)** is on a player with fewer than `SETTLING_GAMES` (30) recorded games, and its
+  sentence appears **once per page**, never per row. Both live in `lib/board/copy.ts`, and the 30 in the
+  sentence is interpolated from the same constant the chip switches off at.
+- **`Someone` (M3.10)** is `renderWebName`, at render, for a player with no `display_name` and no `game_name`.
+  Nothing is written to `players`, and `Names fill in after someone's first game.` is said once per page while
+  any row on it reads `Someone`.
+- **A delta is computed where it is rendered**, never carried in a loaded snapshot: `displayDelta` returns
+  `-0` for a rating that fell by less than half a point and `JSON.stringify` turns that into `0`.
+- `lib/board/load.ts` is both pages' only read path; `lib/board/{order,streak,chart}.ts` are pure and tested.
 
 ## The admin area
 
