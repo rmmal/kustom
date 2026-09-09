@@ -5,7 +5,15 @@
  * that need a database (3's `backfill_requested_at`, 5, 6, 7, 9) are the server half's.
  */
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { companionGamePayloadSchema } from '@customs/db/schemas';
@@ -532,6 +540,59 @@ describe('Backfill: the walk', () => {
     expect(h.backfill.cache()).toMatchObject({ resumeBegIndex: null, deepestBegIndex: 180 });
   });
 
+  it('a 4xx on a page past 0 is the end of history: the cursor is dropped and the walk from 0 keeps finding new customs', async () => {
+    const refused: CannedRoute = {
+      status: 400,
+      body: { errorCode: 'RPC_ERROR', httpStatus: 400, message: 'bad window' },
+    };
+    const h = await setup({
+      lcuRoutes: { [listRoute(20)]: refused },
+      scanResponses: [scanOk([])],
+    });
+    await pass(h);
+    expect(h.listGets()).toHaveLength(2);
+    expect(h.backfill.passes[0]).toMatchObject({ end: 'done', pages: 2, walkEnded: true });
+    expect(h.backfill.cache()).toMatchObject({ resumeBegIndex: null, deepestBegIndex: 0 });
+    const ended = h.logger.lines.find((line) => line.message.startsWith('match history ends here'));
+    expect(ended?.fields).toMatchObject({ begIndex: 20, status: 400 });
+    expect(h.backfill.scheduledDelayMs).toBe(6 * 60 * 60 * 1000);
+
+    // A new custom shows up at the top: the steady-state walk from 0 sees it (page 0 has an unknown, so the
+    // walk asks page 20 once more, is refused again, and ends cleanly instead of locking on that page).
+    const fresh = 5_700_000_001;
+    h.routes[listRoute(0)] = page([customEntry(fresh), ...historyFixture().games.games.slice(0, 20)], 0, 20);
+    h.routes[detailRoute(fresh)] = detailFor(fresh);
+    await pass(h);
+    expect(h.listGets()).toHaveLength(4);
+    expect(h.scans()[1]?.gameIds).toEqual([fresh]);
+    expect(h.backfill.passes[1]).toMatchObject({ end: 'done', walkEnded: true });
+    expect(h.backfill.cache()).toMatchObject({ resumeBegIndex: null });
+  });
+
+  it('gives the deep cursor up after three passes stuck on the same page, so the walk from 0 resumes', async () => {
+    const broken: CannedRoute = {
+      status: 500,
+      body: { errorCode: 'RPC_ERROR', httpStatus: 500, message: 'x' },
+    };
+    const h = await setup({ lcuRoutes: { [listRoute(20)]: broken }, scanResponses: [scanOk([])] });
+    await pass(h);
+    expect(h.backfill.cache()).toMatchObject({ resumeBegIndex: 20 });
+    expect(h.backfill.passes[0]).toMatchObject({ end: 'more', pages: 2 });
+    await pass(h);
+    expect(h.backfill.cache()).toMatchObject({ resumeBegIndex: 20 });
+    await pass(h);
+    // Third strike: the cursor is dropped and the pass still says "more" (the failure was real).
+    expect(h.backfill.cache()).toMatchObject({ resumeBegIndex: null });
+    expect(h.warnings()).toContain(
+      'match history walk gave up on this page; continuing from the newest games',
+    );
+    // Only page 20 was asked on passes 2 and 3; from now on the walk starts at 0 again.
+    expect(h.listGets()).toHaveLength(4);
+    await pass(h);
+    expect(h.listGets()[4]).toBe(matchHistoryPagePath(OWN, 0, 20));
+    expect(h.backfill.passes[3]).toMatchObject({ end: 'done', pages: 1 });
+  });
+
   it('stops the walk on a page error and tries again later', async () => {
     const h = await setup({
       lcuRoutes: {
@@ -772,6 +833,36 @@ describe('Backfill: drops and dedupe', () => {
     expect(h.gamePosts()).toHaveLength(1);
     expect(h.backfill.passes[0]).toMatchObject({ end: 'done', fetched: 1, duplicates: 1, queued: 0 });
     expect(h.backfill.cache().knownGameIds).toContain(EOG_GAME);
+  });
+
+  it('a queue write the game watcher refuses leaves the id pending, not known, and it lands next pass', async () => {
+    const id = 5_650_000_001;
+    const h = await setup({
+      lcuRoutes: { [listRoute(0)]: page([customEntry(id)], 0, 20), [detailRoute(id)]: detailFor(id) },
+      scanResponses: [scanOk([id])],
+    });
+    // A regular file where the queue directory should be: every write fails, as on a full disk.
+    writeFileSync(join(h.configDir, 'queue'), 'not a directory');
+    await pass(h);
+    expect(h.detailGets()).toEqual([id]);
+    expect(h.gamePosts()).toHaveLength(0);
+    expect(h.backfill.passes[0]).toMatchObject({
+      end: 'more',
+      fetched: 1,
+      queued: 0,
+      dropped: 0,
+      pending: 1,
+    });
+    expect(h.backfill.cache().knownGameIds).not.toContain(id);
+    expect(h.backfill.cache().pendingGameIds).toEqual([id]);
+    expect(h.backfill.scheduledDelayMs).toBe(10 * 60 * 1000);
+
+    unlinkSync(join(h.configDir, 'queue'));
+    await pass(h);
+    expect(h.detailGets()).toEqual([id, id]);
+    expect(h.gamePosts().map((post) => post.gameId)).toEqual([id]);
+    expect(h.backfill.cache().knownGameIds).toContain(id);
+    expect(h.backfill.cache().pendingGameIds).toEqual([]);
   });
 
   it('a queued backfill file survives an API outage and posts on the next drain, like any queued game', async () => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  companionBackfillScanRequestSchema,
+  companionBackfillScanResponseSchema,
   companionGamePayloadSchema,
   companionLobbyPayloadSchema,
   companionLobbyResponseSchema,
@@ -370,6 +372,30 @@ describe('companionMeResponseSchema', () => {
     expect(parsed).toMatchObject({ puuid: PUUID_A, displayName: null });
     // `ok: false` is the error envelope's shape, never this one's.
     expect(companionMeResponseSchema.safeParse({ ...parsed, ok: false }).success).toBe(false);
+  });
+});
+
+describe('companionBackfillScan schemas (M5.1)', () => {
+  it('takes 1 to 100 positive game ids and answers approved plus the unknown subset', () => {
+    expect(companionBackfillScanRequestSchema.parse({ gameIds: [4000769615] }).gameIds).toEqual([4000769615]);
+    expect(companionBackfillScanRequestSchema.safeParse({ gameIds: [] }).success).toBe(false);
+    expect(companionBackfillScanRequestSchema.safeParse({ gameIds: [0] }).success).toBe(false);
+    expect(
+      companionBackfillScanRequestSchema.safeParse({ gameIds: Array.from({ length: 101 }, (_, i) => i + 1) })
+        .success,
+    ).toBe(false);
+
+    const answer = companionBackfillScanResponseSchema.parse({
+      ok: true,
+      approved: true,
+      unknown: [4000769615],
+    });
+    expect(answer).toEqual({ ok: true, approved: true, unknown: [4000769615] });
+    expect(
+      companionBackfillScanResponseSchema.parse({ ok: true, approved: false, unknown: [] }).unknown,
+    ).toEqual([]);
+    // The error envelope is never this shape.
+    expect(companionBackfillScanResponseSchema.safeParse({ ok: false, error: 'no' }).success).toBe(false);
   });
 });
 

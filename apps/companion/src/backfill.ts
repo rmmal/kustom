@@ -12,9 +12,10 @@
  *   install walks the whole window across passes (`resumeBegIndex` in the cache); once the end has been seen
  *   the steady state starts at 0 and stops at the first page whose customs are all already known. A short or
  *   empty page is the end, and the deepest `begIndex` reached is logged for M5.6.
- * - **The scan.** `POST /api/companion/backfill/scan` `{ gameIds }` (100 per call) answers
- *   `{ approved, unknown }`. Not approved — `approved: false` or a 403 — is one plain sentence and a stop; the
- *   next pass asks again. Ids the server already has go into the local cache and are never scanned again.
+ * - **The scan.** `POST /api/companion/backfill/scan`; the contract, in full, is the doc comment on
+ *   `companionBackfillScanResponseSchema` in `@customs/db/schemas`. Not approved is one plain sentence and a
+ *   stop; the next pass asks again. Ids the server already has go into the local cache and are never scanned
+ *   again.
  * - **Details.** `GET /lol-match-history/v1/games/{gameId}` for the unknown ids, at most 20 per pass, one at a
  *   time, at least 2 s apart. Each one is mapped with `mapMatchDetail` and dropped with one line naming the id
  *   when it is not a `CUSTOM_GAME`, not `GameComplete`, not ten participants, has no winner or fails the
@@ -29,7 +30,12 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CompanionGameEogPayloadInput } from '@customs/db/schemas';
+import {
+  BACKFILL_SCAN_BATCH_SIZE,
+  type CompanionBackfillScanRequest,
+  type CompanionGameEogPayloadInput,
+  companionBackfillScanResponseSchema,
+} from '@customs/db/schemas';
 import {
   fillPath,
   type MatchDetail,
@@ -60,10 +66,12 @@ export const PAGE_SIZE = 20;
 export const MAX_PAGES_PER_PASS = 5;
 /** The walk never asks for a position past this. How deep history really goes is M5.6's question. */
 export const MAX_WALK_DEPTH = 200;
+/** Passes in a row that may fail on the same page before the deep cursor is dropped. */
+export const MAX_WALK_STRIKES = 3;
 export const MAX_DETAILS_PER_PASS = 20;
 export const DETAIL_INTERVAL_MS = 2_000;
-/** Ids per scan call, the route's cap. */
-export const SCAN_BATCH_SIZE = 100;
+/** Ids per scan call: the route's cap, from the contract. */
+export const SCAN_BATCH_SIZE = BACKFILL_SCAN_BATCH_SIZE;
 /** Ids scanned per pass; anything beyond waits in the cache for the next one. */
 export const MAX_SCANNED_PER_PASS = 200;
 
@@ -78,21 +86,6 @@ export const GAME_COMPLETE = 'GameComplete';
 /** The one sentence for "not approved yet". Once per pass, never more. */
 export const NOT_APPROVED_MESSAGE =
   'Backfill is waiting for an admin to approve it on the admin page (/admin/players). Nothing was sent.';
-
-export const backfillScanRequestSchema = z.object({
-  gameIds: z.array(z.number().int().positive()).min(1).max(SCAN_BATCH_SIZE),
-});
-
-/**
- * `POST /api/companion/backfill/scan` answers this. `unknown` is always `[]` when `approved` is false. The
- * server half (M5.1) owns the route; this schema is the companion's reading of the contract in the brief.
- */
-export const backfillScanResponseSchema = z.object({
-  ok: z.literal(true),
-  approved: z.boolean(),
-  unknown: z.array(z.number().int()),
-});
-export type BackfillScanResponse = z.infer<typeof backfillScanResponseSchema>;
 
 export const backfillCacheSchema = z.object({
   version: z.literal(BACKFILL_CACHE_VERSION),
@@ -258,6 +251,7 @@ export class Backfill {
   private nextDelayMs: number | null = null;
   private running: Promise<PassSummary> | null = null;
   private lastDetailAt = 0;
+  private walkFailures: { begIndex: number; count: number } | null = null;
   private readonly loggedDrops = new Set<number>();
   private noPlayerLogged = false;
   private readonly history: PassSummary[] = [];
@@ -526,6 +520,7 @@ export class Backfill {
     let ended = false;
     let paused = false;
     let error = false;
+    let giveUp = false;
     const seen = new Set<number>();
     const fresh: number[] = [];
     const pendingSet = new Set(pending);
@@ -547,15 +542,41 @@ export class Backfill {
       );
       pages += 1;
       if (!result.ok) {
+        const refused = result.reason === 'http' && result.status >= 400 && result.status < 500;
+        if (refused && begIndex > 0) {
+          // The client says no to a position past the first page: that is the end of what it will give us,
+          // and exactly the answer M5.6 is waiting for. Never a reason to ask the same page forever.
+          ended = true;
+          this.walkFailures = null;
+          this.logger.info('match history ends here (M5.6: the client refused a page past the window)', {
+            begIndex,
+            endIndex,
+            status: result.status,
+          });
+          break;
+        }
+        const strikes = this.noteWalkFailure(begIndex);
         this.logger.warn('match history page failed; the walk stops here and tries again later', {
           begIndex,
           endIndex,
           reason: result.reason,
           status: result.status,
+          strikes,
         });
+        if (deep && strikes >= MAX_WALK_STRIKES) {
+          // Three passes stuck on one page: give the deep cursor up so the steady-state walk from 0 resumes
+          // and new customs keep landing. The pages beyond stay unread until the cache is deleted.
+          giveUp = true;
+          this.walkFailures = null;
+          this.logger.warn('match history walk gave up on this page; continuing from the newest games', {
+            begIndex,
+            strikes,
+          });
+        }
         error = true;
         break;
       }
+      this.walkFailures = null;
       deepest = Math.max(deepest, begIndex);
       const { games } = result.json;
       this.logger.debug('match history page', {
@@ -619,8 +640,18 @@ export class Backfill {
       }
     }
 
-    const resumeBegIndex = deep ? (ended ? null : begIndex) : null;
+    const resumeBegIndex = deep ? (ended || giveUp ? null : begIndex) : null;
     return { fresh, pages, deepestBegIndex: deepest, resumeBegIndex, ended, paused, error };
+  }
+
+  /** Consecutive failed passes on the same page (in memory; a restart starts counting again). */
+  private noteWalkFailure(begIndex: number): number {
+    const failures = this.walkFailures;
+    this.walkFailures =
+      failures !== null && failures.begIndex === begIndex
+        ? { begIndex, count: failures.count + 1 }
+        : { begIndex, count: 1 };
+    return this.walkFailures.count;
   }
 
   private isComplete(game: Pick<MatchGame, 'endOfGameResult'>): boolean {
@@ -640,11 +671,12 @@ export class Backfill {
         return { outcome: 'failed', unknown, scanned };
       }
       const batch = ids.slice(start, start + SCAN_BATCH_SIZE);
+      const body: CompanionBackfillScanRequest = { gameIds: batch };
       const result = await this.api.request(
         'POST',
         BACKFILL_SCAN_API_PATH,
-        { gameIds: batch },
-        backfillScanResponseSchema,
+        body,
+        companionBackfillScanResponseSchema,
         this.scanAttempts,
         { quiet: true },
       );
@@ -734,11 +766,17 @@ export class Backfill {
         continue;
       }
       const outcome = this.handleDetail(gameId, result.json);
-      known.add(gameId);
-      counts[outcome === 'queued' ? 'queued' : outcome === 'duplicate' ? 'duplicates' : 'dropped'] += 1;
+      if (outcome === 'refused') {
+        // The queue could not write the file (disk full, a permissions change): not this game's fault, and
+        // not something to remember as handled. It waits for the next pass like a failed fetch.
+        leftover.push(gameId);
+      } else {
+        known.add(gameId);
+        counts[outcome === 'queued' ? 'queued' : outcome === 'duplicate' ? 'duplicates' : 'dropped'] += 1;
+      }
       // Saved as we go: a pass cut short by a lid closing keeps what it fetched.
       cache.knownGameIds = [...known];
-      cache.pendingGameIds = [...ids.slice(index + 1), ...cache.pendingGameIds].filter(
+      cache.pendingGameIds = [...leftover, ...ids.slice(index + 1), ...cache.pendingGameIds].filter(
         (id) => !known.has(id),
       );
       this.store.save(cache);
@@ -746,7 +784,7 @@ export class Backfill {
     return { ...counts, leftover, paused };
   }
 
-  private handleDetail(gameId: number, detail: MatchDetail): 'queued' | 'duplicate' | 'dropped' {
+  private handleDetail(gameId: number, detail: MatchDetail): 'queued' | 'duplicate' | 'dropped' | 'refused' {
     if (detail.gameType !== CUSTOM_GAME_TYPE) {
       this.drop(gameId, `not a custom game (${detail.gameType})`, 'info');
       return 'dropped';
@@ -778,8 +816,8 @@ export class Backfill {
       this.logger.debug('backfilled game already handled by the end-of-game path', { gameId });
       return 'duplicate';
     }
-    // The queue said why.
-    return 'dropped';
+    // The queue said why (one line of its own); the id is tried again next pass.
+    return 'refused';
   }
 
   private drop(gameId: number, reason: string, level: DropLevel): void {
