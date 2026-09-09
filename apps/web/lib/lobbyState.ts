@@ -147,9 +147,9 @@ export async function moveLobby(client: ServiceClient, input: MoveLobbyInput): P
  * because three minutes is long enough to be somebody's champion select.
  *
  * It lives inside `moveLobby` rather than in a hook because there is exactly one function that
- * moves a lobby, and this is part of the move: a caller cannot forget it. The only transition
- * that keeps its commands is `balanced -> balanced` (a reroll), which supersedes and re-queues
- * in one write of its own (`switchSide.ts`).
+ * moves a lobby, and this is part of the move: a caller cannot forget it. A reroll is the one
+ * case this never sees — it promotes another split without the lobby leaving `balanced`, so
+ * `promoteSplit` (`lib/admin/reroll.ts`) supersedes and re-queues in one write of its own.
  *
  * A failure here is logged and swallowed: a stale command is a nuisance, and a lobby that
  * cannot go `in_game` because of one is a night.

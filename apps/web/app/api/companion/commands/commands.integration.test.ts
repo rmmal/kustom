@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Split } from '@customs/core';
-import type { CompanionCommandRow, Database, SideValue } from '@customs/db';
+import type { CompanionCommandRow, Database, Json, SideValue } from '@customs/db';
 import {
   COMMANDS_PAGE_SIZE,
   COMPANION_COMMAND_TTL_MS,
@@ -8,6 +8,7 @@ import {
 } from '@customs/db/schemas';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { promoteSplit } from '@/lib/admin/reroll';
 import {
   COMMAND_ERRORS,
   COMMANDS_MAX_DELIVERIES,
@@ -805,6 +806,100 @@ if (stack === null) {
           before.map((r) => r.id),
         );
       expect((data ?? []).every((r) => r.error?.startsWith('superseded'))).toBe(true);
+    });
+
+    /**
+     * Two splits of the same ten, the second one the mirror of the first, so a promotion always
+     * changes somebody's side. Returns the lobby and the two split ids, rank order.
+     */
+    async function lobbyWithTwoSplits(
+      seats: readonly Seat[],
+    ): Promise<{ lobbyId: string; splitIds: [string, string] }> {
+      const lobbyId = await lobbyWith(seats, 'balanced');
+      const key = [...seats.map((seat) => seat.puuid)].sort().join(',');
+      const first = splitOf(seats.slice(0, 5), seats.slice(5, 10));
+      // The reroll: blue and red swapped, so every one of the ten changes side.
+      const second = splitOf(seats.slice(5, 10), seats.slice(0, 5));
+
+      const { data, error } = await db
+        .from('splits')
+        .insert(
+          [first, second].map((split, index) => ({
+            lobby_id: lobbyId,
+            rank: index + 1,
+            blue: split.blue as unknown as Json,
+            red: split.red as unknown as Json,
+            gap: split.gap,
+            blue_win_prob: split.blueWinProb,
+            score: split.score,
+            off_role_count: split.offRoleCount,
+            is_chosen: index === 0,
+            explanation: `split ${index + 1}`,
+            roster_key: key,
+          })),
+        )
+        .select('id, rank')
+        .order('rank', { ascending: true });
+      if (error) throw new Error(`lobbyWithTwoSplits: ${error.message}`);
+
+      const ids = (data ?? []).map((r) => r.id);
+      if (ids[0] === undefined || ids[1] === undefined) throw new Error('two splits expected');
+      return { lobbyId, splitIds: [ids[0], ids[1]] };
+    }
+
+    it('promoteSplit queues the promoted split and supersedes the previous one (the reroll)', async () => {
+      // Blue's five are on blue, red's five on red: split 1 is what the client already shows,
+      // so the first balance queued nothing and only the promotion has anything to say.
+      const seats = cast.map((seat) => ({ ...seat }));
+      const { lobbyId, splitIds } = await lobbyWithTwoSplits(seats);
+
+      // Split 1's rows, as the `balanced` transition would have written them: everyone is
+      // already where split 1 wants them, so this is the pending queue of an *earlier* split —
+      // written here by hand so the supersede has something real to fail.
+      const stale = await Promise.all(
+        seats.map((seat) => queue(seat.playerId, 'switch_side', { targetSide: 100 })),
+      );
+
+      const promoted = await promoteSplit(db, { lobbyId, splitId: splitIds[1] }, { gate: ON });
+      expect(promoted.ok).toBe(true);
+      if (promoted.ok) {
+        // The admin route's answer is untouched by any of this.
+        expect(promoted.value).toEqual({
+          splitId: splitIds[1],
+          rank: 2,
+          splitCount: 2,
+          promoted: true,
+        });
+      }
+
+      const { data: old } = await db.from('companion_commands').select('status, error').in('id', stale);
+      expect((old ?? []).every((r) => r.status === 'failed')).toBe(true);
+      expect((old ?? []).every((r) => r.error === 'superseded: another split was chosen')).toBe(true);
+
+      // Split 2 is the mirror, so all ten are now on the wrong side and all ten are queued.
+      const fresh = await pendingFor(seats.map((seat) => seat.playerId));
+      expect(fresh).toHaveLength(10);
+      expect(fresh.every((r) => !stale.includes(r.id))).toBe(true);
+      const byPlayer = new Map(fresh.map((r) => [r.target_player_id, r.payload]));
+      for (const [index, seat] of seats.entries()) {
+        expect(byPlayer.get(seat.playerId), seat.puuid).toEqual({ targetSide: index < 5 ? 200 : 100 });
+      }
+    });
+
+    it('promoteSplit writes nothing at all while the gate is off', async () => {
+      const seats = cast.map((seat) => ({ ...seat }));
+      const { lobbyId, splitIds } = await lobbyWithTwoSplits(seats);
+      const stale = await Promise.all(
+        seats.map((seat) => queue(seat.playerId, 'switch_side', { targetSide: 100 })),
+      );
+
+      // No gate override: the production constant, which is off for every kind today.
+      const promoted = await promoteSplit(db, { lobbyId, splitId: splitIds[1] });
+      expect(promoted.ok).toBe(true);
+
+      const rows = await pendingFor(seats.map((seat) => seat.playerId));
+      expect(rows.map((r) => r.id).sort()).toEqual([...stale].sort());
+      expect(rows.every((r) => r.status === 'pending')).toBe(true);
     });
 
     it('supersedes the queue when the lobby goes in_game', async () => {

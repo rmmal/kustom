@@ -195,11 +195,13 @@ in_game ---(2h idle, no result)---> dropped ---(a late eog block)---> finished
 - The `lastSplit` passed to the balancer is the five puuids on one side of the most recent chosen split whose
   lobby had the same ten players as tonight's; if there is no such split, `lastSplit` is null.
 - Discord posting happens from the API on state transitions, through the webhook stored in `discord_config`.
-- Reaching `balanced` is also what queues `switch_side` commands for the chosen ten whose client has them on
-  the other side (M4.1/M4.3), and **leaving** `balanced` — to `open`, `in_game`, `finished`, `abandoned` or
-  through a reroll — fails the ones still pending with `superseded`, inside `moveLobby` itself. Nobody is
-  dragged to a side from a split the group has moved on from. `create_lobby` and `invite` are never queued by a
-  transition (they are M4.2's button) and never superseded by one; they expire on their own TTL.
+- A split going on the board is what queues `switch_side` commands for the chosen ten whose client has them on
+  the other side (M4.1/M4.3), and that happens in two places: reaching `balanced`, and a **reroll**, which
+  promotes another split without the lobby ever leaving `balanced` (`promoteSplit` supersedes the old split's
+  rows and queues the new ones in the same write). **Leaving** `balanced` — to `open`, `in_game`, `finished`,
+  `abandoned` — fails the ones still pending with `superseded`, inside `moveLobby` itself. Nobody is dragged to
+  a side from a split the group has moved on from. `create_lobby` and `invite` are never queued by a transition
+  (they are M4.2's button) and never superseded by one; they expire on their own TTL.
 
 ## Companion (`apps/companion`)
 

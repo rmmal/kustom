@@ -1,4 +1,11 @@
 import type { LobbyStatusValue } from '@customs/db';
+import {
+  type CommandGate,
+  isCommandKindEnabled,
+  queueSwitchSideForBalance,
+  type SeatedMember,
+  type SidedSplit,
+} from '../commands';
 import { readAssignments } from '../discord/assemble';
 import type { ServiceClient } from '../supabase';
 import { idSchema } from './formValues';
@@ -68,10 +75,18 @@ export interface RerollOutcome {
  * Then the two statements `storeSplits` uses, in the same order:
  * `splits_one_chosen_per_lobby_idx` allows exactly one chosen row per lobby, so the old flag
  * comes off before the new one goes on.
+ *
+ * And then the command queue (M4.1): the promoted split's `switch_side` rows, and the previous
+ * split's superseded in the same write. A reroll never leaves `balanced`, so no transition
+ * fires and this is the **only** place that can do it — without it the ten would be pulled to
+ * the sides the group just rerolled away from. It runs after the promotion and can never undo
+ * it: a queue that will not write is one log line, exactly as a webhook that will not post is.
  */
 export async function promoteSplit(
   client: ServiceClient,
   input: { lobbyId: string; splitId: string },
+  /** Tests only: per-kind override of the verification gate. Production reads the constant. */
+  options: { gate?: CommandGate } = {},
 ): Promise<AdminWriteResult<RerollOutcome>> {
   // The lobby id is a path segment, so it arrives unvalidated. `lobbies.id` is a uuid column
   // and Postgres answers a malformed one with 22P02, which would surface as a 500 — an
@@ -104,7 +119,8 @@ export async function promoteSplit(
     return writeFailed(409, NO_MORE_SPLITS);
   }
 
-  if (!(await tenAreStillHere(client, input.lobbyId, target.id))) {
+  const sides = await readSplitSides(client, target.id);
+  if (sides === null || !(await tenAreStillHere(client, input.lobbyId, sides))) {
     return writeFailed(
       409,
       'the ten in that split are not all in the lobby any more, so nothing was promoted; the next balance posts new teams',
@@ -125,7 +141,50 @@ export async function promoteSplit(
     .eq('lobby_id', input.lobbyId);
   if (setError) throw new Error(`promoteSplit: setting is_chosen failed: ${setError.message}`);
 
+  await queueSwitchSideForPromotedSplit(client, input.lobbyId, sides, options.gate);
+
   return writeOk({ splitId: target.id, rank: target.rank, splitCount: splits.length, promoted: true });
+}
+
+/**
+ * The promoted split's `switch_side` commands, and the previous split's superseded (M4.1).
+ *
+ * Never throws: the promotion is what the group agreed to and it stands whatever the queue
+ * answers, the same rule the module's header states for Discord. With the gate off this reads
+ * nothing at all — the check is here as well as inside the writer so a gated reroll costs no
+ * query.
+ */
+async function queueSwitchSideForPromotedSplit(
+  client: ServiceClient,
+  lobbyId: string,
+  split: SidedSplit,
+  gate: CommandGate | undefined,
+): Promise<void> {
+  if (!isCommandKindEnabled('switch_side', gate)) return;
+  try {
+    const playing = await readSeatedMembers(client, lobbyId);
+    await queueSwitchSideForBalance(client, { lobbyId, split, playing }, gate ? { gate } : {});
+  } catch (error) {
+    console.error(`promoteSplit: queueing switch_side for lobby ${lobbyId} failed`, error);
+  }
+}
+
+/** The lobby's members as the queue reads them: who they are and where the client has them. */
+async function readSeatedMembers(client: ServiceClient, lobbyId: string): Promise<SeatedMember[]> {
+  const { data, error } = await client
+    .from('lobby_members')
+    .select('player_id, side, players!inner(puuid)')
+    .eq('lobby_id', lobbyId);
+  if (error) throw new Error(`promoteSplit: seat lookup failed: ${error.message}`);
+
+  return (data ?? []).map((row) => ({
+    playerId: row.player_id,
+    puuid: row.players.puuid,
+    // `lobby_members.side` is a smallint with a check, so it types as `number | null`; anything
+    // that is not one of the client's two numbers is "not on a side", which is the same answer
+    // a spectator gets and the reason clause (c) exists (`lib/ingest/balance.ts` does this too).
+    side: row.side === 100 || row.side === 200 ? row.side : null,
+  }));
 }
 
 /** Why a lobby that is not `balanced` has nothing to reroll. One sentence per status. */
@@ -171,15 +230,7 @@ export async function listSplits(client: ServiceClient, lobbyId: string): Promis
  * above answered — this is the narrow window where it has not yet, and refusing costs a
  * message the group would have had to ignore anyway.
  */
-async function tenAreStillHere(client: ServiceClient, lobbyId: string, splitId: string): Promise<boolean> {
-  const { data: split, error: splitError } = await client
-    .from('splits')
-    .select('blue, red')
-    .eq('id', splitId)
-    .maybeSingle();
-  if (splitError) throw new Error(`promoteSplit: split sides lookup failed: ${splitError.message}`);
-  if (!split) return false;
-
+async function tenAreStillHere(client: ServiceClient, lobbyId: string, split: SidedSplit): Promise<boolean> {
   const { data: members, error: memberError } = await client
     .from('lobby_members')
     .select('players!inner(puuid)')
@@ -187,8 +238,19 @@ async function tenAreStillHere(client: ServiceClient, lobbyId: string, splitId: 
   if (memberError) throw new Error(`promoteSplit: member lookup failed: ${memberError.message}`);
 
   const around = new Set((members ?? []).map((row) => row.players.puuid));
-  const ten = [...readAssignments(split.blue), ...readAssignments(split.red)];
+  const ten = [...split.blue, ...split.red];
   return ten.length > 0 && ten.every((assignment) => around.has(assignment.puuid));
+}
+
+/**
+ * A split's two sides, as puuids. The same rows the check above reads and the command queue
+ * writes from, so a reroll reads them once and both callers see the split that was promoted.
+ */
+async function readSplitSides(client: ServiceClient, splitId: string): Promise<SidedSplit | null> {
+  const { data, error } = await client.from('splits').select('blue, red').eq('id', splitId).maybeSingle();
+  if (error) throw new Error(`promoteSplit: split sides lookup failed: ${error.message}`);
+  if (!data) return null;
+  return { blue: readAssignments(data.blue), red: readAssignments(data.red) };
 }
 
 /**

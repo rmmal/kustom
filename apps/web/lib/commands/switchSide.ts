@@ -1,16 +1,18 @@
-import type { Split } from '@customs/core';
 import type { SideValue } from '@customs/db';
 import type { CompanionCommandKind } from '@customs/db/schemas';
-import type { LobbyBalancedEvent } from '../ingest/hooks';
-import type { PoolMember } from '../ingest/selection';
 import type { ServiceClient } from '../supabase';
 import { type CommandGate, isCommandKindEnabled } from './gate';
 import { type CommandToQueue, enqueueCommands, supersedeCommands, supersededError } from './queue';
 
 /**
- * What the server queues on the `balanced` transition, and it is exactly one kind:
+ * What the server queues when a split goes on the board, and it is exactly one kind:
  * `switch_side`, for a member of the chosen ten whose client has them on the other side
  * (M4.3's rules, wired here because M4.1 owns the queue).
+ *
+ * A split goes on the board in two ways and **both** come through here: the `balanced`
+ * transition (`register.ts`, on the `onBalanced` hook) and a reroll (`lib/admin/reroll.ts`,
+ * which promotes another split without the lobby ever leaving `balanced`, so no transition
+ * fires and nothing else could).
  *
  * **`create_lobby` is never queued from a transition.** Somebody presses a button and a lobby
  * opens; that is M4.2's route, and a lobby that opened itself because ten people happened to be
@@ -31,6 +33,32 @@ import { type CommandToQueue, enqueueCommands, supersedeCommands, supersededErro
 /** An unrevoked token seen this recently means the friend is at their PC with League open. */
 export const COMPANION_AROUND_MS = 10 * 60_000;
 
+/**
+ * The part of a split this file needs: which puuids are on which side. Core's `Split` satisfies
+ * it, and so do the `splits.blue` / `splits.red` columns read back on a reroll — the two
+ * callers are the `balanced` transition and `promoteSplit`, and neither should have to
+ * reconstruct the other's shape.
+ */
+export interface SidedSplit {
+  blue: readonly { puuid: string }[];
+  red: readonly { puuid: string }[];
+}
+
+/** The part of one of the chosen ten this file needs. `PoolMember` satisfies it. */
+export interface SeatedMember {
+  playerId: string;
+  puuid: string;
+  /** Where the client has them: null for a spectator or somebody not placed yet. */
+  side: SideValue | null;
+}
+
+/** The event either caller passes: a lobby, the split now on the board, and who is in it. */
+export interface ChosenSplitEvent {
+  lobbyId: string;
+  split: SidedSplit;
+  playing: readonly SeatedMember[];
+}
+
 /** The kinds a lobby transition may touch. `create_lobby` and `invite` are M4.2's, not a transition's. */
 export const TRANSITION_COMMAND_KINDS: readonly CompanionCommandKind[] = ['switch_side'];
 
@@ -49,7 +77,7 @@ export interface SwitchSideMove {
  * Blue is 100 and red is 200, matching the client. The order is the split's own — blue in lane
  * order, then red — so two runs of the same balance queue the same rows in the same order.
  */
-export function switchSideMoves(split: Split, playing: readonly PoolMember[]): SwitchSideMove[] {
+export function switchSideMoves(split: SidedSplit, playing: readonly SeatedMember[]): SwitchSideMove[] {
   const byPuuid = new Map(playing.map((member) => [member.puuid, member]));
   const moves: SwitchSideMove[] = [];
 
@@ -85,19 +113,24 @@ export interface QueueSwitchSideOptions {
 }
 
 /**
- * The `balanced` transition's write, in one statement each way: supersede, then queue.
+ * What a chosen split writes, in one statement each way: supersede, then queue.
  *
- * **Supersede first, always.** A reroll (M3.2) promotes another split of the same ten without
- * leaving `balanced`, so the rows the old split asked for are still pending; failing them in
- * the same write that queues the new ones is what keeps "at most one pending `switch_side` per
- * player" true and stops anybody being dragged to a side the group rerolled away from.
+ * **Two callers, and both of them matter.** The `balanced` transition (`register.ts`, on the
+ * `onBalanced` hook) and `promoteSplit` (`lib/admin/reroll.ts`, M3.2). A reroll promotes
+ * another split of the same ten **without leaving `balanced`**, so no transition fires and
+ * nothing else would ever supersede the old split's rows: with only the first caller wired, the
+ * ten would be dragged to the sides the group just rerolled away from, for up to the TTL, and
+ * nobody would be sent to the new ones.
+ *
+ * **Supersede first, always.** Failing the previous split's rows in the same write that queues
+ * the new ones is what keeps "at most one pending `switch_side` per player" true.
  *
  * With the gate off — which is every day until the switch-side row in `docs/03-lcu-reference.md`
  * turns green — this writes nothing at all and does not read the database either.
  */
 export async function queueSwitchSideForBalance(
   client: ServiceClient,
-  event: Pick<LobbyBalancedEvent, 'lobbyId' | 'split' | 'playing'>,
+  event: ChosenSplitEvent,
   options: QueueSwitchSideOptions = {},
 ): Promise<QueueSwitchSideResult> {
   const moves = switchSideMoves(event.split, event.playing);
