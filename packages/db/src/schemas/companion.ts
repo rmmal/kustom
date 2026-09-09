@@ -393,11 +393,12 @@ export type CompanionGameEogPayloadWithWinner = CompanionGameEogPayload & { winn
 
 /**
  * Did anybody win? A block with no winning team is a remake or a `TerminatedInError` and is
- * refused before anything is written (M2.10, point 6). The lobby is left exactly where it is
- * and **stays `in_game` for good**: M2.5's 2-hour sweep moves only `open` and `balanced`
- * lobbies to `abandoned`, because an `in_game` roster is frozen (M2.9) and must not start
- * moving again. M5.5 is the surface that lists a lobby whose game never landed. (This
- * corrects the second half of point 6 of the M2.10 brief; the refusal itself is unchanged.)
+ * refused before anything is written (M2.10, point 6). The lobby is left exactly where it is,
+ * and it never becomes `abandoned`: that status keeps the M2.9 replace semantics and an
+ * `in_game` roster is frozen. It does leave `in_game` two hours later, as `dropped` (M5.11) —
+ * frozen roster kept, out of the live set so the party's next game gets its own cycle. M5.5
+ * is the surface that lists a lobby whose game never landed. (This corrects the second half
+ * of point 6 of the M2.10 brief; the refusal itself is unchanged.)
  */
 export function hasWinningTeam(
   payload: CompanionGameEogPayload,

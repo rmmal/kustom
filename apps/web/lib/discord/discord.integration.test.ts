@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { mintCompanionToken } from '../companionAuth';
 import { ensurePlayers } from '../ingest/players';
 import { ROSTER_STABLE_MS } from '../lobbyState';
+import { nightStart } from '../night';
 import { eogBody, testGameId } from '../testing/fixtures';
 import { resolveLocalStack } from '../testing/localStack';
 
@@ -48,6 +49,8 @@ if (stack === null) {
   });
 
   const runId = randomUUID().slice(0, 8);
+  /** The same zone the routes read out of `CUSTOMS_NIGHT_TZ` above. */
+  const TIME_ZONE = 'Africa/Cairo';
   const guildId = `it-${runId}-guild`;
   const puuids = Array.from({ length: 10 }, (_, index) => `it-${runId}-dc${String(index).padStart(2, '0')}`);
   /** Eleven of their own, so no other case's rotation or ratings can order this one. */
@@ -125,6 +128,44 @@ if (stack === null) {
     const { data, error } = await db.from('lobbies').select('updated_at').eq('id', lobbyId).single();
     if (error) throw new Error(error.message);
     return Date.parse(data.updated_at) + offsetMs;
+  }
+
+  /**
+   * An instant that is inside **tonight**, whatever o'clock it is when the suite runs (M3.24).
+   *
+   * A night runs 06:00 to 06:00 in `CUSTOMS_NIGHT_TZ` (`night.ts`), and "games tonight" is
+   * `games.started_at >= nightStart(now)`. A game posted at a plain `now - 60_000` therefore
+   * falls into *last* night for the sixty seconds after 06:00 local — which is where this
+   * suite was run on 2026-09-09 at 06:00:41 Cairo, `gamesTonight` came back 0 for everybody,
+   * and the case below read the tied-on-games clause instead of the one it is about.
+   *
+   * So: a minute ago, or the start of tonight if a minute ago is on the other side of it.
+   * Nothing reads `started_at` with an upper bound, so the second branch being at most a
+   * second "ahead" of the clock in the first second of a night costs nothing.
+   */
+  function insideTonight(now: Date): string {
+    return new Date(
+      Math.max(now.getTime() - 60_000, nightStart(now, TIME_ZONE).getTime() + 1_000),
+    ).toISOString();
+  }
+
+  /**
+   * Run `body` with `Date` faked to `at`, and hand it that instant. Only `Date` is faked, as
+   * everywhere else in this file: the sockets to Supabase and to the webhook stay real, and
+   * the database keeps writing its own `now()`.
+   *
+   * The clock only ever moves **backwards** here (to the start of tonight), which matters on
+   * a shared local stack: the idle sweep every companion post runs takes its cutoff from this
+   * clock, so an earlier one can only sweep fewer rows, never more.
+   */
+  async function withClockAt<T>(at: number, body: (now: Date) => Promise<T>): Promise<T> {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at);
+    try {
+      return await body(new Date(at));
+    } finally {
+      vi.useRealTimers();
+    }
   }
 
   async function lobbyIdOf(response: Response): Promise<string> {
@@ -454,15 +495,23 @@ if (stack === null) {
 
       // The ten play it out. `el00` was in the lobby and not in the game, which is what a
       // sit-out *is* (there is no sit-out table), and the other ten now have a game tonight.
-      const played = await postGame(
-        request(
-          eogBody({
-            gameId: gameNumber(),
-            puuids: eleven.slice(1),
-            partyId: first,
-            startedAt: new Date(Date.now() - 60_000).toISOString(),
-          }),
-          elevenToken,
+      //
+      // Posted under a clock pinned at **06:00:30 in `CUSTOMS_NIGHT_TZ`** — thirty seconds
+      // into a night — because that is the minute this case used to fail in (M3.24): at
+      // 06:00:41 Cairo a game started at `now - 60_000` belongs to *last* night, nobody has
+      // a game tonight, and the clause under test is never reached. Pinning it there rather
+      // than avoiding it means the boundary is exercised on every run, at any hour.
+      const played = await withClockAt(nightStart(new Date(), TIME_ZONE).getTime() + 30_000, (now) =>
+        postGame(
+          request(
+            eogBody({
+              gameId: gameNumber(),
+              puuids: eleven.slice(1),
+              partyId: first,
+              startedAt: insideTonight(now),
+            }),
+            elevenToken,
+          ),
         ),
       );
       expect(played.status).toBe(200);

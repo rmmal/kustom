@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Constants } from '../types';
 import {
   COMMANDS_PAGE_SIZE,
   COMPANION_COMMAND_TTL_MS,
@@ -17,6 +18,7 @@ import {
   companionMeResponseSchema,
   companionRankPayloadSchema,
   DETECTED_TEAM_POSITION_ROLES,
+  LOBBY_STATUSES,
   lcuGameIdSchema,
   lobbyStatusSchema,
   puuidSchema,
@@ -90,7 +92,15 @@ describe('vocabulary schemas', () => {
 
   it('accepts every lobby status and rejects an invented one', () => {
     expect(lobbyStatusSchema.parse('in_game')).toBe('in_game');
+    // M5.11: a lobby that reached `in_game` and never got a result.
+    expect(lobbyStatusSchema.parse('dropped')).toBe('dropped');
     expect(lobbyStatusSchema.safeParse('inGame').success).toBe(false);
+  });
+
+  it('carries exactly the lobby_status enum the database has, in the same order', () => {
+    // The generated `Constants` come from the migrations, so a migration that adds a status
+    // and a schema that does not fails here rather than at the first row that uses it.
+    expect(LOBBY_STATUSES).toEqual(Constants.public.Enums.lobby_status);
   });
 
   it('normalises a stringified game id and rejects a non-numeric one', () => {

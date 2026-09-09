@@ -32,7 +32,9 @@ export const dynamic = 'force-dynamic';
  * Two posts per game from the companion: `in_progress` when the client enters the game, and
  * `eog` with the end-of-game block.
  *
- * `in_progress` moves the party's live lobby to `in_game`, which freezes its roster (M2.9).
+ * `in_progress` moves the party's live lobby to `in_game`, which freezes its roster (M2.9)
+ * for good — from here the row is only ever `finished` by an eog block or `dropped` by the
+ * two-hour sweep (M5.11).
  * `eog` writes the game, runs the rating fold and moves the lobby to `finished` (M2.5). Both
  * are idempotent: `eog` dedupes on `lcu_game_id` and the fold claims the game with the null
  * `mu_after` columns, so everyone in the lobby who runs a companion posts the same block and
@@ -42,8 +44,9 @@ export const dynamic = 'force-dynamic';
  * - 422 when `gameType` is not `CUSTOM_GAME` — we only track our own customs;
  * - 422 when no team won: a remake or a `TerminatedInError` block (M2.10, point 6). The
  *   companion is not supposed to post one; if it does, nothing is written, nothing is rated
- *   and no lobby moves. A lobby already at `in_game` stays there permanently — the 2-hour
- *   sweep covers `open` and `balanced` only (M2.5) — and M5.5 lists it;
+ *   and no lobby moves. A lobby already at `in_game` stays there until the 2-hour sweep marks
+ *   it `dropped` (M5.11), which is what lets the party's next post open a new cycle; M5.5
+ *   lists it, and a later block for that same game still moves it `dropped -> finished`;
  * - 422 when the same PUUID appears twice on the scoreboard;
  * - 403 when the token's player is neither on the scoreboard nor a member of the lobby this
  *   game was played from, spectators included (M2.8);
@@ -64,13 +67,15 @@ export const dynamic = 'force-dynamic';
 export const POST = withCompanionAuth(
   companionGamePayloadSchema,
   async (payload, { client, identity, request }) => {
-    // The same one statement the lobby route runs: two hours idle and a lobby is given up on.
+    // The same sweep the lobby route runs: two hours idle and a lobby is given up on, as
+    // `abandoned` if it never started and as `dropped` if its game never reported (M5.11).
     await sweepIdleLobbies(client, new Date());
 
     if (payload.phase === 'in_progress') {
       const lobby = payload.partyId ? await selectActiveLobby(client, payload.partyId) : null;
       if (lobby !== null) {
-        // From here the roster is history (M2.9). `in_game` never ages out.
+        // From here the roster is history (M2.9), and it stays history: the only way out of
+        // `in_game` is `finished` (the eog block) or `dropped` (the two-hour sweep, M5.11).
         await moveLobbyLogged(
           client,
           { lobbyId: lobby.id, from: ['open', 'balanced'], to: 'in_game' },
@@ -141,10 +146,14 @@ export const POST = withCompanionAuth(
 
     // A lobby that is already `finished` (the second companion's post) or that the sweep
     // abandoned between resolving it and here claims nothing and says so in the log.
+    //
+    // `dropped` is in the `from` list on purpose (M5.11): a block that sat in a companion's
+    // queue file for days still closes the lobby it was played from, so the row leaves M5.5's
+    // missed list by itself and the night's later cycles are untouched.
     if (result.lobbyId !== null) {
       await moveLobbyLogged(
         client,
-        { lobbyId: result.lobbyId, from: ['open', 'balanced', 'in_game'], to: 'finished' },
+        { lobbyId: result.lobbyId, from: ['open', 'balanced', 'in_game', 'dropped'], to: 'finished' },
         `game ${result.gameId}`,
       );
     }

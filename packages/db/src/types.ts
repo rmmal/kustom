@@ -708,7 +708,13 @@ export type Database = {
       companion_command_kind: "create_lobby" | "invite" | "switch_side"
       companion_command_status: "pending" | "sent" | "acked" | "failed"
       game_source: "eog" | "backfill"
-      lobby_status: "open" | "balanced" | "in_game" | "finished" | "abandoned"
+      lobby_status:
+        | "open"
+        | "balanced"
+        | "in_game"
+        | "dropped"
+        | "finished"
+        | "abandoned"
       player_role: "top" | "jungle" | "mid" | "adc" | "support"
     }
     CompositeTypes: {
@@ -843,7 +849,14 @@ export const Constants = {
       companion_command_kind: ["create_lobby", "invite", "switch_side"],
       companion_command_status: ["pending", "sent", "acked", "failed"],
       game_source: ["eog", "backfill"],
-      lobby_status: ["open", "balanced", "in_game", "finished", "abandoned"],
+      lobby_status: [
+        "open",
+        "balanced",
+        "in_game",
+        "dropped",
+        "finished",
+        "abandoned",
+      ],
       player_role: ["top", "jungle", "mid", "adc", "support"],
     },
   },

@@ -160,6 +160,8 @@ open ---(10 stable members reported)---> balanced ---(gameflow InProgress)---> i
   \                                          |
    \---(members change)---> open <-----------+ (rebalance, previous split kept as history)
    \---(lobby dissolved / 2h idle)---> abandoned
+
+in_game ---(2h idle, no result)---> dropped ---(a late eog block)---> finished
 ```
 
 - The companion posts the full member list every time it changes. The API debounces: a lobby is balanced when
@@ -169,14 +171,20 @@ open ---(10 stable members reported)---> balanced ---(gameflow InProgress)---> i
   payload (M2.5). The transition itself is claimed with a compare-and-set on `status`, so two companions in one
   lobby produce one balance and one set of three splits.
 - A companion may only post a lobby it is in (see "Security"), and the member list is frozen from `in_game` on
-  and stays frozen in `finished`: a later post for that party is still accepted and still refreshes the lobby's
-  name and password, but no member row is added, changed or removed and the response says `rosterFrozen: true`.
-  Once the game has started a player's side comes from `game_players`, not from `lobby_members`.
+  and stays frozen in `dropped` and `finished`: a later post for that party is still accepted and still
+  refreshes the lobby's name and password, but no member row is added, changed or removed and the response says
+  `rosterFrozen: true`. Once the game has started a player's side comes from `game_players`, not from
+  `lobby_members`.
 - `open`, `balanced` and `abandoned` keep the replace semantics — the posted list is the roster, deletions
   included — because a lobby that dissolves without ever starting has no history worth keeping.
 - An `open` or `balanced` lobby nobody has posted about for two hours is `abandoned`, swept by the next
-  companion post or by `GET /api/cron/sweep` (bearer `CRON_SECRET`). `in_game` is never swept: its roster is
-  frozen and must stay that way, and M5.5 is the surface that lists a game that never landed.
+  companion post or by `GET /api/cron/sweep` (bearer `CRON_SECRET`). An `in_game` lobby two hours unmentioned
+  is `dropped` by the same sweep (M5.11): no game runs two hours, so that row lost its end-of-game block. It is
+  never `abandoned` — that would unfreeze the record of who played, and it would say the lobby dissolved before
+  it ever started. `dropped` keeps the frozen roster, sits outside `lobbies_active_party_idx` so the party's
+  next post starts a clean cycle instead of landing on the stuck row for the rest of the night, and still
+  accepts `dropped -> finished` from a block that arrives days late. M5.5 lists `in_game` and `dropped` as the
+  games whose results never landed.
 - Sit-outs: if more than ten people are "around" (in the lobby as spectators, or in the lobby voice channel
   once M4 exists), the API picks who sits: most games tonight first, then longest since they last sat out, then
   puuid. "Tonight" runs 06:00 to 06:00 in `CUSTOMS_NIGHT_TZ`, and a sit-out is derived, never stored — a

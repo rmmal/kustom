@@ -26,8 +26,8 @@ export const dynamic = 'force-dynamic';
  *
  * From `in_game` on the roster is frozen (M2.9): the post still answers 200 and the lobby
  * name and password still refresh, but no `lobby_members` row is added, removed or changed.
- * Once the row is `finished` or `abandoned` the next post starts the night's next cycle
- * (M2.14).
+ * Once the row is `dropped`, `finished` or `abandoned` the next post starts the night's next
+ * cycle (M2.14, M5.11).
  *
  * The state machine turns in `ingestLobby` (M2.5): ten or more people around, unchanged for
  * ten seconds, and the lobby balances — three `splits` rows, one of them chosen. The answer
@@ -49,8 +49,10 @@ export const POST = withCompanionAuth(
       );
     }
 
-    // One statement at the start of every companion post: a lobby nobody has mentioned for two
-    // hours is given up on (M2.5). `in_game` is never swept.
+    // Two statements at the start of every companion post: a lobby nobody has mentioned for
+    // two hours is given up on (M2.5) — `abandoned` if it never started, `dropped` if it did
+    // and no result ever came (M5.11). The second is what lets this very post open the
+    // night's next cycle for a party whose last game was never closed.
     const now = new Date();
     await sweepIdleLobbies(client, now);
 

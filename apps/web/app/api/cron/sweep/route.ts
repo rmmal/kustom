@@ -9,13 +9,19 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * The scheduled half of the two-hour idle sweep (M2.5).
+ * The scheduled half of the two-hour idle sweep (M2.5, M5.11).
  *
  * The sweep's real home is the start of every companion lobby and game post: while anybody is
  * playing, the lobby that went stale is swept by the next post that arrives. This route is
  * for the other case — everybody closed the client and nothing will post again tonight — so a
  * scheduler (Vercel Cron, an uptime pinger, anything that can send a header) can move those
- * lobbies to `abandoned` without a companion.
+ * lobbies on without a companion.
+ *
+ * Two kinds of stale, counted together in `swept`: an `open` or `balanced` lobby two hours
+ * unmentioned becomes `abandoned`, and an `in_game` one becomes `dropped` — a game that never
+ * reported a result. The second is the one that has to happen without a companion post,
+ * because the row it unblocks is exactly the row that was swallowing that party's posts
+ * (M5.11).
  *
  * Auth is a bearer `CRON_SECRET`, compared in full. With the variable unset the route is
  * closed: 503, no sweep. That is deliberate — an unauthenticated endpoint that writes rows is
@@ -23,7 +29,7 @@ export const dynamic = 'force-dynamic';
  */
 export const responseSchema = z.object({
   ok: z.literal(true),
-  /** How many lobbies this sweep gave up on. Usually zero. */
+  /** How many lobbies this sweep gave up on, `abandoned` and `dropped` together. Usually zero. */
   swept: z.number().int().nonnegative(),
 });
 
