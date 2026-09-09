@@ -10,7 +10,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | M1.1 to M1.10 done; M1.1 to M1.11 done (M1.11 landed 2026-09-09; the wildcard allow-list entry can be removed). Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18, M2.19 done; M2.6 built as 0.1.1, publish and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
-| M3 Teams in Discord and on the web | in progress | M3.0 to M3.4, M3.7, M3.11 to M3.17 done (tonight page live). Open: M3.5, M3.6, M3.8, M3.10. |
+| M3 Teams in Discord and on the web | in progress | M3.0 to M3.5, M3.7, M3.8, M3.10 to M3.17 done (tonight page live; leaderboard, player page and nightly post landed 2026-09-09). Open: M3.6, M3.18 Floodlit build (with M3.20, M3.21 inside), M3.19, M3.22 to M3.24. Nothing calls `/api/cron/leaderboard` yet. |
 | M4 Lobby automation, voice split, presence | in progress | M4.1 companion half landed (all three lobby writes gated off until the user runs verify-commands with a friend); server half next after M3.5. Needs M3. |
 | M5 Backfill, seasons, stats | in progress | M5.1 and M5.2 landed (backfill walker, scan route, approval toggle, rebuild-ratings); migration 0004 pushed to kustom. M5.3 to M5.7 need M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
@@ -2006,7 +2006,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > control on this page), the still-settling chip (M3.8), voice (M4), any history of past games, filters,
     > search, a theme toggle, notifications, and any surface that asks the reader for input.
 
-- [ ] **M3.5** `/leaderboard` and `/p/[puuid]` with rating history. Nightly leaderboard post to the webhook at a configured time.
+- [x] **M3.5** `/leaderboard` and `/p/[puuid]` with rating history. Nightly leaderboard post to the webhook at a configured time.
 
     > **Brief (product, 2026-09-08) — the board shows two numbers**
     >
@@ -2191,7 +2191,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > names match that split's assignment. Nothing recomputes the explanation — both surfaces render the stored
     > string for the promoted split from the `splits` table.
 
-- [ ] **M3.8** Leaderboard says why a new player is low: a "still settling" marker and one plain sentence on `/leaderboard` and `/p/[puuid]` for players with fewer than 30 recorded games.
+- [x] **M3.8** Leaderboard says why a new player is low: a "still settling" marker and one plain sentence on `/leaderboard` and `/p/[puuid]` for players with fewer than 30 recorded games.
 
     > **Brief (product, 2026-09-08)**
     >
@@ -2227,7 +2227,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > Nothing about `start_season` (migration 0002) or the one-active-season index changes.
 
 
-- [ ] **M3.10** Decide what a player with no name looks like. The League lobby carries no `gameName`/`tagLine` (M0.3), so a friend the database has never met appears with `display_name` null until the M2.4 sweep or their first end-of-game block fills it in — which can be minutes after teams are posted. Every surface that prints a name needs one agreed fallback: the teams embed, the result embed, the tonight page, the leaderboard, `/p/[puuid]`.
+- [x] **M3.10** Decide what a player with no name looks like. The League lobby carries no `gameName`/`tagLine` (M0.3), so a friend the database has never met appears with `display_name` null until the M2.4 sweep or their first end-of-game block fills it in — which can be minutes after teams are posted. Every surface that prints a name needs one agreed fallback: the teams embed, the result embed, the tonight page, the leaderboard, `/p/[puuid]`.
 
     > **Copy (product, confirmed with the designer 2026-09-08: `05-design.md` has no placeholder convention
     > for a nameless player, so this sets it).** The fallback is the word **`Someone`**, nothing else — no PUUID fragment, no
