@@ -16,6 +16,17 @@ export const NO_ACTIVE_SEASON_MESSAGE =
   'No season is active, so games cannot be saved. Start a season on the Seasons page.';
 
 /**
+ * The same fact, for the whole group (M3.17, product 2026-09-09).
+ *
+ * The sentence above ends by naming a page nineteen of the twenty people holding the WhatsApp
+ * link cannot open, so the tonight page says this instead: what is happening, and who can fix
+ * it, with nothing to tap. The two are separate constants on purpose — the tonight page must
+ * never import the admin one, and neither may be edited into the other.
+ */
+export const NO_ACTIVE_SEASON_TONIGHT_MESSAGE =
+  "No season is active, so tonight's games are not being saved. An admin can start one.";
+
+/**
  * Whether `public.active_season_id()` would find a season.
  *
  * `seasons_one_active_idx` allows at most one, so this is a single-row lookup. It runs before

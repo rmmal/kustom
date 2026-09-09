@@ -1,15 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+const alias = { '@': fileURLToPath(new URL('.', import.meta.url)) };
+
 export default defineConfig({
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('.', import.meta.url)),
-    },
-  },
   test: {
-    environment: 'node',
-    include: ['app/**/*.test.ts', 'lib/**/*.test.ts'],
     /*
      * One test file at a time.
      *
@@ -24,5 +19,46 @@ export default defineConfig({
      * class of flake that only shows up on some runs.
      */
     fileParallelism: false,
+
+    /*
+     * Two projects, because component tests need a DOM and nothing else does (M3.4).
+     *
+     * `node` is what has always run here: route handlers, the ingest, the embeds, the
+     * integration files against the local stack. It keeps the node environment, because a
+     * jsdom global `fetch`/`Response` under a route handler test would be testing a different
+     * runtime than Vercel runs.
+     *
+     * `dom` is the `.test.tsx` files only, under jsdom, for the tonight page's components. The split
+     * is by extension rather than by directory so a `.tsx` test cannot end up in the wrong
+     * environment by living in the wrong folder.
+     */
+    projects: [
+      {
+        resolve: { alias },
+        // The integration file renders the page's components to a string to check the first
+        // paint, so the node project needs the same JSX transform the dom one does.
+        oxc: { jsx: { runtime: 'automatic', importSource: 'react' } },
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['app/**/*.test.ts', 'lib/**/*.test.ts'],
+        },
+      },
+      {
+        resolve: { alias },
+        /*
+         * The app's `tsconfig.json` sets `jsx: preserve`, because Next compiles the JSX. A
+         * test file has no Next in front of it, so the test runner has to do that transform
+         * itself: without this the `.tsx` files reach the bundler as JSX and fail to parse.
+         */
+        oxc: { jsx: { runtime: 'automatic', importSource: 'react' } },
+        test: {
+          name: 'dom',
+          environment: 'jsdom',
+          include: ['app/**/*.test.tsx', 'lib/**/*.test.tsx'],
+          setupFiles: ['./vitest.setup.tsx'],
+        },
+      },
+    ],
   },
 });

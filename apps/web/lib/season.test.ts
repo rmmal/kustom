@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { NO_ACTIVE_SEASON_MESSAGE } from './season';
+import { NO_ACTIVE_SEASON_MESSAGE, NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from './season';
 
 /**
  * The no-active-season sentence (M2.18).
@@ -31,6 +31,30 @@ describe('NO_ACTIVE_SEASON_MESSAGE', () => {
     expect(NO_ACTIVE_SEASON_MESSAGE).toContain('season');
     expect(NO_ACTIVE_SEASON_MESSAGE).not.toContain('season_id');
     expect(NO_ACTIVE_SEASON_MESSAGE).not.toMatch(/null|constraint|violates/i);
+  });
+});
+
+describe('NO_ACTIVE_SEASON_TONIGHT_MESSAGE', () => {
+  it('is the product-approved sentence for the whole group, exactly (M3.17)', () => {
+    expect(NO_ACTIVE_SEASON_TONIGHT_MESSAGE).toBe(
+      "No season is active, so tonight's games are not being saved. An admin can start one.",
+    );
+  });
+
+  it('names nothing the reader cannot open', () => {
+    // The admin sentence ends "Start a season on the Seasons page." — a page nineteen of the
+    // twenty people holding the WhatsApp link cannot open. Same fact, different reader.
+    expect(NO_ACTIVE_SEASON_TONIGHT_MESSAGE).not.toContain('Seasons page');
+    expect(NO_ACTIVE_SEASON_TONIGHT_MESSAGE).not.toBe(NO_ACTIVE_SEASON_MESSAGE);
+  });
+
+  it('is what the tonight page renders, and the admin one is not', () => {
+    const view = source('app/_tonight/TonightView.tsx');
+    expect(view).toContain('NO_ACTIVE_SEASON_TONIGHT_MESSAGE');
+    // The page must not import the admin constant at all. Its name is a prefix of this one's,
+    // so the check is on the word boundary rather than on a substring.
+    expect(view).not.toMatch(/NO_ACTIVE_SEASON_MESSAGE[^_T]/);
+    expect(view).not.toContain('Start a season on the Seasons page.');
   });
 });
 

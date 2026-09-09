@@ -1,0 +1,522 @@
+/*
+ * The tonight page (M3.4), built from the tokens in `tokens.css`.
+ *
+ * Rules from `docs/05-design.md` that are load-bearing here, so nobody "tidies" them away:
+ *
+ *   - One transition in the whole page: `opacity 150ms ease`. Nothing slides, nothing scales,
+ *     nothing pulses but the single live dot, and `prefers-reduced-motion: reduce` drops all
+ *     of it. The page must never move under a thumb that is about to tap.
+ *   - The member list reserves ten rows of height, so the 9→10 join shifts no pixel.
+ *   - Nothing scrolls itself: no `overflow: auto` anywhere, no fixed heights with scrollbars.
+ *   - A side colour is only a rule, a text colour, or a 7% tint. Never a filled block behind
+ *     five names.
+ *   - Every tappable thing is at least 44 x 44px.
+ *   - Phone widths are the design width; ≥720px is the same layout in two columns.
+ */
+
+.cn-page {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: var(--cn-sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-5);
+}
+
+@media (min-width: 720px) {
+  .cn-page {
+    padding: var(--cn-sp-5);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Header strip: always mounted, the only element that survives every transition.
+ * ------------------------------------------------------------------------- */
+
+.cn-strip {
+  border-bottom: 1px solid var(--cn-hairline);
+  padding-bottom: var(--cn-sp-3);
+}
+
+.cn-strip-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--cn-sp-2);
+  font-size: var(--cn-t-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cn-count {
+  font-size: var(--cn-t-xl);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--cn-accent);
+}
+
+.cn-strip-sub {
+  font-size: var(--cn-t-base);
+  font-weight: 400;
+  color: var(--cn-dim);
+}
+
+/* The one pulsing element on the page, and it stops at `finished`. */
+.cn-dot {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cn-accent);
+  animation: cn-pulse 2s ease-in-out infinite;
+}
+
+@keyframes cn-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Ten 3px bars: the whole status at arm's length, countable without reading. */
+.cn-bars {
+  display: flex;
+  gap: var(--cn-sp-1);
+  margin-top: var(--cn-sp-3);
+}
+
+.cn-bar {
+  flex: 1 1 0;
+  height: 3px;
+  background: var(--cn-hairline);
+}
+
+.cn-bar-on {
+  background: var(--cn-accent);
+}
+
+/* ---------------------------------------------------------------------------
+ * The primary block. Exactly one is on screen; a state change replaces it in place.
+ * ------------------------------------------------------------------------- */
+
+.cn-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-4);
+  animation: cn-fade 150ms ease;
+}
+
+@keyframes cn-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cn-idle,
+.cn-empty,
+.cn-around,
+.cn-hint,
+.cn-notice,
+.cn-prediction,
+.cn-damage,
+.cn-sitout,
+.cn-explain-text,
+.cn-reroll-note,
+.cn-headline {
+  margin: 0;
+}
+
+.cn-empty,
+.cn-hint,
+.cn-notice {
+  color: var(--cn-dim);
+}
+
+.cn-hint,
+.cn-notice {
+  font-size: var(--cn-t-sm);
+}
+
+/*
+ * The no-season line, directly under the header strip: the reason the numbers below it are not
+ * being saved. `dim` and `t-sm` because it is an aside, not a banner — the page has no banners.
+ */
+.cn-notice {
+  border-left: 2px solid var(--cn-hairline);
+  padding-left: var(--cn-sp-3);
+}
+
+/*
+ * The one tappable thing on the idle screen. A bare inline anchor is about 26px tall, which is
+ * under the 44px floor every other control on this page keeps.
+ */
+.cn-link {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+  color: var(--cn-accent);
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Lobby member list — state "filling"
+ * ------------------------------------------------------------------------- */
+
+/*
+ * Ten rows reserved from the first paint, **in the row's own units**: ten 44px rows plus the
+ * nine 1px hairlines between them. Measured at 390px the rows came out 46-47px against a
+ * reserved 440px, so the 9 → 10 join — the one moment everybody is looking — shifted the page
+ * by about thirty pixels. The row height below is what makes this arithmetic true.
+ */
+.cn-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--cn-surface);
+  border-radius: var(--cn-radius);
+  min-height: calc(10 * 44px + 9px);
+}
+
+/* The people past the ten are as many as they are; nothing is reserved for them. */
+.cn-members-around {
+  min-height: 0;
+}
+
+/*
+ * Exactly 44px: `t-md` at the body's 1.5 line height is 30px, which with `sp-2` top and bottom
+ * makes a 46-47px row and breaks the reserved height above. 1.2 on a single-line row is the
+ * scale's own line height for `t-md` anyway (05-design.md, "Scale").
+ */
+.cn-member,
+.cn-seat {
+  display: grid;
+  align-items: center;
+  gap: var(--cn-sp-3);
+  min-height: 44px;
+  padding: var(--cn-sp-2) var(--cn-sp-3);
+  line-height: 1.2;
+  animation: cn-fade 150ms ease;
+}
+
+.cn-member {
+  position: relative;
+  grid-template-columns: 1fr auto auto;
+}
+
+/*
+ * A member who joined in the last three seconds. The bar is always in the DOM and only its
+ * opacity changes, so it fades out on the page's one transition and the row never resizes.
+ */
+.cn-new {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cn-accent);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.cn-new-on {
+  opacity: 1;
+}
+
+/* Role, name, rating: the role column is a fixed 4.5rem so five names start on one line. */
+.cn-seat {
+  grid-template-columns: 4.5rem 1fr auto;
+  gap: var(--cn-sp-2);
+}
+
+.cn-member + .cn-member,
+.cn-seat + .cn-seat {
+  border-top: 1px solid var(--cn-hairline);
+}
+
+.cn-member-name,
+.cn-seat-name {
+  min-width: 0;
+  font-size: var(--cn-t-md);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cn-member-roles {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+  letter-spacing: 0.06em;
+}
+
+.cn-member-rating,
+.cn-seat-rating {
+  font-size: var(--cn-t-md);
+  text-align: right;
+}
+
+/*
+ * "You", and a member who has just joined: a 2px accent rule down the left of the row. An
+ * inset shadow rather than a border, so drawing it moves nothing.
+ */
+.cn-you {
+  box-shadow: inset 2px 0 0 0 var(--cn-accent);
+}
+
+.cn-around {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+  border-top: 1px solid var(--cn-hairline);
+  padding-top: var(--cn-sp-2);
+}
+
+/* ---------------------------------------------------------------------------
+ * Team cards. Stacked on a phone, blue first; two columns at ≥720px, blue left.
+ * ------------------------------------------------------------------------- */
+
+.cn-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-4);
+}
+
+@media (min-width: 720px) {
+  .cn-cards {
+    flex-direction: row;
+  }
+
+  .cn-cards > .cn-card {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+.cn-card {
+  border-radius: var(--cn-radius);
+  border-top: 3px solid transparent;
+  background: var(--cn-surface);
+}
+
+.cn-card-blue {
+  background: var(--cn-blue-tint);
+  border-top-color: var(--cn-blue);
+}
+
+.cn-card-red {
+  background: var(--cn-red-tint);
+  border-top-color: var(--cn-red);
+}
+
+/*
+ * The losing side of a result: the 3px rule drops to a hairline and the two pixels come back
+ * as padding, so the two cards still line up. That is the only difference between them.
+ */
+.cn-card-lost {
+  border-top-width: 1px;
+  border-top-color: var(--cn-hairline);
+  padding-top: 2px;
+}
+
+.cn-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cn-sp-3);
+  padding: var(--cn-sp-3);
+}
+
+.cn-side {
+  margin: 0;
+  font-size: var(--cn-t-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cn-card-blue .cn-side {
+  color: var(--cn-blue);
+}
+
+.cn-card-red .cn-side {
+  color: var(--cn-red);
+}
+
+.cn-sum {
+  margin: 0;
+  font-size: var(--cn-t-md);
+  color: var(--cn-dim);
+}
+
+.cn-seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cn-role {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+  letter-spacing: 0.06em;
+}
+
+/*
+ * Off-role. Colour is never the only signal: the explanation line names the player and the
+ * role in words, and the row carries visually-hidden text.
+ */
+.cn-off {
+  color: var(--cn-accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.cn-off-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--cn-sp-2);
+  border-radius: 50%;
+  background: var(--cn-accent);
+  vertical-align: middle;
+}
+
+/* ---------------------------------------------------------------------------
+ * Sit-out notice and explanation line: both `surface`, both a 2px accent left rule.
+ * ------------------------------------------------------------------------- */
+
+.cn-sitout,
+.cn-explain {
+  background: var(--cn-surface);
+  border-left: 2px solid var(--cn-accent);
+  border-radius: var(--cn-radius);
+  padding: var(--cn-sp-3);
+}
+
+.cn-explain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-3);
+}
+
+@media (min-width: 720px) {
+  .cn-explain {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+}
+
+/* This sentence is the product's whole argument; it is `text`, never caption grey. */
+.cn-explain-text {
+  color: var(--cn-text);
+}
+
+.cn-reroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-2);
+}
+
+.cn-button {
+  min-height: 44px;
+  width: 100%;
+  padding: 0 var(--cn-sp-4);
+  font: inherit;
+  color: var(--cn-accent);
+  background: transparent;
+  border: 1px solid var(--cn-accent);
+  border-radius: var(--cn-radius);
+  cursor: pointer;
+}
+
+.cn-button:active {
+  background: var(--cn-pressed);
+}
+
+.cn-button:disabled {
+  color: var(--cn-dim);
+  border-color: var(--cn-hairline);
+  cursor: default;
+}
+
+@media (min-width: 720px) {
+  .cn-reroll {
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  .cn-button {
+    width: auto;
+  }
+}
+
+.cn-reroll-note {
+  font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+}
+
+/* ---------------------------------------------------------------------------
+ * Result card. The result is a fact, not an event: no wash of colour, no banner.
+ * ------------------------------------------------------------------------- */
+
+.cn-headline {
+  font-size: var(--cn-t-xl);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.cn-win-blue {
+  color: var(--cn-blue);
+}
+
+.cn-win-red {
+  color: var(--cn-red);
+}
+
+.cn-duration {
+  font-size: var(--cn-t-sm);
+  font-weight: 400;
+  color: var(--cn-dim);
+}
+
+.cn-prediction {
+  color: var(--cn-dim);
+}
+
+.cn-damage-value {
+  color: var(--cn-accent);
+}
+
+/* Deltas are never coloured by sign: a gain is `text` at 600, a loss is `dim` at 400. */
+.cn-delta {
+  font-size: var(--cn-t-sm);
+  font-weight: 400;
+  color: var(--cn-dim);
+}
+
+.cn-delta-up {
+  font-weight: 600;
+  color: var(--cn-text);
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion, on request only.
+ * ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .cn-dot,
+  .cn-block,
+  .cn-member,
+  .cn-seat {
+    animation: none;
+  }
+
+  .cn-new {
+    transition: none;
+  }
+}

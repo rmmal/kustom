@@ -1,4 +1,5 @@
 import type { Role, Side } from '@customs/core';
+import { inLaneOrder } from '../laneOrder';
 
 /**
  * The Discord embeds, as pure functions (M3.1 teams, M3.3 result).
@@ -17,9 +18,6 @@ import type { Role, Side } from '@customs/core';
 export const ACCENT_COLOR = 14_721_854;
 export const BLUE_COLOR = 7_054_839;
 export const RED_COLOR = 15_363_945;
-
-/** Lane order. Every list of five is printed in it, on both embeds, so the two line up. */
-const LANE_ORDER: readonly Role[] = ['top', 'jungle', 'mid', 'adc', 'support'];
 
 /**
  * A display name we have, or `null` for a player the database has never been told about.
@@ -364,8 +362,12 @@ function lobbyFieldValue(lobby: { name: string | null; password: string | null }
  * everyone unrated and every split gap 0, it is the first result sentence the group ever
  * reads. The number goes with it, because 50 is what "neither" means. Core's fragment in the
  * teams explanation is untouched and stays core's.
+ *
+ * Exported because the tonight page's result card prints the same sentence (M3.4): the page
+ * and the message must not invent a fifth number format between them (`05-design.md`, "The
+ * four number formats").
  */
-function favoredClause(blueWinProb: number | null): string | null {
+export function favoredClause(blueWinProb: number | null): string | null {
   if (blueWinProb === null) return null;
   const percent = Math.round(blueWinProb * 100);
   if (percent > 50) return `Blue was favored ${percent}%.`;
@@ -376,15 +378,6 @@ function favoredClause(blueWinProb: number | null): string | null {
 function topDamageClause(top: { name: PlayerName; damage: number } | null): string | null {
   if (top === null) return null;
   return `Top damage: ${renderName(top.name)}, ${formatDamage(top.damage)}.`;
-}
-
-function inLaneOrder<T extends { role: Role | null; puuid: string }>(players: readonly T[]): T[] {
-  return [...players].sort((a, b) => {
-    const rankA = a.role === null ? LANE_ORDER.length : LANE_ORDER.indexOf(a.role);
-    const rankB = b.role === null ? LANE_ORDER.length : LANE_ORDER.indexOf(b.role);
-    if (rankA !== rankB) return rankA - rankB;
-    return a.puuid < b.puuid ? -1 : a.puuid > b.puuid ? 1 : 0;
-  });
 }
 
 /**

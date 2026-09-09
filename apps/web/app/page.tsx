@@ -1,16 +1,31 @@
+import { createPublicClient } from '@/lib/publicClient';
+import { loadTonight } from '@/lib/tonight/load';
+import { tonightStart } from '@/lib/tonight/night';
+import { currentViewer } from '@/lib/viewer';
+import { TonightLive } from './_tonight/TonightLive';
+import './tonight.css';
+
 /**
- * Tonight page. M3.4 makes it live off Supabase Realtime; until then this is what a friend
- * lands on from the WhatsApp link, so it says what has to happen for teams to appear rather
- * than showing a bare list of roles nobody asked for (M1.10). The sentence is product's copy.
+ * The tonight page (M3.4). The link somebody pastes in WhatsApp at 21:40.
+ *
+ * Server-rendered with real content — the member list, the teams, the result, whichever the
+ * newest non-`abandoned` lobby of the night is in — so the first paint answers "is the night
+ * happening and am I in it" with no spinner and no login. `TonightLive` then attaches the
+ * Realtime subscription and re-reads the same snapshot on every change.
+ *
+ * Reads go through the **anon key** and RLS (`lib/publicClient.ts`). The one thing the session
+ * decides is whether the reroll control is drawn, and the route behind it re-checks the
+ * session server-side anyway. Nothing on this page writes to the database.
  */
-export default function TonightPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function TonightPage() {
+  const [snapshot, viewer] = await Promise.all([
+    loadTonight(createPublicClient(), { nightStart: tonightStart() }),
+    currentViewer(),
+  ]);
+
   return (
-    <main>
-      <h1>Customs Night</h1>
-      <p>
-        Nothing tonight yet. When ten of you are in a custom lobby with the companion running, the teams show
-        up here.
-      </p>
-    </main>
+    <TonightLive initial={snapshot} viewerPuuid={viewer?.puuid ?? null} isAdmin={viewer?.isAdmin ?? false} />
   );
 }
