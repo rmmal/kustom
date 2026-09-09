@@ -69,7 +69,7 @@ surface to raise things onto, and a line colour that is a colour rather than an 
 |---|---|---|---|
 | `bg` | Page ink. Blue-black. | `#0B0E14` | `#EEF1F6` |
 | `surface` | Cards, rows, strips. | `#141923` | `#FFFFFF` |
-| `raise` | The layer above a card: card headers, chips, tabs, the top bar, empty seats' contrast partner. | `#1D2431` | `#E4E9F1` |
+| `raise` | The layer above a card: card headers, chips, tabs, the top bar, empty seats' contrast partner. | `#1D2431` | `#DAE2ED` |
 | `line` | Every hairline and card border. A real colour, so borders are the same on all three surfaces. | `#2A3140` | `#D5DCE7` |
 | `text` | Everything you are meant to read. | `#EEF2F8` | `#10141B` |
 | `dim` | Labels, counts, secondary lines. Never a player's name, never a rating. | `#94A0B2` | `#556072` |
@@ -81,16 +81,20 @@ Contrast, measured (WCAG 2.1, computed 2026-09-09 — not eyeballed):
 
 | | on `bg` dark | on `surface` dark | on `raise` dark | on `surface` light | on `raise` light |
 |---|---|---|---|---|---|
-| `text` | 17.19 | 15.67 | 13.86 | 18.45 | 15.14 |
-| `dim` | 7.29 | 6.65 | 5.88 | 6.36 | 5.22 |
-| `blue` | 6.78 | 6.18 | 5.47 | 6.01 | 4.93 |
-| `red` | 6.93 | 6.32 | 5.59 | 6.18 | 5.07 |
-| `brand` | 10.68 | 9.73 | 8.60 | 5.92 | 4.85 |
+| `text` | 17.19 | 15.67 | 13.86 | 18.45 | 14.13 |
+| `dim` | 7.29 | 6.65 | 5.88 | 6.36 | 4.87 |
+| `blue` | 6.78 | 6.18 | 5.47 | 6.01 | 4.61 |
+| `red` | 6.93 | 6.32 | 5.59 | 6.18 | 4.73 |
+| `brand` | 10.68 | 9.73 | 8.60 | 5.92 | 4.53 |
 
 Everything passes AA on every surface in both themes. **Blue and red are within 0.15 of each other in dark**
 (6.18 / 6.32, against v1's 1.1 spread): if one side were brighter, that side would read as the favoured one
 before anybody read a number. `brand` at 9.73 is deliberately the brightest thing on a dark page — it is the
 lamp, and it is only ever on a few square centimetres at a time.
+
+Light's three layers were 1.08 apart against dark's 1.24, which is why the light top bar and every light card
+header nearly vanished on the rendered page (designer's review of M3.18). `#DAE2ED` puts them 1.15 apart and
+every colour stays above 4.5 on it.
 
 **Derived values. Do not add hex; derive.**
 
@@ -197,13 +201,18 @@ word** — it is an anchor for the eye in a dense row, not a replacement for lan
 `aria-hidden`, because the word beside it is the accessible name.
 
 ```
-frame (top/mid/adc only, stroke at 35% opacity)   <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
-top        M6 18 V6 H18
-mid        M6 18 L18 6
-adc        M6 18 H18 V6
+frame (top/mid/adc only, stroke at 30% opacity)   <rect x="3.5" y="3.5" width="17" height="17" rx="4"/>
+top        M8 16 V8 H16
+mid        M8 16 L16 8
+adc        M8 16 H16 V8
 jungle     M18 6 C9 6 6 9 6 18 C15 18 18 15 18 6 Z     +  M9 15 L15 9
 support    M12 4 L19 7 v5 c0 4 -3 6.5 -7 8 c-4 -1.5 -7 -4 -7 -8 V7 Z
 ```
+
+The three lanes sit **inside** the frame with a clear unit of air (8→16, not 6→18). At 14px the old geometry
+left under a pixel between the glyph and the frame's inner edge and the two strokes merged: `top`, `mid` and
+`adc` all read as the same small filled square. The word beside it still carries the meaning; the mark has to
+be worth its 14px.
 
 Sizes: 14px beside a name in a row, 16px in a card header, 20px on `/p/[puuid]`. Colour: `dim` normally,
 `brand` when the seat is off-role, the side colour never — a role is not a team.
@@ -255,7 +264,13 @@ product rather than a document that happens to be dark.
   `https://github.com/suyaser/kustom-releases/releases/latest`. The direct `.../latest/download/Kustom.exe`
   link stays on `/admin` and in the group chat, where the reader is on the PC that needs it.
 - **`How this works`** is a `<details>` in the footer, closed by default, four short lines. No new route, no
-  new data, and the one place on the page allowed to change height — because a person tapped it.
+  new data, and the one place on the page allowed to change height — because a person tapped it. Its summary
+  is dressed exactly like the links beside it, underline included: two amber controls on one row, one
+  underlined and one not, reads as a mistake.
+- **Card titles are language, so they are Archivo**: `t-sm`, 600, `text`, no tracking — `How this works`,
+  `Run the companion`, and any card title after them. Mono `t-xs` `dim` `0.08em` is for legends and states
+  only: `SEATS`, `rating`, `AROUND`, `live`, `open`. A sentence set in 12px tracked mono reads as a code
+  comment and ends up quieter than the prose it introduces.
 
 Shell CSS, in outline:
 
@@ -384,16 +399,23 @@ Nobody has a role set, so the balancer treats everyone as flexible.
 - Header: `SEATS · 9 of 10` left, `rating` right, both mono `t-xs` `dim` `0.08em`. **That `rating` legend is
   the fix for "1612 means nothing".** One 12px word, right-aligned over the column, in exactly the pattern the
   leaderboard already uses (`Proven · Rating` as a legend, not a header row).
-- Row grid: `[you] name 1fr · role 6.5rem · rating 4.5rem`, gap `sp-4`. The v1 grid was `1fr auto auto` with a
-  12px gap, which let `flexible` and `1612` collide into one blob against the right edge. Fixed columns give
-  the eye an edge and are what a stats site looks like.
+- Row grid, phone: `[you] name 1fr · role 6.5rem · rating 4.5rem`, gap `sp-4`. The v1 grid was `1fr auto auto`
+  with a 12px gap, which let `flexible` and `1612` collide into one blob against the right edge. Fixed columns
+  give the eye an edge and are what a stats site looks like. **At ≥720px the name column is capped**:
+  `minmax(0, 16rem) · role 10rem · rating minmax(4.5rem, 1fr)`. A `1fr` name on an 830px column is 450px of
+  nothing between a name and its role (measured on the rendered page: a 566px column carrying 124px of text),
+  which is the sparse look this redesign exists to end; the team cards' own `6.5rem 1fr 5.5rem` is the proof of
+  the other way. The rating stays hard right, under its legend.
 - **`flexible` only appears when it distinguishes.** If *no* member on screen has a role, the role column is
   not rendered at all and one line under the rack says so once. If *some* do, every row shows its roles and
   the ones with none show `flexible`, because there the word is contrastive information. Nine identical grey
   words in a column is not information; it looks like a field that failed to load.
 - Roles, when shown: `RoleIcon` at 14px + the role word, mono `t-xs` `dim`; a secondary role follows in the
   same treatment after a middot, no icon. `top · mid`, never `top / mid` — a slash between two roles reads as
-  a fraction next to a column of numbers.
+  a fraction next to a column of numbers. **The role column is 6.5rem below 480px and 10rem above it**, and the
+  second role is `display: none` below 480px — never removed from the DOM, so it stays in the accessible name.
+  10rem is measured, not guessed: `jungle · support` with its icon and gap is 149px at 12px mono with 0.06em. A
+  column that hard-cuts to `suppo` is worse than one that shows the role somebody actually plays.
 - The "just joined" 2px `brand` inset rule and the permanent "you" rule are unchanged from v1, including the
   reason they are inset shadows rather than borders.
 - People past the ten sit under the rack, under a `raise` divider labelled `Around`, in the same row shape.
@@ -404,7 +426,7 @@ Nobody has a role set, so the balancer treats everyone as flexible.
 #### Teams
 
 ```
-┌ SITTING OUT ───────────────────────────────────┐   raise header + brand 3px left rule
+┌────────────────────────────────────────────────┐   card + brand 3px left rule, no header
 │ Sitting out this game: Sara and Deniz. Each    │
 │ game goes to whoever has played least tonight… │
 └────────────────────────────────────────────────┘
@@ -447,8 +469,10 @@ Nobody has a role set, so the balancer treats everyone as flexible.
   "give me a different version of *this sentence*"; in a header it would be a control with no object. On phone
   it is full width below the sentence, on ≥720px it is right-aligned beside it. The disabled state and the
   `No more splits. …` note are unchanged.
-- The sit-out strip stays **above** the cards, for v1's reason, and gains a `raise` header bar reading
-  `SITTING OUT` so it reads as a card and not as a loose paragraph.
+- The sit-out strip stays **above** the cards, for v1's reason. It gets the card treatment and the 3px `brand`
+  leading rule and **no header bar**: its own sentence opens `Sitting out this game: …`, and a `SITTING OUT`
+  label above that is the same three words twice, 45px above the fold on the one screen where the second team
+  card is already below it.
 
 #### Result
 
@@ -495,8 +519,9 @@ black screen. v2:
   `When ten of you are in a custom lobby with the companion running, the teams show up here.`
 - Primary block: an **empty seat rack**, ten `open` rows, with the header `SEATS · 0 of 10`. It says the same
   thing the sentence says, in the shape the page will have in an hour, and it gives the idle screen a body.
-- Under it, the two cards the desktop rail carries: `How this works` and `Run the companion`. On the idle page
-  they render inline on every width, because there is nothing else to read.
+- Under it, the two cards the rail carries: `How this works` and `Run the companion`. **Below 1080px only** —
+  at 1080 and up the rail already holds them, and rendering both is the same two cards twice on one screen.
+  One card, one place, per width.
 - The v1 `Last night and the board` link becomes the `Leaderboard` tab in the top bar. One destination, one
   place.
 
@@ -723,7 +748,7 @@ next engineer to touch that file moves them, so this table has one code half and
   :root {
     --cn-bg: #eef1f6;
     --cn-surface: #ffffff;
-    --cn-raise: #e4e9f1;
+    --cn-raise: #dae2ed;
     --cn-line: #d5dce7;
     --cn-text: #10141b;
     --cn-dim: #556072;
