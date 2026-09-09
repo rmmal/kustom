@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { chartGeometry } from '@/lib/board/chart';
-import { CHART_TITLE, SEED_LABEL } from '@/lib/board/copy';
+import { CHART_TITLE, gamesLabel, SEED_LABEL } from '@/lib/board/copy';
 
 /**
  * The rating history chart (`05-design.md`, "Rating history").
@@ -34,6 +34,17 @@ export function RatingChart({ history, seed }: RatingChartProps) {
   const first = history[0] as number;
   const last = history[history.length - 1] as number;
 
+  /**
+   * **How many games this line is, not how many points it has** (the designer's M3.5 review).
+   * The series is the rating carried *into* the first game and then the rating carried out of
+   * every game since, so a player with one game has two points — and the old label read
+   * `Rating from 1392 to 1434`, which says nothing about how much play is behind the shape. A
+   * one-game chart now says `Rating over 1 game, …`, and `gamesLabel` is the same function the
+   * record beside it uses, so the two counts are spelled the same way.
+   */
+  const plotted = Math.max(1, history.length - 1);
+  const label = `${CHART_TITLE} over ${gamesLabel(plotted)}, from ${first} to ${last}, ${SEED_LABEL} ${seed}.`;
+
   return (
     <figure className="cn-chart">
       <figcaption className="cn-chart-title">{CHART_TITLE}</figcaption>
@@ -43,9 +54,9 @@ export function RatingChart({ history, seed }: RatingChartProps) {
           viewBox={`0 0 ${geometry.width} ${geometry.height}`}
           preserveAspectRatio="none"
           role="img"
-          aria-label={`${CHART_TITLE} from ${first} to ${last}, ${SEED_LABEL} ${seed}.`}
+          aria-label={label}
         >
-          <title>{`${CHART_TITLE} from ${first} to ${last}, ${SEED_LABEL} ${seed}.`}</title>
+          <title>{label}</title>
           <line
             className="cn-chart-seed"
             x1={0}

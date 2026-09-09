@@ -247,9 +247,10 @@ if (stack === null) {
       expect(text).not.toContain(puuid.nameless);
       expect(text.split(NAMELESS_HINT)).toHaveLength(2);
       // The delta is computed at render and adds up with the rating beside it: the newest
-      // game took Zoe from 25.6 to 25.2, which is 1536 to 1512. One string, so a rating copied
-      // off the page reads `1512 (−24)`, and a loss is `dim` at 400, never coloured by sign.
-      expect(html).toContain('1512<span class="cn-delta"> (−24)</span>');
+      // game took Zoe from 25.6 to 25.2, which is 1536 to 1512. The delta is one string, so it
+      // reads `(−24)` and not `(`, `−24`, `)`, and a loss is `dim` at 400, never coloured by
+      // sign. Between the two sits the bare number's visually-hidden noun (M3.19).
+      expect(html).toContain('1512<span class="cn-sr"> Rating</span><span class="cn-delta"> (−24)</span>');
     });
 
     it('is nobody for a puuid the database has never met', async () => {

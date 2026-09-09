@@ -90,7 +90,11 @@ if (stack === null) {
   /** What the page renders on the server for this snapshot: the first paint, as HTML. */
   async function firstPaint(): Promise<string> {
     const snapshot = await loadTonight(anon, { nightStart: tonightStart() });
-    return renderToStaticMarkup(createElement(TonightView, { snapshot, viewerPuuid: null, isAdmin: false }));
+    return renderToStaticMarkup(
+      // The rail is empty here: this asserts the first paint of the night's own column, and
+      // `Top of the board` is a second query the page makes beside this one (M3.19).
+      createElement(TonightView, { snapshot, viewerPuuid: null, isAdmin: false, topPlayers: [] }),
+    );
   }
 
   beforeAll(async () => {

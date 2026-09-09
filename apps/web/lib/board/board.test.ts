@@ -3,14 +3,21 @@ import { provenRating } from '../ratingDisplay';
 import { workedBoardRows } from '../testing/boardFixtures';
 import { CHART_HEIGHT, CHART_WIDTH, chartGeometry } from './chart';
 import {
+  BOARD_LEGEND,
   gamesLabel,
   NO_GAMES_YET,
+  NOT_RATED,
+  NOT_RATED_HINT,
+  PROVEN_LABEL,
+  RATING_LABEL,
+  RECENT_RATING_LEGEND,
   SETTLING_GAMES,
   SETTLING_SENTENCE,
   SETTLING_SENTENCE_SHORT,
   winLossLabel,
 } from './copy';
 import { compareBoardRows, sortBoardRows } from './order';
+import { isRated, recentGames } from './recent';
 import { currentStreak, formatStreak } from './streak';
 import type { BoardRow } from './types';
 
@@ -65,6 +72,71 @@ describe('the copy product owns', () => {
 
   it('has one line for a season with no games and a player with none', () => {
     expect(NO_GAMES_YET).toBe('No games this season yet.');
+  });
+
+  /**
+   * **The legend is one word** (`05-design.md`, "Leaderboard row", amended 2026-09-09).
+   * Right-aligned over the stacked pair, `Proven · Rating` put `Rating` over the Proven column
+   * and `Proven` over nothing.
+   */
+  it('names the one unlabelled number and nothing else', () => {
+    expect(BOARD_LEGEND).toBe(PROVEN_LABEL);
+    expect(BOARD_LEGEND).not.toContain(RATING_LABEL);
+    // The player page's own legend is the same word the seat rack uses, lower case.
+    expect(RECENT_RATING_LEGEND).toBe('rating');
+  });
+
+  it('has one vocabulary for a game that moved nothing, and one sentence under it', () => {
+    expect(NOT_RATED).toBe('not rated');
+    expect(NOT_RATED_HINT).toBe(
+      "Some games don't move ratings: too short, short a player, or added from match history and not counted yet.",
+    );
+  });
+});
+
+/**
+ * `Recent games` lists the player's last five games, **rated or not** (M3.23, product
+ * 2026-09-10): a game that landed unrated counts toward the five and prints `not rated` where
+ * its rating would be. Everything the rating is folded from stays rated-only, which is the
+ * loader's `played` array and not this function.
+ */
+describe('which games the recent list shows', () => {
+  const game = (day: number, muAfter: number | null) => ({
+    id: `game-${day}`,
+    startedAt: `2026-09-0${day}T20:00:00.000Z`,
+    muAfter,
+  });
+
+  it('takes the newest five of six, newest first, unrated among them', () => {
+    const six = [
+      game(1, 20),
+      game(2, 21),
+      // The one the fold refused, or a backfill nothing has rebuilt yet.
+      game(3, null),
+      game(4, 22),
+      game(5, 23),
+      game(6, 24),
+    ];
+
+    expect(recentGames(six, 5).map((row) => row.id)).toEqual([
+      'game-6',
+      'game-5',
+      'game-4',
+      'game-3',
+      'game-2',
+    ]);
+    // In date order, with its `mu_after` still null: the row is what says so, not a filter.
+    expect(recentGames(six, 5).map(isRated)).toEqual([true, true, true, false, true]);
+  });
+
+  it('sorts what it is given, because `game_players` comes back in no order', () => {
+    const shuffled = [game(3, null), game(1, 20), game(2, 21)];
+
+    expect(recentGames(shuffled, 5).map((row) => row.id)).toEqual(['game-3', 'game-2', 'game-1']);
+  });
+
+  it('is empty for a player with nothing to list', () => {
+    expect(recentGames([], 5)).toEqual([]);
   });
 });
 
@@ -215,6 +287,22 @@ describe('the rating chart', () => {
 
     expect(geometry?.low).toBeCloseTo(995, 5);
     expect(geometry?.high).toBeCloseTo(1_105, 5);
+  });
+
+  /**
+   * The pad on the widened side is **0.15 of the span**, not the series' own 0.05 (the
+   * designer's M3.5 review): at 5% the hairline landed two or three pixels inside a 140px plot,
+   * under the edge of the stroke, with its `seed` label half off the box.
+   */
+  it('pads the side the seed widened by 0.15 of the span', () => {
+    // Series 1400–1500 pads to 1395–1505; the seed at 1200 then takes the low edge, and the
+    // low edge is padded by 0.15 of what is left above it.
+    const geometry = chartGeometry([1_400, 1_500], 1_200);
+
+    expect(geometry?.low).toBeCloseTo(1_200 - (1_505 - 1_200) * 0.15, 5);
+    // Comfortably inside the plot, not on its boundary.
+    expect(geometry?.seedPercent).toBeLessThan(90);
+    expect(geometry?.seedPercent).toBeGreaterThan(10);
   });
 
   it('keeps the seed line inside the range even when that widens it', () => {

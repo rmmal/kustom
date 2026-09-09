@@ -4,6 +4,7 @@ import {
   BOARD_LEGEND,
   NO_GAMES_YET,
   NO_SEASON_BOARD,
+  PROVEN_LABEL,
   SETTLING_CHIP,
   SETTLING_SENTENCE,
 } from '@/lib/board/copy';
@@ -42,16 +43,34 @@ describe('the two numbers', () => {
     }
   });
 
-  it('names both numbers once, in a legend above the list, and Rating again on every row', () => {
-    draw();
+  /**
+   * **The legend is the single word `Proven`** (amended 2026-09-09, from the rendered page).
+   * Right-aligned, `Proven · Rating` put `Rating` directly over the Proven column and `Proven`
+   * over nothing, which reads as two side-by-side columns when the two numbers are stacked.
+   */
+  it('names the primary number once, in the card header, and Rating again on every row', () => {
+    const { container } = draw();
 
-    expect(screen.getByText(BOARD_LEGEND)).toBeInTheDocument();
-    expect(screen.getByText(BOARD_LEGEND)).toHaveClass('cn-legend');
+    const legend = container.querySelector('.cn-legend');
+    expect(legend?.textContent).toBe(BOARD_LEGEND);
+    expect(BOARD_LEGEND).toBe(PROVEN_LABEL);
+    // In the card's `raise` header bar, and nowhere else on the page.
+    expect(legend?.parentElement).toHaveClass('cn-card-head');
+    expect(container.querySelectorAll('.cn-legend')).toHaveLength(1);
     // `Rating 1266` is on line 2 of every row: it is the number people arrive knowing, so its
     // name has to be where it appears (`05-design.md`).
     for (const row of rows()) {
       expect(row.querySelector('.cn-row-rating')?.textContent).toMatch(/^Rating \d+$/);
     }
+  });
+
+  it('puts the rows on `surface` inside a card, under that header bar', () => {
+    const { container } = draw();
+
+    const card = container.querySelector('.cn-board-card');
+    expect(card).toHaveClass('cn-card');
+    expect(card?.querySelector('.cn-card-head')).toBeInTheDocument();
+    expect(card?.querySelector('.cn-board')?.children).toHaveLength(10);
   });
 
   it('leaves the primary number unlabelled on the row, but not to a screen reader', () => {
@@ -145,6 +164,31 @@ describe('a player with no name (M3.10)', () => {
     expect(screen.getAllByText(NAMELESS_HINT)).toHaveLength(1);
     // Everything else about the row is unaffected.
     expect(rows()[0]?.querySelector('.cn-proven')?.textContent).toContain('1548');
+  });
+
+  /**
+   * Two nameless players are two links called `Someone` (the designer's M3.5 review): a screen
+   * reader listing the page's links reads the same word twice with nothing to choose between
+   * them. The rank is on screen beside the name already; the puuid never is.
+   */
+  it('gives each `Someone` link its rank, out loud and only out loud', () => {
+    const [first, second, ...rest] = workedBoardRows();
+    draw({
+      season: { id: 'season-1', name: 'Season 1' },
+      rows: [
+        { ...(first as (typeof rest)[number]), name: null },
+        { ...(second as (typeof rest)[number]), name: null },
+        ...rest,
+      ],
+    });
+
+    expect(screen.getByRole('link', { name: 'Someone, rank 1' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Someone, rank 2' })).toBeInTheDocument();
+    // On screen it is still one word, and the disambiguator is never a puuid.
+    for (const link of screen.getAllByText('Someone')) {
+      expect(link.parentElement?.querySelector('.cn-sr')?.textContent).toMatch(/^, rank \d+$/);
+    }
+    expect(document.body.textContent).not.toContain(workedPuuid('Lena'));
   });
 
   it('says nothing about names when every row has one', () => {

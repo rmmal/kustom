@@ -15,11 +15,24 @@ export const PROVEN_LABEL = 'Proven';
 export const RATING_LABEL = 'Rating';
 
 /**
- * The legend above the list, right-aligned over the two numbers (`05-design.md`, "Leaderboard
- * row"). A legend, not a header row: it does not stick, does not sort, is not tappable, and
- * the words print per row underneath it as well.
+ * The legend in the board card's header bar, right-aligned over the **one** unlabelled number
+ * (`05-design.md`, "Leaderboard row", amended 2026-09-09). A legend, not a header row: it does
+ * not stick, does not sort and is not tappable.
+ *
+ * **One word, and the word is `Proven`.** Right-aligned, `Proven · Rating` put `Rating`
+ * directly over the Proven column and `Proven` over nothing, which reads as two side-by-side
+ * columns when the two numbers are stacked one per line. `Rating` needs no legend: it names
+ * itself on every line 2.
  */
-export const BOARD_LEGEND = `${PROVEN_LABEL} · ${RATING_LABEL}`;
+export const BOARD_LEGEND = PROVEN_LABEL;
+
+/**
+ * The legend in the `Recent games` header, right-aligned over the column of ratings, and the
+ * same lower-case mono micro-label the seat rack carries over its own rating column
+ * (`05-design.md`, "The player page", the designer's M3.5 review). The bare number under it
+ * carries visually-hidden `Rating`, exactly as the board row's bare Proven does.
+ */
+export const RECENT_RATING_LEGEND = RATING_LABEL.toLowerCase();
 
 /**
  * The board's own word (designer, 2026-09-09). `Leaderboard` and not `standings`: it is what
@@ -77,6 +90,24 @@ export const NO_GAMES_YET = 'No games this season yet.';
  */
 export const NO_SEASON_BOARD = 'No season is active, so there is no board yet. An admin can start one.';
 
+/**
+ * A game that moved nobody's rating, in the rating column of `Recent games` (M3.23, product
+ * 2026-09-10).
+ *
+ * **One vocabulary for every reason.** A game the fold refused (too short, nine players, the
+ * same player twice) and a backfilled game that `rebuild-ratings` has not folded yet both read
+ * the same three syllables: the reader's question is "why did this not move my number", and
+ * the answer is one sentence under the list, not five words per row.
+ */
+export const NOT_RATED = 'not rated';
+
+/**
+ * The sentence under the list, once per page, printed only while a row reads {@link NOT_RATED}
+ * — the same placement rule as M3.10's nameless hint (product, 2026-09-10).
+ */
+export const NOT_RATED_HINT =
+  "Some games don't move ratings: too short, short a player, or added from match history and not counted yet.";
+
 /** `05-design.md`, "Rating history": the chart's title, the same word as line 2 of a row. */
 export const CHART_TITLE = RATING_LABEL;
 
@@ -86,6 +117,14 @@ export const SEED_LABEL = 'seed';
 /** The player page's two sections under the chart. Plain nouns; the content is the vocabulary. */
 export const ROLE_RECORD_HEADING = 'By role';
 export const RECENT_GAMES_HEADING = 'Recent games';
+
+/**
+ * The tonight page's rail card at ≥1080px (`05-design.md`, "Breakpoints and the desktop grid").
+ * The board's first five rows, under the doc's own name for them — not a fourth word for the
+ * destination the nav tab, the heading and the embed all call `Leaderboard`, because this card
+ * is a slice of that page and not a second one.
+ */
+export const TOP_OF_BOARD_TITLE = 'Top of the board';
 
 /** `1 game`, `28 games`. A count of one never prints as `1 games` on the newest player's row. */
 export function gamesLabel(games: number): string {

@@ -1,5 +1,6 @@
 import { displayRating } from '@customs/core';
 import type { RoleValue } from '@customs/db';
+import type { BoardRow } from '@/lib/board/types';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import { NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
@@ -21,6 +22,7 @@ import type {
   TonightSnapshot,
 } from '@/lib/tonight/types';
 import { RoleIcon } from '../_icons/RoleIcon';
+import { TopOfBoard } from '../_leaderboard/BoardCard';
 import { CompanionCard, HowThisWorksCard } from '../_shell/HowThisWorks';
 import { RerollControl } from './RerollControl';
 import { SeatRack } from './SeatRack';
@@ -48,9 +50,15 @@ export interface TonightViewProps {
   viewerPuuid: string | null;
   /** Decided on the server from the session (`lib/viewer.ts`). Draws the reroll control. */
   isAdmin: boolean;
+  /**
+   * The board's first five, for the ≥1080px rail (`loadTopPlayers(client, { limit: 5 })`).
+   * Read once with the page: **the rail never carries state**, so these do not move under a
+   * thumb the way everything in the column beside them does. Empty until a season exists.
+   */
+  topPlayers: readonly BoardRow[];
 }
 
-export function TonightView({ snapshot, viewerPuuid, isAdmin }: TonightViewProps) {
+export function TonightView({ snapshot, viewerPuuid, isAdmin, topPlayers }: TonightViewProps) {
   const state = tonightState(snapshot);
   const header = tonightHeader(state);
   const viewer = { puuid: viewerPuuid, isAdmin };
@@ -88,6 +96,10 @@ export function TonightView({ snapshot, viewerPuuid, isAdmin }: TonightViewProps
       </main>
 
       <aside className="cn-rail" aria-label="About this page">
+        {/* The same five rows as the top of `/leaderboard`, from the same query and the same
+            sort: a rail that disagreed with the page it links to about who is first would be
+            worse than a rail with two cards in it. */}
+        <TopOfBoard rows={topPlayers} viewerPuuid={viewerPuuid} />
         <HowThisWorksCard />
         <CompanionCard />
       </aside>

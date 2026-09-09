@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
+import type { BoardRow } from '@/lib/board/types';
 import { NO_ACTIVE_SEASON_MESSAGE, NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
   extraMember,
@@ -28,9 +29,17 @@ import { TonightView } from './TonightView';
  * is a `<p>` and every assertion here reads text rather than a heading role.
  */
 
-function draw(state: TonightSnapshot, viewer: { puuid?: string; isAdmin?: boolean } = {}) {
+function draw(
+  state: TonightSnapshot,
+  viewer: { puuid?: string; isAdmin?: boolean; topPlayers?: readonly BoardRow[] } = {},
+) {
   return render(
-    <TonightView snapshot={state} viewerPuuid={viewer.puuid ?? null} isAdmin={viewer.isAdmin ?? false} />,
+    <TonightView
+      snapshot={state}
+      viewerPuuid={viewer.puuid ?? null}
+      isAdmin={viewer.isAdmin ?? false}
+      topPlayers={viewer.topPlayers ?? []}
+    />,
   );
 }
 

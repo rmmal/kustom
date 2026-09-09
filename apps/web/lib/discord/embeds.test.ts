@@ -494,6 +494,31 @@ describe('leaderboardEmbed, the worked example', () => {
     expect(embed?.fields[0]?.value).not.toContain('2088');
   });
 
+  /**
+   * **The field name follows the count** (M3.22, product 2026-09-09). With eight players seeded
+   * the shipped post read `Top ten` over eight lines — a field naming a number the list does
+   * not have, in a channel where the group can count the lines.
+   */
+  it('is named `Top ten` only when ten lines print', () => {
+    const eight = workedLeaderboardInput().entries.slice(0, 8);
+    const embed = leaderboardEmbed(workedLeaderboardInput({ entries: eight })).embeds[0];
+
+    expect(embed?.fields[0]?.name).toBe('The board');
+    expect(embed?.fields[0]?.value.split('\n')).toHaveLength(8);
+    // Ten is still ten.
+    expect(leaderboardEmbed(workedLeaderboardInput()).embeds[0]?.fields[0]?.name).toBe('Top ten');
+  });
+
+  it('names an eleven-row board `Top ten`, because ten is what it prints', () => {
+    const eleven = [...workedLeaderboardInput().entries, workedLeaderboardInput().entries[0]].flatMap(
+      (entry) => (entry === undefined ? [] : [entry]),
+    );
+    const embed = leaderboardEmbed(workedLeaderboardInput({ entries: eleven })).embeds[0];
+
+    expect(embed?.fields[0]?.name).toBe('Top ten');
+    expect(embed?.fields[0]?.value.split('\n')).toHaveLength(10);
+  });
+
   it('carries the short still-settling sentence on every post, and no chip per line', () => {
     const embed = leaderboardEmbed(workedLeaderboardInput()).embeds[0];
 

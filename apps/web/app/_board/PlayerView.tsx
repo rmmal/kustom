@@ -1,32 +1,46 @@
 import { displayRating } from '@customs/core';
+import type { RoleValue } from '@customs/db';
 import Link from 'next/link';
 import {
   gamesLabel,
-  LEADERBOARD_LABEL,
   NO_GAMES_YET,
   NO_SEASON_BOARD,
+  NOT_RATED,
+  NOT_RATED_HINT,
   PROVEN_LABEL,
   RATING_LABEL,
   RECENT_GAMES_HEADING,
+  RECENT_RATING_LEGEND,
   ROLE_RECORD_HEADING,
   winLossLabel,
 } from '@/lib/board/copy';
-import type { PlayerBoardView, PlayerSeasonView, RecentGame } from '@/lib/board/types';
+import type { PlayerBoardView, PlayerSeasonView, RecentGame, RecentTeammate } from '@/lib/board/types';
 import { formatDuration } from '@/lib/discord/embeds';
 import { formatDayMonth } from '@/lib/night';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import { isNameless, renderWebName } from '@/lib/tonight/copy';
 import { nightTimeZone } from '@/lib/tonight/night';
+import '../board-parts.css';
+import { RoleIcon } from '../_icons/RoleIcon';
 import { NamelessHint, SettlingChip, SettlingNote } from './parts';
 import { RatingChart } from './RatingChart';
 
 /**
- * `/p/[puuid]` (M3.5, M3.8, M3.10): the two numbers, the `Rating` history, the role record and
- * the last few games.
+ * `/p/[puuid]` (M3.5, M3.8, M3.10; dressed for Floodlit in M3.19): the two numbers, the
+ * `Rating` history, the role record and the last few games.
  *
  * **Two numbers with two names, and no third.** `Rating` and `Proven` are the board's words,
  * printed here under the same two labels, once, above the chart. The chart belongs to `Rating`;
  * the numbers beside it say where the board has this player today.
+ *
+ * Floodlit's rank order down the page, which v1 had upside down: **the name outranks the
+ * section headings and the two numbers outrank both.** The name is the display cut, `Proven` is
+ * `t-display`, `Rating` is `t-md`, and `By role` and `Recent games` are mono `t-xs` micro-labels
+ * in a `raise` card header — v1 set the name and both headings at the same `t-lg`, which made
+ * the largest type on a page about a person the words `By role`.
+ *
+ * There is **no back link**: the `Leaderboard` tab in the shell is the same destination, and a
+ * page does not carry two ways to one place (`05-design.md`, settled with M3.18's shell).
  */
 
 /**
@@ -39,7 +53,7 @@ const LOST = 'Lost';
 
 export interface PlayerViewProps {
   player: PlayerBoardView;
-  /** The signed-in viewer's puuid: their own row in a lineup gets the `accent` rule. */
+  /** The signed-in viewer's puuid: their own row in a lineup gets the `brand` rule. */
   viewerPuuid: string | null;
 }
 
@@ -47,13 +61,8 @@ export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
   return (
     <main className="cn-page">
       <header className="cn-strip">
-        {/* An arrow and the page's own name: a bare noun above a heading reads as a label. */}
-        <p className="cn-back">
-          <Link className="cn-link" href="/leaderboard">
-            {`← ${LEADERBOARD_LABEL}`}
-          </Link>
-        </p>
-        <h1 className="cn-strip-title">{renderWebName(player.name)}</h1>
+        {/* The person is the page: the display cut, and the biggest language on it. */}
+        <h1 className="cn-display cn-player-name">{renderWebName(player.name)}</h1>
       </header>
 
       {/*
@@ -78,75 +87,101 @@ export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
 function PlayerSeason({ player, viewerPuuid }: { player: PlayerSeasonView; viewerPuuid: string | null }) {
   const nameless =
     isNameless(player.name) || player.recent.some((game) => game.team.some((seat) => isNameless(seat.name)));
+  /** M3.23: the sentence is printed once, and only while a row on the page reads `not rated`. */
+  const unrated = player.recent.some((game) => game.muAfter === null);
 
   return (
     <>
       <section className="cn-block">
-        {/*
-         * Above the chart, once: the number people arrive knowing and the primary number,
-         * under the same two labels the board uses. The chip sits beside them (M3.8).
-         */}
-        <div className="cn-summary">
-          <p className="cn-numbers">
-            <span className="cn-number">
-              <span className="cn-number-label">{RATING_LABEL}</span>{' '}
-              <span className="cn-num cn-number-value">{player.rating}</span>
-            </span>
-            <span className="cn-number">
-              <span className="cn-number-label">{PROVEN_LABEL}</span>{' '}
-              <span className="cn-num cn-number-value">{player.proven}</span>
-            </span>
-            {player.settling ? <SettlingChip /> : null}
-          </p>
+        <div className="cn-card cn-player-card">
+          {/*
+           * Above the chart, once: the primary number and the number people arrive knowing,
+           * under the same two labels the board uses, in the board's own order — `Rating`
+           * first, because that is the one a reader is looking for, and `Proven` in the
+           * display size, because that is the one the board sorts on. The chip sits beside
+           * them (M3.8).
+           */}
+          <div className="cn-summary">
+            <p className="cn-numbers">
+              <span className="cn-number">
+                <span className="cn-number-label">{RATING_LABEL}</span>{' '}
+                <span className="cn-num cn-number-value">{player.rating}</span>
+              </span>
+              <span className="cn-number cn-number-primary">
+                <span className="cn-number-label">{PROVEN_LABEL}</span>{' '}
+                <span className="cn-num cn-number-value">{player.proven}</span>
+              </span>
+              {player.settling ? <SettlingChip /> : null}
+            </p>
+
+            {/*
+             * The record, directly under the two numbers (the designer's review, 2026-09-09).
+             * The board prints it on every row and this page — the one place a friend goes to
+             * read about themselves — did not, so `28 games · 13W 15L` had to be counted off
+             * the chart. It counts the **rated** games, the ones the fold counted (M3.23).
+             */}
+            <p className="cn-row-meta">
+              <span className="cn-num">{gamesLabel(player.games)}</span>
+              {' · '}
+              <span className="cn-num">{winLossLabel(player.wins, player.losses)}</span>
+            </p>
+          </div>
 
           {/*
-           * The record, directly under the two numbers (the designer's review, 2026-09-09). The
-           * board prints it on every row and this page — the one place a friend goes to read
-           * about themselves — did not, so `28 games · 13W 15L` had to be counted off the chart.
+           * **Gated on games played, not on points to plot.** `history.length === 0` also means
+           * "this player has games the season read did not reach", and the page then told
+           * somebody with forty games that the season had none. A player with games and nothing
+           * to draw gets no chart and no sentence rather than a false one.
            */}
-          <p className="cn-row-meta">
-            <span className="cn-num">{gamesLabel(player.games)}</span>
-            {' · '}
-            <span className="cn-num">{winLossLabel(player.wins, player.losses)}</span>
-          </p>
+          {player.games === 0 ? <p className="cn-empty">{NO_GAMES_YET}</p> : null}
+          {player.history.length === 0 ? null : <RatingChart history={player.history} seed={player.seed} />}
+
+          {/* Under the chart, once per page (M3.8). */}
+          {player.settling ? <SettlingNote /> : null}
         </div>
-
-        {/*
-         * **Gated on games played, not on points to plot.** `history.length === 0` also means
-         * "this player has games the season read did not reach", and the page then told
-         * somebody with forty games that the season had none. A player with games and nothing
-         * to draw gets no chart and no sentence rather than a false one.
-         */}
-        {player.games === 0 ? <p className="cn-empty">{NO_GAMES_YET}</p> : null}
-        {player.history.length === 0 ? null : <RatingChart history={player.history} seed={player.seed} />}
-
-        {/* Under the chart, once per page (M3.8). */}
-        {player.settling ? <SettlingNote /> : null}
       </section>
 
       {player.roles.length === 0 ? null : (
         <section className="cn-block">
-          <h2 className="cn-heading">{ROLE_RECORD_HEADING}</h2>
-          <ul className="cn-records">
-            {player.roles.map((record) => (
-              <li key={record.role} className="cn-record">
-                <span className="cn-num cn-lineup-role">{record.role}</span>
-                <span className="cn-num cn-record-games">{gamesLabel(record.games)}</span>
-                <span className="cn-num cn-record-wl">{winLossLabel(record.wins, record.losses)}</span>
-              </li>
-            ))}
-          </ul>
+          <section className="cn-card cn-list-card">
+            <header className="cn-card-head cn-list-head">
+              <h2 className="cn-num cn-list-title">{ROLE_RECORD_HEADING}</h2>
+            </header>
+            <ul className="cn-records">
+              {player.roles.map((record) => (
+                <li key={record.role} className="cn-record">
+                  <RoleName role={record.role} size={20} />
+                  <span className="cn-num cn-record-games">{gamesLabel(record.games)}</span>
+                  <span className="cn-num cn-record-wl">{winLossLabel(record.wins, record.losses)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         </section>
       )}
 
       {player.recent.length === 0 ? null : (
         <section className="cn-block">
-          <h2 className="cn-heading">{RECENT_GAMES_HEADING}</h2>
-          <ul className="cn-games">
-            {player.recent.map((game) => (
-              <RecentGameView key={game.gameId} game={game} puuid={player.puuid} viewerPuuid={viewerPuuid} />
-            ))}
-          </ul>
+          <section className="cn-card cn-list-card">
+            <header className="cn-card-head cn-list-head">
+              <h2 className="cn-num cn-list-title">{RECENT_GAMES_HEADING}</h2>
+              {/* Right-aligned over the column of ratings, the same legend the seat rack
+                  carries over its own (the designer's M3.5 review). */}
+              <span className="cn-num cn-legend">{RECENT_RATING_LEGEND}</span>
+            </header>
+            <ul className="cn-games">
+              {player.recent.map((game) => (
+                <RecentGameView
+                  key={game.gameId}
+                  game={game}
+                  puuid={player.puuid}
+                  viewerPuuid={viewerPuuid}
+                />
+              ))}
+            </ul>
+          </section>
+          {/* Once, under the list, and only while a row on it reads `not rated` (M3.23). */}
+          {unrated ? <p className="cn-hint">{NOT_RATED_HINT}</p> : null}
         </section>
       )}
 
@@ -162,6 +197,11 @@ function PlayerSeason({ player, viewerPuuid }: { player: PlayerSeasonView; viewe
  * **The delta is computed here, at render.** `displayDelta` rounds both ratings before it
  * subtracts, so `1512 (+43)` adds up, and its `-0` for a rating that fell by less than half a
  * point does not survive a `JSON.stringify` it never makes.
+ *
+ * **A game that moved nothing says so** (M3.23, product 2026-09-10): where the rating would be,
+ * the row reads `not rated` — one vocabulary for a game the fold refused and for a backfilled
+ * game `rebuild-ratings` has not folded yet, because the reader's question is the same one. The
+ * result, the date and the duration print exactly as they do on a rated row.
  */
 function RecentGameView({
   game,
@@ -169,7 +209,7 @@ function RecentGameView({
   viewerPuuid,
 }: {
   game: RecentGame;
-  /** Whose page this is: their own row in the lineup carries the `accent` rule. */
+  /** Whose page this is: their own row in the lineup is plain text, and carries the rule. */
   puuid: string;
   viewerPuuid: string | null;
 }) {
@@ -190,16 +230,25 @@ function RecentGameView({
           {formatDayMonth(new Date(game.startedAt), nightTimeZone())}
         </span>
         <span className="cn-num cn-duration">{formatDuration(game.durationS)}</span>
-        <span className="cn-num cn-game-rating">
-          {rating ?? ''}
-          {delta === null ? null : (
-            // One string, not three children: React separates adjacent text nodes in the
-            // server render, and a rating copied off the page should read `1512 (+43)`.
-            <span className={isGain(delta) ? 'cn-delta cn-delta-up' : 'cn-delta'}>
-              {` (${formatWebDelta(delta)})`}
-            </span>
-          )}
-        </span>
+        {rating === null ? (
+          // No delta, no em-dash and no visually-hidden `Rating`: there is no rating on this
+          // row to name (product, 2026-09-10).
+          <span className="cn-num cn-game-rating cn-not-rated">{NOT_RATED}</span>
+        ) : (
+          <span className="cn-num cn-game-rating">
+            {rating}
+            {/* The bare number gets its noun, the same rule the board row's bare Proven
+                follows (the designer's M3.5 review). */}
+            <span className="cn-sr"> {RATING_LABEL}</span>
+            {delta === null ? null : (
+              // One string, not three children: React separates adjacent text nodes in the
+              // server render, and a rating copied off the page should read `1512 (+43)`.
+              <span className={isGain(delta) ? 'cn-delta cn-delta-up' : 'cn-delta'}>
+                {` (${formatWebDelta(delta)})`}
+              </span>
+            )}
+          </span>
+        )}
       </p>
       <ul className="cn-lineup">
         {game.team.map((seat) => (
@@ -209,11 +258,44 @@ function RecentGameView({
               seat.puuid === puuid || seat.puuid === viewerPuuid ? 'cn-lineup-row cn-you' : 'cn-lineup-row'
             }
           >
-            <span className="cn-num cn-lineup-role">{seat.role ?? ''}</span>
-            <span className="cn-lineup-name">{renderWebName(seat.name)}</span>
+            {seat.role === null ? <span className="cn-num cn-lineup-role" /> : <RoleName role={seat.role} />}
+            <LineupName seat={seat} viewed={seat.puuid === puuid} />
           </li>
         ))}
       </ul>
     </li>
+  );
+}
+
+/**
+ * A teammate's name, and a link to their page — **except the player whose page this is**, whose
+ * row is plain text (the designer's M3.5 review). This is the one screen in the product that
+ * lists other people by name, and hopping between friends is what the board is for; a link
+ * back to the page you are already on is not a destination.
+ */
+function LineupName({ seat, viewed }: { seat: RecentTeammate; viewed: boolean }) {
+  if (viewed) return <span className="cn-lineup-name">{renderWebName(seat.name)}</span>;
+
+  return (
+    <Link className="cn-lineup-name cn-lineup-link" href={`/p/${seat.puuid}`}>
+      {renderWebName(seat.name)}
+    </Link>
+  );
+}
+
+/**
+ * A role, icon and word, always both (`05-design.md`, "Iconography"). The icon is `aria-hidden`
+ * and the word beside it is the accessible name; the mark is an anchor for the eye in a dense
+ * list, never a replacement for language.
+ *
+ * 20px where the role is the subject of its row (`By role`), 14px where it sits beside a name
+ * in a lineup — the same size the seat rack and the team cards use for exactly that position.
+ */
+function RoleName({ role, size = 14 }: { role: RoleValue; size?: number }) {
+  return (
+    <span className="cn-num cn-lineup-role">
+      <RoleIcon role={role} size={size} />
+      {role}
+    </span>
   );
 }

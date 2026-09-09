@@ -162,8 +162,25 @@ export interface LeaderboardEmbedInput {
   timestamp: string;
 }
 
-/** `05-design.md`, "Nightly leaderboard embed": one field, and it is called `Top ten`. */
+/** `05-design.md`, "Nightly leaderboard embed": at most ten lines print. */
 export const TOP_N = 10;
+
+/**
+ * The field's name **follows the count** (M3.22, product 2026-09-09).
+ *
+ * With eight players seeded, the shipped post read `Top ten` over eight lines — a field that
+ * names a number the list does not have, in a channel where the whole group can count the
+ * lines. `Top ten` is the name only when ten of them print; any shorter board is `The board`,
+ * which is true at any length and is the destination's own noun in a sentence
+ * (`Ratings are updated. The leaderboard has the rest.`).
+ */
+export const TOP_N_FIELD = 'Top ten';
+export const BOARD_FIELD = 'The board';
+
+/** `Top ten` for ten lines, `The board` for anything shorter. Never a count in the name. */
+export function leaderboardFieldName(lines: number): string {
+  return lines === TOP_N ? TOP_N_FIELD : BOARD_FIELD;
+}
 
 /**
  * The teams embed: two columns with role and display rating, the explanation verbatim, the
@@ -276,7 +293,12 @@ export function leaderboardEmbed(input: LeaderboardEmbedInput): WebhookPayload {
         color: ACCENT_COLOR,
         title: `${input.seasonName} · ${LEADERBOARD_LABEL.toLowerCase()}`,
         ...(input.url === undefined ? {} : { url: input.url }),
-        fields: [{ name: 'Top ten', value: entries.map(leaderboardLine).join('\n') }],
+        fields: [
+          {
+            name: leaderboardFieldName(entries.length),
+            value: entries.map(leaderboardLine).join('\n'),
+          },
+        ],
         footer: { text: SETTLING_SENTENCE_SHORT },
         timestamp: input.timestamp,
       },
