@@ -797,7 +797,7 @@ the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc,
 | nightly embed title | `Season 1 · leaderboard` | **amended, designer 2026-09-09** — same row |
 | back link on `/p/[puuid]` | `← Leaderboard`, and deleted when the shell lands | **amended, designer 2026-09-09** — same row |
 | still-settling chip | `settling` | *(shipped, M3.8)* kept |
-| still-settling sentence, once per page | `The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.` | *(shipped, M3.8)* kept — canonical entry is "Still-settling marker (M3.8)" below |
+| still-settling sentence, once per page | `The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.` | **amended, product 2026-09-10 (M3.19)** — was `… which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.`, which is false on a season's first board; `04-decisions.md`. **This row is now the canonical wording** — the quote under "Still-settling marker (M3.8)" below is superseded and still needs the same two sentences pasted into it |
 | still-settling sentence, embed footer | `Proven stays below a new player's rating until the board has seen about 30 games.` | *(shipped, M3.8)* kept |
 | season active, no games yet — and a player with none, where the chart would be | `No games this season yet.` | **new**, product 2026-09-09 — kept as written |
 | no season is active, on both pages | `No season is active, so there is no board yet. An admin can start one.` | **new**, product 2026-09-09 — kept as written |
@@ -811,7 +811,7 @@ the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc,
 | nameless hint, once per page while any row reads `Someone` | `Names fill in after someone's first game.` | *(shipped, M3.10)* kept |
 | rating column, unrated game | `not rated` | **new**, product 2026-09-10 (M3.23) |
 | hint under Recent games, when any row is unrated | `Some games don't move ratings: too short, short a player, or added from match history and not counted yet.` | **new**, product 2026-09-10 (M3.23) |
-| nightly embed, field name | `Top ten` | *(shipped)* kept |
+| nightly embed, field name | `Top ten` when ten lines print, `The board` when fewer | **amended, product 2026-09-10 (M3.22)** — was `Top ten` always; see "Nightly leaderboard embed" |
 
 **Why the three new ones stand.**
 
@@ -1677,7 +1677,7 @@ across a row.
 color        accent
 title        Season 1 · leaderboard
 url          https://<leaderboard>
-field 1 name   Top ten
+field 1 name   Top ten          <- only when ten lines print; otherwise `The board`
 field 1 value  `1` Lena · 1548 · 41 games
                `2` Bilal · 1137 · 44 games
                ...
@@ -1688,6 +1688,16 @@ footer       Proven stays below a new player's rating until the board has seen a
 The timestamp is what tells a reader scrolling back next week *which* night's board this was; both other
 embeds carry one. This block lists only the fields that carry a design decision — it omits `description` for
 the same reason.
+
+**The field name follows the count** (product 2026-09-10, M3.22). The field is named `Top ten` only when ten
+lines actually print. With fewer than ten it is named `The board`. The trigger is the number of lines, not the
+size of the group: on a night when eight friends are seeded and eight lines print, `Top ten` is a promise the
+post does not keep — that list is not the top of anything, it is everyone. With exactly ten on the board both
+readings are true and `Top ten` is right, which is why the rule is worded on the lines and not on the roster.
+`The board` is not a new word for the page: it is the first two words of the settling sentence both web pages
+already print, and it stays lower case after `The` so it reads as a heading over a list rather than a second
+name for `Leaderboard` (the one-thing-one-name rule the title follows). One constant in
+`apps/web/lib/discord/embeds.ts` (`leaderboardEmbed`).
 
 The number after the name is the **Proven** number (`round(ordinal × 60)`), and the list is ordered by it,
 descending. The embed prints Proven only: a one-number list must show the number it is ordered by, and a
