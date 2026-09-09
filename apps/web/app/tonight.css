@@ -190,8 +190,8 @@
 
 /*
  * Exactly 44px: `t-md` at the body's 1.5 line height is 30px, which with `sp-2` top and bottom
- * makes a 46-47px row and breaks the reserved height above. 1.2 on a single-line row is the
- * scale's own line height for `t-md` anyway (05-design.md, "Scale").
+ * makes a 46-47px row and breaks the reserved height above. 1.3 is the type scale's own line
+ * height for `t-md` (05-design.md, "Scale"), and it still lands the row inside 44px.
  */
 .cn-member,
 .cn-seat {
@@ -200,7 +200,7 @@
   gap: var(--cn-sp-3);
   min-height: 44px;
   padding: var(--cn-sp-2) var(--cn-sp-3);
-  line-height: 1.2;
+  line-height: 1.3;
   animation: cn-fade 150ms ease;
 }
 

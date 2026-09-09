@@ -47,6 +47,16 @@ export function tonightPageUrl(origin: string | null | undefined): string | unde
   }
 }
 
+/**
+ * The board's link for the nightly embed (M3.5), or `undefined` under the same localhost rule
+ * as {@link tonightPageUrl}: no domain exists yet, and a link that works for one person is
+ * worse in a channel than no link at all.
+ */
+export function leaderboardPageUrl(origin: string | null | undefined): string | undefined {
+  const base = tonightPageUrl(origin);
+  return base === undefined ? undefined : `${base}/leaderboard`;
+}
+
 function firstHeaderValue(value: string | null): string | null {
   if (value === null) return null;
   const first = value.split(',')[0]?.trim();

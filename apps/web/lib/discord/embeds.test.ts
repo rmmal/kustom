@@ -1,6 +1,7 @@
 import { displayRating, type Rating, rateGame } from '@customs/core';
 import { describe, expect, it } from 'vitest';
 import { displayDelta } from '../ratingDisplay';
+import { workedBoardRows } from '../testing/boardFixtures';
 import { WORKED_ROSTER, workedBalance, workedNames, workedPool, workedPuuid } from '../testing/workedExample';
 import { buildTeamsInput } from './assemble';
 import {
@@ -10,6 +11,8 @@ import {
   formatDelta,
   formatDuration,
   joinNames,
+  type LeaderboardEmbedInput,
+  leaderboardEmbed,
   RED_COLOR,
   type ResultEmbedInput,
   type ResultPlayer,
@@ -439,5 +442,113 @@ describe('the small formatters', () => {
     expect(embed?.fields.find((field) => field.name.startsWith('Blue'))?.value.split('\n')[0]).toBe(
       '`top` a\\`b · 1434',
     );
+  });
+});
+
+/**
+ * The nightly board (M3.5), against the same ten and the same numbers as `05-design.md`'s
+ * worked example: Lena `1548` down to Yuki `534`, with the design doc's illustrative game
+ * counts. The snapshot is the JSON a scheduler puts in the channel once a night.
+ */
+function workedLeaderboardInput(overrides: Partial<LeaderboardEmbedInput> = {}): LeaderboardEmbedInput {
+  return {
+    seasonName: 'Season 1',
+    entries: workedBoardRows().map((row) => ({
+      puuid: row.puuid,
+      name: row.name,
+      proven: row.proven,
+      games: row.games,
+    })),
+    url: `${SITE_URL}/leaderboard`,
+    timestamp: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+describe('leaderboardEmbed, the worked example', () => {
+  it("is the design doc's nightly post", () => {
+    expect(leaderboardEmbed(workedLeaderboardInput())).toMatchSnapshot();
+  });
+
+  it('prints Proven, in Proven order, and no second number', () => {
+    const embed = leaderboardEmbed(workedLeaderboardInput()).embeds[0];
+
+    expect(embed?.fields).toHaveLength(1);
+    expect(embed?.fields[0]?.name).toBe('Top ten');
+    // One field, block, no columns: a ranked list is a single column by nature.
+    expect(embed?.fields[0]?.inline).toBeUndefined();
+    expect(embed?.fields[0]?.value.split('\n')).toEqual([
+      '`1` Lena · 1548 · 41 games',
+      '`2` Bilal · 1137 · 44 games',
+      '`3` Rami · 1062 · 39 games',
+      '`4` Iris · 990 · 38 games',
+      '`5` Karim · 987 · 40 games',
+      '`6` Omar · 917 · 42 games',
+      '`7` Hana · 882 · 37 games',
+      '`8` Theo · 831 · 38 games',
+      '`9` Nadia · 654 · 28 games',
+      '`10` Yuki · 534 · 24 games',
+    ]);
+    // The Rating numbers are the web page's: a second number in a proportional font with no
+    // column to sit in is unreadable.
+    expect(embed?.fields[0]?.value).not.toContain('2088');
+  });
+
+  it('carries the short still-settling sentence on every post, and no chip per line', () => {
+    const embed = leaderboardEmbed(workedLeaderboardInput()).embeds[0];
+
+    expect(embed?.footer.text).toBe(
+      "Proven stays below a new player's rating until the board has seen about 30 games.",
+    );
+    expect(embed?.fields[0]?.value).not.toContain('settling');
+  });
+
+  it('is the accent bar, the board title and the board link', () => {
+    const embed = leaderboardEmbed(workedLeaderboardInput()).embeds[0];
+
+    expect(embed?.color).toBe(ACCENT_COLOR);
+    expect(embed?.title).toBe('Season 1 · standings');
+    expect(embed?.url).toBe(`${SITE_URL}/leaderboard`);
+    expect(embed?.description).toBeUndefined();
+  });
+
+  it('drops the url when there is no honest one, and keeps the footer', () => {
+    const embed = leaderboardEmbed(workedLeaderboardInput({ url: undefined })).embeds[0];
+
+    expect(embed).not.toHaveProperty('url');
+    // Unlike the teams footer, this one promises no link, so it does not change.
+    expect(embed?.footer.text).toContain('Proven stays below');
+  });
+
+  it('prints ten at most, however many the season has', () => {
+    const entries = [...workedLeaderboardInput().entries];
+    const value = leaderboardEmbed(
+      workedLeaderboardInput({
+        entries: [...entries, { puuid: 'puuid-11', name: 'Eleventh', proven: 100, games: 3 }],
+      }),
+    ).embeds[0]?.fields[0]?.value;
+
+    expect(value?.split('\n')).toHaveLength(10);
+    expect(value).not.toContain('Eleventh');
+  });
+
+  it('says `1 game` for the newest player, never `1 games`', () => {
+    const value = leaderboardEmbed(
+      workedLeaderboardInput({
+        entries: [{ puuid: 'puuid-new', name: 'New', proven: 0, games: 1 }],
+      }),
+    ).embeds[0]?.fields[0]?.value;
+
+    expect(value).toBe('`1` New · 0 · 1 game');
+  });
+
+  it('renders a nameless player as `Someone`, like every other surface (M3.10)', () => {
+    const value = leaderboardEmbed(
+      workedLeaderboardInput({
+        entries: [{ puuid: 'puuid-x', name: null, proven: 700, games: 12 }],
+      }),
+    ).embeds[0]?.fields[0]?.value;
+
+    expect(value).toBe('`1` Someone · 700 · 12 games');
   });
 });

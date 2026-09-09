@@ -1,8 +1,9 @@
+import { loadBoard } from '../board/load';
 import { activeSeasonId, loadPool } from '../ingest/balance';
 import type { GameFinishedEvent, LobbyBalancedEvent, LobbyHook } from '../ingest/hooks';
 import { compareForSitOut, type PoolMember, planSeats } from '../ingest/selection';
 import { DEFAULT_NIGHT_TIME_ZONE } from '../night';
-import { tonightPageUrl } from '../siteUrl';
+import { leaderboardPageUrl, tonightPageUrl } from '../siteUrl';
 import { getServiceClient, type ServiceClient } from '../supabase';
 import {
   buildResultInput,
@@ -13,7 +14,7 @@ import {
   type TeamsSource,
   teamsPuuids,
 } from './assemble';
-import { resultEmbed, teamsEmbed } from './embeds';
+import { type LeaderboardEntry, leaderboardEmbed, resultEmbed, TOP_N, teamsEmbed } from './embeds';
 import { postToWebhook, type WebhookOptions, type WebhookOutcome } from './webhook';
 
 /**
@@ -109,6 +110,42 @@ export async function postResultForGame(
   if (input === null) return SKIPPED('game is not rated');
 
   return postToWebhook(client, resultEmbed(input), 'result embed', options);
+}
+
+/**
+ * The nightly board (M3.5). One post: the season's top ten by Proven, in the same order
+ * `/leaderboard` puts them in, because it is the same `loadBoard`.
+ *
+ * `skipped` when there is no season and when the season has nobody on it — a `Top ten` field
+ * with nothing under it is worse than silence, the same rule the result embed lives by.
+ * Anything else is the webhook's answer, and a webhook that is down costs a log line.
+ *
+ * **The schedule is not here.** This is a function and a route; something outside the app
+ * calls it at a configured time (`GET /api/cron/leaderboard`, bearer `CRON_SECRET`), exactly
+ * as the idle sweep works. No Vercel cron config ships with this milestone.
+ */
+export async function postNightlyLeaderboard(
+  client: ServiceClient,
+  options: PostOptions = {},
+): Promise<WebhookOutcome> {
+  const board = await loadBoard(client);
+  if (board.season === null) return SKIPPED('no active season');
+
+  const entries: LeaderboardEntry[] = board.rows.slice(0, TOP_N).map((row) => ({
+    puuid: row.puuid,
+    name: row.name,
+    proven: row.proven,
+    games: row.games,
+  }));
+  if (entries.length === 0) return SKIPPED('nobody on the board');
+
+  const payload = leaderboardEmbed({
+    seasonName: board.season.name,
+    entries,
+    url: leaderboardPageUrl(options.requestOrigin),
+    timestamp: (options.now ?? new Date()).toISOString(),
+  });
+  return postToWebhook(client, payload, 'leaderboard embed', options);
 }
 
 /**

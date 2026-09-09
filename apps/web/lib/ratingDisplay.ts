@@ -1,4 +1,4 @@
-import { displayRating } from '@customs/core';
+import { displayRating, ordinal, type Rating } from '@customs/core';
 
 /**
  * The display boundary for ratings (M3.3), in one place.
@@ -46,4 +46,22 @@ export function formatWebDelta(delta: number): string {
 /** A gain is `text` at 600, a loss is `dim` at 400. Never coloured by sign (05-design.md). */
 export function isGain(delta: number): boolean {
   return !Object.is(delta, -0) && delta >= 0;
+}
+
+/**
+ * **Proven**: `round(ordinal * 60)`, the leaderboard's primary number and its sort key
+ * (M3.5, product's brief; the row in `04-decisions.md`).
+ *
+ * One helper, because two surfaces print it — `/leaderboard`, `/p/[puuid]` — and a third
+ * orders by it (the nightly Discord embed). It is composed from core's own `ordinal` and
+ * `displayRating` rather than multiplying by 60 here: the sixty is `config.rating
+ * .displayMultiplier` and the two is `config.rating.ordinalSigmaWeight`, and neither is this
+ * package's number to hold.
+ *
+ * `ratings.ordinal` is also a generated column in Postgres (`mu - 2 * sigma`), and it is what
+ * the index sorts on. The number a reader sees still comes through here, so the page cannot
+ * print a value SQL and core would disagree about.
+ */
+export function provenRating(rating: Rating): number {
+  return displayRating(ordinal(rating));
 }

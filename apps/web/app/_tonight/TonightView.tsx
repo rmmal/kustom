@@ -1,4 +1,5 @@
 import { displayRating } from '@customs/core';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
 import { PLAYERS_PER_GAME } from '@/lib/lobbyState';
@@ -94,18 +95,18 @@ export function TonightView({ snapshot, viewerPuuid, isAdmin }: TonightViewProps
  * No lobby tonight. One sentence and a link, and nothing else: no spinner, no skeleton, no
  * illustration, and no repeat of the header strip's `Nothing tonight`.
  *
- * The link is a plain anchor rather than `next/link` because `/leaderboard` does not exist
- * until M3.5 and `typedRoutes` will not type a route that has no page. It becomes a `Link` in
- * the same commit that creates the board.
+ * A typed `next/link` since M3.5 created `/leaderboard`: `typedRoutes` now checks the href at
+ * build time, and the board is prefetched, which is the one thing a friend on the idle screen
+ * is going to tap.
  */
 function Idle() {
   return (
     <section className="cn-block">
       <p className="cn-idle">{IDLE_SENTENCE}</p>
       <p>
-        <a className="cn-link" href="/leaderboard">
+        <Link className="cn-link" href="/leaderboard">
           {IDLE_LINK_LABEL}
-        </a>
+        </Link>
       </p>
     </section>
   );

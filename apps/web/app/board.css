@@ -1,0 +1,459 @@
+/*
+ * `/leaderboard` and `/p/[puuid]` (M3.5, M3.8, M3.10), built from the tokens in `tokens.css`.
+ *
+ * Rules from `docs/05-design.md` that are load-bearing here, so nobody "tidies" them away:
+ *
+ *   - A leaderboard row is two lines, each a pair of groups pinned to opposite edges: rank and
+ *     name left, Proven right; the meta left, Rating right and directly under Proven. The two
+ *     numbers form one vertical pair per row and are never merged into one cell.
+ *   - `Proven` prints nowhere on a row. It is named once, in the legend above the list.
+ *   - Rank 1 gets `accent` on the rank number only. No medals, no highlight row, no zebra.
+ *   - At ≥720px the row does not become a table — same two lines, wider gutters.
+ *   - The chart is one 1.5px `accent` line, no fill, no points, no grid, 140px tall, with the
+ *     seed as a hairline in the same units.
+ *   - Deltas are never coloured by sign: a gain is `text` at 600, a loss is `dim` at 400.
+ *   - Every tappable thing is at least 44px tall.
+ *
+ * It is deliberately standalone rather than sharing `tonight.css`: that file's row rule couples
+ * `.cn-member` and `.cn-seat` to the ten-row reservation the tonight page reserves, and pulling
+ * the two apart is a change to a page in review. The handful of shell rules below therefore
+ * repeat it — same tokens, same numbers. If a third page appears, extract them then.
+ */
+
+.cn-page {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: var(--cn-sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-5);
+}
+
+@media (min-width: 720px) {
+  .cn-page {
+    padding: var(--cn-sp-5);
+  }
+}
+
+.cn-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-4);
+  animation: cn-fade 150ms ease;
+}
+
+@keyframes cn-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Header strip, the same shape the tonight page's carries.
+ * ------------------------------------------------------------------------- */
+
+.cn-strip {
+  border-bottom: 1px solid var(--cn-hairline);
+  padding-bottom: var(--cn-sp-3);
+}
+
+.cn-strip-title {
+  margin: 0;
+  font-size: var(--cn-t-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cn-strip-sub {
+  font-size: var(--cn-t-base);
+  font-weight: 400;
+  color: var(--cn-dim);
+}
+
+.cn-back {
+  margin: 0;
+}
+
+.cn-heading {
+  margin: 0;
+  font-size: var(--cn-t-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cn-empty,
+.cn-hint,
+.cn-notice,
+.cn-settling {
+  margin: 0;
+  color: var(--cn-dim);
+}
+
+.cn-hint,
+.cn-notice,
+.cn-settling {
+  font-size: var(--cn-t-sm);
+}
+
+.cn-notice {
+  border-left: 2px solid var(--cn-hairline);
+  padding-left: var(--cn-sp-3);
+}
+
+/* A bare inline anchor is about 26px tall; every tap target on these pages is at least 44. */
+.cn-link {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+  color: var(--cn-accent);
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------------------
+ * The board.
+ * ------------------------------------------------------------------------- */
+
+/*
+ * The legend: `Proven · Rating`, right-aligned over the two numbers. It is not a header row —
+ * it does not stick, does not sort and is not tappable — because on a phone a header row has
+ * scrolled away after four rows and every row below it is then two unexplained numbers.
+ */
+.cn-legend {
+  margin: 0 0 calc(-1 * var(--cn-sp-2));
+  padding-right: var(--cn-sp-3);
+  text-align: right;
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+}
+
+.cn-board {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--cn-surface);
+  border-radius: var(--cn-radius);
+}
+
+/* Two lines, a hairline between rows, no zebra striping. */
+.cn-row {
+  display: flex;
+  flex-direction: column;
+  min-height: 56px;
+  padding: var(--cn-sp-1) var(--cn-sp-3);
+}
+
+.cn-row + .cn-row {
+  border-top: 1px solid var(--cn-hairline);
+}
+
+/* "You": a 2px accent rule down the left of the row, drawn so it adds no width. */
+.cn-you {
+  box-shadow: inset 2px 0 0 0 var(--cn-accent);
+}
+
+.cn-row-top {
+  display: flex;
+  align-items: center;
+  gap: var(--cn-sp-3);
+  min-width: 0;
+}
+
+.cn-rank {
+  flex: 0 0 2.5ch;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+  text-align: right;
+}
+
+.cn-rank-first {
+  color: var(--cn-accent);
+}
+
+/*
+ * The name is the row's tap target: it opens `/p/[puuid]`. It keeps the row spec's own type —
+ * `t-md` 600 in `text`, one line, ellipsis — rather than reading as a link, and the 44px comes
+ * from the line box so the row does not grow a second time for it.
+ */
+.cn-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  line-height: 44px;
+  font-size: var(--cn-t-md);
+  font-weight: 600;
+  color: var(--cn-text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cn-row-name:hover,
+.cn-row-name:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The primary number, hard against the row's right edge. Never abbreviated. */
+.cn-proven {
+  flex: 0 0 auto;
+  font-size: var(--cn-t-md);
+  font-weight: 600;
+}
+
+.cn-row-bottom {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cn-sp-3);
+  padding-bottom: var(--cn-sp-2);
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+}
+
+.cn-row-meta {
+  min-width: 0;
+}
+
+/* Directly under the Proven number, right-aligned to the same edge: one vertical pair. */
+.cn-row-rating {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * The still-settling chip (M3.8). A label, not a warning.
+ * ------------------------------------------------------------------------- */
+
+.cn-chip {
+  display: inline-block;
+  border: 1px solid var(--cn-hairline);
+  border-radius: var(--cn-radius-chip);
+  padding: 0 var(--cn-sp-1);
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * The player page: the two numbers, the chart, the record, the last few games.
+ * ------------------------------------------------------------------------- */
+
+.cn-numbers {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--cn-sp-4);
+  margin: 0;
+}
+
+.cn-number {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--cn-sp-2);
+}
+
+.cn-number-label {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+}
+
+.cn-number-value {
+  font-size: var(--cn-t-md);
+  font-weight: 600;
+}
+
+.cn-chart {
+  margin: 0;
+}
+
+.cn-chart-title {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+  margin-bottom: var(--cn-sp-2);
+}
+
+.cn-chart-plot {
+  position: relative;
+  height: 140px;
+}
+
+/*
+ * The box stretches to the column, the strokes do not: `preserveAspectRatio="none"` plus
+ * `vector-effect: non-scaling-stroke` on the two shapes. X is the game index, not a date.
+ */
+.cn-chart-svg {
+  display: block;
+  width: 100%;
+  height: 140px;
+}
+
+.cn-chart-line {
+  stroke: var(--cn-accent);
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.cn-chart-seed {
+  stroke: var(--cn-hairline);
+  stroke-width: 1px;
+}
+
+/*
+ * The `seed` label sits on its own line and masks the hairline behind it. Clamped inside the
+ * plot: a reference line at the very top of the range must not put its label over the title.
+ */
+.cn-chart-seed-label {
+  position: absolute;
+  right: 0;
+  top: clamp(0.5rem, var(--cn-seed-pos, 50%), calc(100% - 0.5rem));
+  transform: translateY(-50%);
+  padding: 0 var(--cn-sp-1);
+  background: var(--cn-bg);
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+}
+
+.cn-records,
+.cn-games,
+.cn-lineup {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cn-records {
+  background: var(--cn-surface);
+  border-radius: var(--cn-radius);
+}
+
+.cn-record {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  align-items: center;
+  gap: var(--cn-sp-2);
+  min-height: 44px;
+  padding: var(--cn-sp-2) var(--cn-sp-3);
+  line-height: 1.3;
+  font-size: var(--cn-t-sm);
+}
+
+.cn-record + .cn-record {
+  border-top: 1px solid var(--cn-hairline);
+}
+
+.cn-record-games {
+  color: var(--cn-dim);
+}
+
+.cn-record-wl {
+  text-align: right;
+}
+
+/* Role labels are always lower case, mono, and spaced: `top`, `jungle`, `adc`. */
+.cn-lineup-role,
+.cn-record .cn-lineup-role {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+  letter-spacing: 0.06em;
+}
+
+.cn-games {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-4);
+}
+
+/*
+ * One card per game, with the side's 3px rule along the top edge — the same treatment a team
+ * card gets, because it is the same fact: which side this player was on.
+ */
+.cn-game {
+  background: var(--cn-surface);
+  border-radius: var(--cn-radius);
+  border-top: 3px solid transparent;
+}
+
+.cn-game-blue {
+  background: var(--cn-blue-tint);
+  border-top-color: var(--cn-blue);
+}
+
+.cn-game-red {
+  background: var(--cn-red-tint);
+  border-top-color: var(--cn-red);
+}
+
+.cn-game-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cn-sp-2);
+  margin: 0;
+  padding: var(--cn-sp-3);
+}
+
+.cn-game-result {
+  font-size: var(--cn-t-md);
+  font-weight: 600;
+}
+
+.cn-duration {
+  font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+}
+
+.cn-game-rating {
+  margin-left: auto;
+  font-size: var(--cn-t-md);
+  text-align: right;
+}
+
+/* A gain is `text` at 600, a loss is `dim` at 400. Never coloured by sign. */
+.cn-delta {
+  font-size: var(--cn-t-sm);
+  font-weight: 400;
+  color: var(--cn-dim);
+}
+
+.cn-delta-up {
+  font-weight: 600;
+  color: var(--cn-text);
+}
+
+/* The five, in lane order: the same positions as the team cards and the result embed. */
+.cn-lineup-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: center;
+  gap: var(--cn-sp-2);
+  min-height: 44px;
+  padding: var(--cn-sp-2) var(--cn-sp-3);
+  line-height: 1.3;
+}
+
+.cn-lineup-row + .cn-lineup-row {
+  border-top: 1px solid var(--cn-hairline);
+}
+
+.cn-lineup-name {
+  min-width: 0;
+  font-size: var(--cn-t-md);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion, on request only.
+ * ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .cn-block {
+    animation: none;
+  }
+}
