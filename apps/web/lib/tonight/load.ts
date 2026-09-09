@@ -1,7 +1,9 @@
 import { displayRating, isOffRole, type Role, seedFromRank } from '@customs/core';
 import type { RoleValue, SideValue } from '@customs/db';
 import { readAssignments } from '../discord/assemble';
+import { inLaneOrder } from '../laneOrder';
 import type { PublicClient } from '../publicClient';
+import { renderWebName } from './copy';
 import type {
   LobbyView,
   MemberView,
@@ -167,7 +169,19 @@ async function loadMembers(
       rating: displayRating(rating.mu),
     });
   }
-  return members;
+
+  // **Join order, and a name inside one join.** Everyone in the same companion post is
+  // inserted by one statement and shares `created_at` to the microsecond, so the query's tie
+  // break was `player_id` — a random uuid, which reads as a shuffle on the first screen of a
+  // seven-person post. Sort within equal timestamps on the name the reader actually sees.
+  // Between posts nothing changes: an earlier `created_at` always sorts first, so a later
+  // join is still appended at the bottom.
+  return members.sort(
+    (a, b) =>
+      Date.parse(a.joinedAt) - Date.parse(b.joinedAt) ||
+      renderWebName(a.name).localeCompare(renderWebName(b.name)) ||
+      (a.puuid < b.puuid ? -1 : a.puuid > b.puuid ? 1 : 0),
+  );
 }
 
 /** `players_public`: `players` minus `discord_id`, and the only players relation anon can read. */
@@ -374,8 +388,11 @@ async function loadResult(
     durationS: game.duration_s,
     blueWinProb: splitRoles.blueWinProb,
     topDamage,
-    blue: seats.filter((seat) => seat.side === 100),
-    red: seats.filter((seat) => seat.side === 200),
+    // Lane order, the same five positions as the teams block: `game_players` comes back in
+    // whatever order Postgres feels like, and "my row" has to be where it was twenty minutes
+    // ago. The result embed sorts with this same function (05-design.md, "Result card").
+    blue: inLaneOrder(seats.filter((seat) => seat.side === 100)),
+    red: inLaneOrder(seats.filter((seat) => seat.side === 200)),
     rated: seats.length > 0 && seats.every((seat) => seat.muBefore !== null && seat.muAfter !== null),
   };
 }

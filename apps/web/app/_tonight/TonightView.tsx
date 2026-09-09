@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
 import { PLAYERS_PER_GAME } from '@/lib/lobbyState';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
-import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
+import { NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
   AROUND_LABEL,
   EMPTY_LOBBY,
@@ -67,6 +67,16 @@ export function TonightView({ snapshot, viewerPuuid, isAdmin }: TonightViewProps
         {state.kind === 'filling' ? <LobbyBars around={state.lobby.members.length} /> : null}
       </header>
 
+      {snapshot.seasonActive ? null : (
+        // Directly under the strip, not at the foot of a 977px page: it is the reason the
+        // numbers below it are not being saved, and a reader who has to scroll to find that
+        // out has already read the numbers. **This page's own sentence** (M3.17): the admin
+        // one ends by naming a page most of the people holding this link cannot open.
+        <p className="cn-notice" role="status">
+          {NO_ACTIVE_SEASON_TONIGHT_MESSAGE}
+        </p>
+      )}
+
       {state.kind === 'idle' ? <Idle /> : null}
       {state.kind === 'filling' ? <MemberList lobby={state.lobby} viewerPuuid={viewer.puuid} /> : null}
       {state.kind === 'teams' ? <TeamsBlock lobby={state.lobby} teams={state.teams} viewer={viewer} /> : null}
@@ -74,12 +84,8 @@ export function TonightView({ snapshot, viewerPuuid, isAdmin }: TonightViewProps
         <ResultBlock result={state.result} teams={state.teams} viewerPuuid={viewer.puuid} />
       ) : null}
 
+      {/* M3.10's one quiet line, under the block and never per row. */}
       {hasNamelessRow(state) ? <p className="cn-hint">{NAMELESS_HINT}</p> : null}
-      {snapshot.seasonActive ? null : (
-        <p className="cn-hint" role="status">
-          {NO_ACTIVE_SEASON_MESSAGE}
-        </p>
-      )}
     </main>
   );
 }
@@ -356,14 +362,12 @@ function ResultBlock({
         <ResultCard
           side="blue"
           seats={result.blue}
-          rated={result.rated}
           losing={result.winningSide !== 100}
           viewerPuuid={viewerPuuid}
         />
         <ResultCard
           side="red"
           seats={result.red}
-          rated={result.rated}
           losing={result.winningSide !== 200}
           viewerPuuid={viewerPuuid}
         />
@@ -396,13 +400,11 @@ function ResultBlock({
 function ResultCard({
   side,
   seats,
-  rated,
   losing,
   viewerPuuid,
 }: {
   side: 'blue' | 'red';
   seats: readonly ResultSeatView[];
-  rated: boolean;
   losing: boolean;
   viewerPuuid: string | null;
 }) {
@@ -411,18 +413,18 @@ function ResultCard({
     rating: seat.muAfter === null ? null : displayRating(seat.muAfter),
     delta: seat.muBefore === null || seat.muAfter === null ? null : displayDelta(seat.muBefore, seat.muAfter),
   }));
-  const sum = rows.reduce((total, row) => total + (row.rating ?? 0), 0);
 
   return (
     <section className={`cn-card cn-card-${side}${losing ? ' cn-card-lost' : ''}`}>
+      {/*
+       * **No side sums here.** The sum answers "are these teams even?", which is a question
+       * the game has just answered, and a reader who saw `6000` before and `6465` after has
+       * computed a team total of deltas by subtraction — the one number this page must not
+       * print (05-design.md, "Result card"). The teams block keeps its sums; this header is
+       * the side name alone.
+       */}
       <header className="cn-card-head">
         <h2 className="cn-side">{side === 'blue' ? 'Blue' : 'Red'}</h2>
-        {rated ? (
-          <p className="cn-num cn-sum">
-            {sum}
-            <span className="cn-sr"> sum of the five ratings</span>
-          </p>
-        ) : null}
       </header>
       <ul className="cn-seats">
         {rows.map(({ seat, rating, delta }) => (

@@ -17,8 +17,11 @@ export function tonightState(snapshot: TonightSnapshot): TonightState {
       return { kind: 'filling', lobby };
     case 'balanced':
     case 'in_game':
-      // A balanced lobby whose chosen split went missing is not a fourth state: it is a lobby
-      // filling up again, which is what the next companion post will make of it too.
+      // Reachable only when a balanced lobby has **no split rows at all** — the split insert
+      // failed, and the next companion post rebalances it (`hasChosenSplit`). The narrower
+      // case, rows with none flagged `is_chosen`, is handled in `loadTeams`: it falls back to
+      // the newest run's rank 1 rather than dropping the teams for the instant that
+      // `balanceLobby` and `promoteSplit` spend between their two statements.
       return lobby.teams === null ? { kind: 'filling', lobby } : { kind: 'teams', lobby, teams: lobby.teams };
     case 'finished':
       if (lobby.result?.rated) {

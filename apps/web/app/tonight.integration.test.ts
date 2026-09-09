@@ -70,10 +70,17 @@ if (stack === null) {
     });
   }
 
+  /**
+   * The first three are named against their puuid order on purpose: `tn00` is Zoe and `tn02`
+   * is Ali, so a list ordered by `player_id` or by puuid comes out in a different order from
+   * a list ordered by the name a reader sees.
+   */
+  const NAMES = ['Zoe', 'Mina', 'Ali', ...Array.from({ length: 7 }, (_, index) => `Player${index + 3}`)];
+
   function members(count: number) {
     return ten.slice(0, count).map((puuid, index) => ({
       puuid,
-      gameName: `Player${index}`,
+      gameName: NAMES[index] ?? `Player${index}`,
       tagLine: 'EUW',
       summonerId: 7_000 + index,
       side: (index < 5 ? 100 : 200) as 100 | 200,
@@ -111,18 +118,21 @@ if (stack === null) {
       expect(snapshot.lobby?.id).toBe(lobbyId);
       expect(snapshot.lobby?.status).toBe('open');
       expect([...(snapshot.lobby?.members ?? [])].map((member) => member.name).sort()).toEqual([
-        'Player0',
-        'Player1',
-        'Player2',
+        'Ali',
+        'Mina',
+        'Zoe',
       ]);
       for (const member of snapshot.lobby?.members ?? []) {
         expect(member.rating).toBeGreaterThan(0);
       }
 
-      // The order is stable between reads, which is the rule the design cares about: a list
-      // that reorders under a thumb is worse than a list you scroll. Three members who first
-      // appeared in the same post share a `created_at` to the microsecond, so the tie is
-      // broken on `player_id` — arbitrary, but the same arbitrary answer every time.
+      // Three members of one companion post share a `created_at` to the microsecond and have
+      // no join order between them, so they are ordered by the name the reader sees — not by
+      // `player_id`, which is a random uuid and reads as a shuffle on the first screen.
+      expect(snapshot.lobby?.members.map((member) => member.name)).toEqual(['Ali', 'Mina', 'Zoe']);
+      // …and that is not the puuid order, which is what the query returns them in.
+      expect(snapshot.lobby?.members.map((member) => member.puuid)).toEqual([ten[2], ten[1], ten[0]]);
+
       const again = await loadTonight(anon, { nightStart: tonightStart() });
       expect(again.lobby?.members.map((member) => member.puuid)).toEqual(
         snapshot.lobby?.members.map((member) => member.puuid),
@@ -132,7 +142,7 @@ if (stack === null) {
       // The first paint carries content, not a loading state.
       const html = await firstPaint();
       expect(html).toContain('3');
-      expect(html).toContain('Player0');
+      expect(html).toContain('Zoe');
       expect(html).not.toContain('Loading');
     });
 
@@ -232,6 +242,22 @@ if (stack === null) {
       expect(snapshot.lobby?.status).toBe('finished');
       expect(snapshot.lobby?.result?.rated).toBe(true);
       expect(snapshot.lobby?.result?.blue).toHaveLength(5);
+      // Lane order, both sides: "my row" is where it was in the teams block twenty minutes
+      // ago, and `game_players` comes back in no order of its own.
+      expect(snapshot.lobby?.result?.blue.map((seat) => seat.role)).toEqual([
+        'top',
+        'jungle',
+        'mid',
+        'adc',
+        'support',
+      ]);
+      expect(snapshot.lobby?.result?.red.map((seat) => seat.role)).toEqual([
+        'top',
+        'jungle',
+        'mid',
+        'adc',
+        'support',
+      ]);
       for (const seat of snapshot.lobby?.result?.blue ?? []) {
         expect(typeof seat.muBefore).toBe('number');
         expect(typeof seat.muAfter).toBe('number');

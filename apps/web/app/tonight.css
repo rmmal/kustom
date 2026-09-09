@@ -122,6 +122,7 @@
 .cn-empty,
 .cn-around,
 .cn-hint,
+.cn-notice,
 .cn-prediction,
 .cn-damage,
 .cn-sitout,
@@ -132,15 +133,33 @@
 }
 
 .cn-empty,
-.cn-hint {
+.cn-hint,
+.cn-notice {
   color: var(--cn-dim);
 }
 
-.cn-hint {
+.cn-hint,
+.cn-notice {
   font-size: var(--cn-t-sm);
 }
 
+/*
+ * The no-season line, directly under the header strip: the reason the numbers below it are not
+ * being saved. `dim` and `t-sm` because it is an aside, not a banner — the page has no banners.
+ */
+.cn-notice {
+  border-left: 2px solid var(--cn-hairline);
+  padding-left: var(--cn-sp-3);
+}
+
+/*
+ * The one tappable thing on the idle screen. A bare inline anchor is about 26px tall, which is
+ * under the 44px floor every other control on this page keeps.
+ */
 .cn-link {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
   color: var(--cn-accent);
   text-underline-offset: 3px;
 }
@@ -149,14 +168,19 @@
  * Lobby member list — state "filling"
  * ------------------------------------------------------------------------- */
 
+/*
+ * Ten rows reserved from the first paint, **in the row's own units**: ten 44px rows plus the
+ * nine 1px hairlines between them. Measured at 390px the rows came out 46-47px against a
+ * reserved 440px, so the 9 → 10 join — the one moment everybody is looking — shifted the page
+ * by about thirty pixels. The row height below is what makes this arithmetic true.
+ */
 .cn-members {
   list-style: none;
   margin: 0;
   padding: 0;
   background: var(--cn-surface);
   border-radius: var(--cn-radius);
-  /* Ten rows reserved from the first paint: 9 → 10 must not move the page. */
-  min-height: calc(10 * 44px);
+  min-height: calc(10 * 44px + 9px);
 }
 
 /* The people past the ten are as many as they are; nothing is reserved for them. */
@@ -164,6 +188,11 @@
   min-height: 0;
 }
 
+/*
+ * Exactly 44px: `t-md` at the body's 1.5 line height is 30px, which with `sp-2` top and bottom
+ * makes a 46-47px row and breaks the reserved height above. 1.2 on a single-line row is the
+ * scale's own line height for `t-md` anyway (05-design.md, "Scale").
+ */
 .cn-member,
 .cn-seat {
   display: grid;
@@ -171,6 +200,7 @@
   gap: var(--cn-sp-3);
   min-height: 44px;
   padding: var(--cn-sp-2) var(--cn-sp-3);
+  line-height: 1.2;
   animation: cn-fade 150ms ease;
 }
 

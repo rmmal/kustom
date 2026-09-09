@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
-import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
+import { NO_ACTIVE_SEASON_MESSAGE, NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
   extraMember,
   lobbyView,
@@ -46,13 +46,48 @@ describe('idle: no lobby tonight', () => {
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
-  it('says nothing about a season when one is active, and the one sentence when none is', () => {
+  it('says nothing about a season when one is active, and its own sentence when none is', () => {
     const { unmount } = draw(snapshot(null));
-    expect(screen.queryByText(NO_ACTIVE_SEASON_MESSAGE)).not.toBeInTheDocument();
+    expect(screen.queryByText(NO_ACTIVE_SEASON_TONIGHT_MESSAGE)).not.toBeInTheDocument();
     unmount();
 
     draw(snapshot(null, { seasonActive: false }));
-    expect(screen.getByText(NO_ACTIVE_SEASON_MESSAGE)).toBeInTheDocument();
+    expect(screen.getByText(NO_ACTIVE_SEASON_TONIGHT_MESSAGE)).toBeInTheDocument();
+    // Never the admin sentence: it ends by naming a page most of the group cannot open (M3.17).
+    expect(screen.queryByText(NO_ACTIVE_SEASON_MESSAGE)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('Start a season on the Seasons page.');
+  });
+
+  it('puts the no-season line directly under the header strip, not at the foot of the page', () => {
+    const { container } = draw(
+      snapshot(lobbyView({ status: 'balanced', teams: workedTeams() }), { seasonActive: false }),
+    );
+
+    const main = container.querySelector('.cn-page');
+    expect([...(main?.children ?? [])].map((child) => child.className)).toEqual([
+      'cn-strip',
+      'cn-notice',
+      'cn-block',
+    ]);
+  });
+
+  it('carries the no-season line in every state, and in none of them when a season is live', () => {
+    const states = [
+      snapshot(null),
+      snapshot(lobbyView({ members: workedMembers(3) })),
+      snapshot(lobbyView({ status: 'balanced', teams: workedTeams() })),
+      snapshot(lobbyView({ status: 'finished', teams: workedTeams(), result: workedResult() })),
+    ];
+
+    for (const state of states) {
+      const live = draw(state);
+      expect(screen.queryByText(NO_ACTIVE_SEASON_TONIGHT_MESSAGE)).not.toBeInTheDocument();
+      live.unmount();
+
+      const without = draw({ ...state, seasonActive: false });
+      expect(screen.getByText(NO_ACTIVE_SEASON_TONIGHT_MESSAGE)).toBeInTheDocument();
+      without.unmount();
+    }
   });
 });
 
@@ -270,6 +305,14 @@ describe('result: the game is over', () => {
     // Never `(0)`: one unsigned entry in a column of ten signed ones reads as a bug.
     expect(container.textContent).not.toContain('(0)');
     expect(container.textContent).not.toContain('(+0)');
+  });
+
+  it('prints no side sums: a team total of deltas must not be computable from the screen', () => {
+    const { container } = draw(finished);
+
+    // The teams block has them; the result card does not (05-design.md, "Result card").
+    expect(container.querySelectorAll('.cn-sum')).toHaveLength(0);
+    expect(screen.queryByText('6465')).not.toBeInTheDocument();
   });
 
   it('keeps the explanation line of the split they played under the result', () => {
