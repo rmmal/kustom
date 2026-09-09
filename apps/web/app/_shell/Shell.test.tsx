@@ -1,0 +1,85 @@
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { RELEASES_URL } from '@/lib/nav';
+import { HOW_THIS_WORKS_LINES } from '@/lib/shellCopy';
+import { Shell } from './Shell';
+
+/**
+ * The shell (M3.18): what every public page says about itself before the page says anything.
+ *
+ * `usePathname` is the one thing the top bar needs from Next, and it is mocked per test so the
+ * underline rule is checked on the two routes that exist rather than on a rendered app.
+ */
+
+const pathname = vi.hoisted(() => ({ current: '/' }));
+vi.mock('next/navigation', () => ({ usePathname: () => pathname.current }));
+
+function draw(path: string, viewerPuuid: string | null = null) {
+  pathname.current = path;
+  return render(
+    <Shell viewerPuuid={viewerPuuid}>
+      <p>page</p>
+    </Shell>,
+  );
+}
+
+describe('the top bar', () => {
+  it('says KUSTOM and never the repo codename', () => {
+    const { container } = draw('/');
+
+    expect(screen.getByText('KUSTOM')).toBeInTheDocument();
+    expect(container.textContent).not.toContain('Customs Night');
+  });
+
+  it('renders only the routes that exist, and underlines the one being read', () => {
+    draw('/');
+
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toContain('Tonight');
+    expect(screen.queryByRole('link', { name: 'Stats' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Tonight' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Leaderboard' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('moves the underline to the leaderboard on a player page', () => {
+    draw('/p/puuid-hana');
+
+    expect(screen.getByRole('link', { name: 'Leaderboard' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('points the companion tab at the releases page, not at a 90MB download', () => {
+    draw('/');
+
+    const companion = screen.getByRole('link', { name: 'Companion ↗' });
+    expect(companion).toHaveAttribute('href', RELEASES_URL);
+    expect(companion).toHaveAttribute('target', '_blank');
+  });
+});
+
+describe('the footer', () => {
+  it('explains the whole system in four lines, closed by default', () => {
+    draw('/');
+
+    expect(screen.getByText('How this works')).toBeInTheDocument();
+    for (const line of HOW_THIS_WORKS_LINES) {
+      expect(screen.getByText(line)).toBeInTheDocument();
+    }
+    // A `<details>` renders its content in the DOM and hides it until it is tapped: it is the
+    // one element on the page allowed to change height, because a person asked it to.
+    expect(document.querySelector('details')?.hasAttribute('open')).toBe(false);
+  });
+
+  it('sends Get the companion at the releases page', () => {
+    draw('/');
+
+    expect(screen.getByRole('link', { name: 'Get the companion' })).toHaveAttribute('href', RELEASES_URL);
+  });
+
+  it('offers Your games only to a viewer who has a player row, and points it at their page', () => {
+    const anonymous = draw('/');
+    expect(screen.queryByRole('link', { name: 'Your games' })).not.toBeInTheDocument();
+    anonymous.unmount();
+
+    draw('/', 'puuid-hana');
+    expect(screen.getByRole('link', { name: 'Your games' })).toHaveAttribute('href', '/p/puuid-hana');
+  });
+});

@@ -7,12 +7,18 @@ import './tokens.css';
  * Mono for anything read as data. They are exposed as CSS variables and composed into
  * `--cn-font-sans` / `--cn-font-mono` in `tokens.css`, which is where the fallback stacks live.
  *
+ * Archivo is loaded as a **variable font with the width axis** (Floodlit, "Type"), which buys
+ * the display cut — `wdth` 118 at weight 800, the wordmark, the lobby count and the result
+ * headline — with no second download. `.cn-display` in `tokens.css` is the only place that
+ * asks for it; if the axis ever fails to load the page falls back to plain Archivo 800 and
+ * loses a little character and nothing else.
+ *
  * `display: 'swap'` because the first paint carries content: a friend opening the WhatsApp
  * link should read the teams in the fallback face rather than wait for a webfont.
  */
 const archivo = Archivo({
   subsets: ['latin'],
-  weight: ['400', '600', '700'],
+  axes: ['wdth'],
   display: 'swap',
   variable: '--cn-font-archivo',
 });
@@ -24,8 +30,13 @@ const plexMono = IBM_Plex_Mono({
   variable: '--cn-font-plex-mono',
 });
 
+/**
+ * The product is **Kustom** (M3.21): the wordmark, the browser tab and the WhatsApp link
+ * preview all say it. `Customs Night` is the repo's codename and stays in `CLAUDE.md`, the
+ * docs and the package names.
+ */
 export const metadata = {
-  title: 'Customs Night',
+  title: 'Kustom',
   description: 'Team balancer and stats tracker for nightly League customs.',
 };
 
@@ -38,8 +49,8 @@ export const viewport = {
   width: 'device-width',
   initialScale: 1,
   themeColor: [
-    { media: '(prefers-color-scheme: dark)', color: '#12151a' },
-    { media: '(prefers-color-scheme: light)', color: '#f3f4f6' },
+    { media: '(prefers-color-scheme: dark)', color: '#0b0e14' },
+    { media: '(prefers-color-scheme: light)', color: '#eef1f6' },
   ],
 };
 

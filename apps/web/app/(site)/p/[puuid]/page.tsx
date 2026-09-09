@@ -4,8 +4,8 @@ import { loadPlayerBoard } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { renderWebName } from '@/lib/tonight/copy';
 import { currentViewer } from '@/lib/viewer';
-import { PlayerView } from '../../_board/PlayerView';
-import '../../board.css';
+import { PlayerView } from '../../../_board/PlayerView';
+import '../../../board.css';
 
 /**
  * `/p/[puuid]` (M3.5). One player: the two numbers, the `Rating` history, the role record and

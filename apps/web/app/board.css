@@ -20,19 +20,16 @@
  * repeat it — same tokens, same numbers. If a third page appears, extract them then.
  */
 
+/*
+ * The shell (M3.18) owns the page's gutters and its 44rem/76rem widths, so this rule keeps its
+ * block rhythm and stops setting side padding — otherwise the board sits inside two sets of
+ * gutters. Everything else on these two pages is M3.19's, not M3.18's.
+ */
 .cn-page {
-  max-width: 42rem;
   margin: 0 auto;
-  padding: var(--cn-sp-4);
   display: flex;
   flex-direction: column;
   gap: var(--cn-sp-5);
-}
-
-@media (min-width: 720px) {
-  .cn-page {
-    padding: var(--cn-sp-5);
-  }
 }
 
 .cn-block {
@@ -56,7 +53,7 @@
  * ------------------------------------------------------------------------- */
 
 .cn-strip {
-  border-bottom: 1px solid var(--cn-hairline);
+  border-bottom: 1px solid var(--cn-line);
   padding-bottom: var(--cn-sp-3);
 }
 
@@ -99,7 +96,7 @@
 }
 
 .cn-notice {
-  border-left: 2px solid var(--cn-hairline);
+  border-left: 2px solid var(--cn-line);
   padding-left: var(--cn-sp-3);
 }
 
@@ -108,7 +105,7 @@
   display: inline-block;
   min-height: 44px;
   line-height: 44px;
-  color: var(--cn-accent);
+  color: var(--cn-brand);
   text-underline-offset: 3px;
 }
 
@@ -146,12 +143,12 @@
 }
 
 .cn-row + .cn-row {
-  border-top: 1px solid var(--cn-hairline);
+  border-top: 1px solid var(--cn-line);
 }
 
 /* "You": a 2px accent rule down the left of the row, drawn so it adds no width. */
 .cn-you {
-  box-shadow: inset 2px 0 0 0 var(--cn-accent);
+  box-shadow: inset 2px 0 0 0 var(--cn-brand);
 }
 
 .cn-row-top {
@@ -169,7 +166,7 @@
 }
 
 .cn-rank-first {
-  color: var(--cn-accent);
+  color: var(--cn-brand);
 }
 
 /*
@@ -238,7 +235,7 @@
 
 .cn-chip {
   display: inline-block;
-  border: 1px solid var(--cn-hairline);
+  border: 1px solid var(--cn-line);
   border-radius: var(--cn-radius-chip);
   padding: 0 var(--cn-sp-1);
   font-size: var(--cn-t-xs);
@@ -310,14 +307,14 @@
 }
 
 .cn-chart-line {
-  stroke: var(--cn-accent);
+  stroke: var(--cn-brand);
   stroke-width: 1.5px;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 
 .cn-chart-seed {
-  stroke: var(--cn-hairline);
+  stroke: var(--cn-line);
   stroke-width: 1px;
 }
 
@@ -361,7 +358,7 @@
 }
 
 .cn-record + .cn-record {
-  border-top: 1px solid var(--cn-hairline);
+  border-top: 1px solid var(--cn-line);
 }
 
 .cn-record-games {
@@ -454,7 +451,7 @@
 }
 
 .cn-lineup-row + .cn-lineup-row {
-  border-top: 1px solid var(--cn-hairline);
+  border-top: 1px solid var(--cn-line);
 }
 
 .cn-lineup-name {

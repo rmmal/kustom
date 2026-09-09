@@ -2,8 +2,8 @@ import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import { tonightStart } from '@/lib/tonight/night';
 import { currentViewer } from '@/lib/viewer';
-import { TonightLive } from './_tonight/TonightLive';
-import './tonight.css';
+import { TonightLive } from '../_tonight/TonightLive';
+import '../tonight.css';
 
 /**
  * The tonight page (M3.4). The link somebody pastes in WhatsApp at 21:40.

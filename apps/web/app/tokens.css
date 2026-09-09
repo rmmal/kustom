@@ -1,11 +1,15 @@
 /*
- * The design system's tokens (docs/05-design.md, "Tokens as CSS custom properties").
+ * Floodlit — the v2 design system (docs/05-design.md, "Floodlit — the v2 system (2026-09-09)").
  *
- * Seven colours per theme and everything else derived from them with color-mix(), so there is
- * no eighth colour to keep in step. Dark is the default, not the alternate: the page is opened
+ * Nine colours per theme and everything else derived from them with color-mix(), so there is
+ * no tenth colour to keep in step. Dark is the default, not the alternate: the page is opened
  * from a WhatsApp link in a dark room. `color-scheme: dark light` makes the pre-paint
  * background, the scrollbars and every form control follow the same choice, so there is no
  * white flash on the way in.
+ *
+ * The two tokens v1 did not have are the reason the page can look built: `raise`, the layer
+ * above a card, and `line`, a real border colour rather than an alpha guess. `accent` is
+ * renamed `brand` — same job, every rule unchanged.
  *
  * There is no theme toggle in M3. `prefers-color-scheme` is the whole switch.
  *
@@ -17,19 +21,24 @@
 :root {
   color-scheme: dark light;
 
-  --cn-bg: #12151a;
-  --cn-surface: #1b2027;
-  --cn-text: #e7eaef;
-  --cn-dim: #97a0ad;
-  --cn-blue: #6ba5f7;
-  --cn-red: #ea6f69;
-  --cn-accent: #e0a33e;
+  --cn-bg: #0b0e14;
+  --cn-surface: #141923;
+  --cn-raise: #1d2431;
+  --cn-line: #2a3140;
+  --cn-text: #eef2f8;
+  --cn-dim: #94a0b2;
+  --cn-blue: #4c9aff;
+  --cn-red: #ff6b63;
+  --cn-brand: #ffb13c;
 
-  --cn-hairline: color-mix(in srgb, var(--cn-text) 14%, transparent);
-  --cn-blue-tint: color-mix(in srgb, var(--cn-blue) 7%, var(--cn-surface));
-  --cn-red-tint: color-mix(in srgb, var(--cn-red) 7%, var(--cn-surface));
-  --cn-accent-tint: color-mix(in srgb, var(--cn-accent) 10%, var(--cn-surface));
-  --cn-pressed: color-mix(in srgb, var(--cn-text) 8%, var(--cn-surface));
+  --cn-blue-tint: color-mix(in srgb, var(--cn-blue) 10%, var(--cn-surface));
+  --cn-red-tint: color-mix(in srgb, var(--cn-red) 10%, var(--cn-surface));
+  --cn-brand-tint: color-mix(in srgb, var(--cn-brand) 12%, var(--cn-surface));
+  --cn-blue-line: color-mix(in srgb, var(--cn-blue) 55%, var(--cn-line));
+  --cn-red-line: color-mix(in srgb, var(--cn-red) 55%, var(--cn-line));
+  --cn-pressed: color-mix(in srgb, var(--cn-text) 8%, var(--cn-raise));
+  --cn-lit: inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent);
+  --cn-glow: 0 0 0 4px color-mix(in srgb, var(--cn-brand) 14%, transparent);
 
   --cn-sp-1: 0.25rem;
   --cn-sp-2: 0.5rem;
@@ -43,17 +52,19 @@
   --cn-t-xs: 0.75rem;
   --cn-t-sm: 0.875rem;
   --cn-t-base: 1.0625rem;
-  --cn-t-md: 1.25rem;
-  --cn-t-lg: 1.625rem;
-  --cn-t-xl: 2.25rem;
+  --cn-t-md: 1.1875rem;
+  --cn-t-lg: 1.5rem;
+  --cn-t-xl: 2rem;
+  --cn-t-display: 2.75rem;
 
-  --cn-radius: 6px;
-  --cn-radius-chip: 3px;
+  --cn-radius: 10px;
+  --cn-radius-row: 8px;
+  --cn-radius-chip: 4px;
 
   /*
    * The generated `next/font` variables carry one family each. The fallback stack lives here
    * rather than only in the `fallback` array so a blocked Google Fonts request lands on
-   * Helvetica and Menlo rather than on Times (05-design.md, "Fonts").
+   * Helvetica and Menlo rather than on Times (05-design.md, "Type").
    */
   --cn-font-sans: var(--cn-font-archivo), "Helvetica Neue", Arial, system-ui, sans-serif;
   --cn-font-mono: var(--cn-font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
@@ -61,20 +72,25 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --cn-bg: #f3f4f6;
+    --cn-bg: #eef1f6;
     --cn-surface: #ffffff;
-    --cn-text: #161a20;
-    --cn-dim: #5b6573;
+    --cn-raise: #e4e9f1;
+    --cn-line: #d5dce7;
+    --cn-text: #10141b;
+    --cn-dim: #556072;
     --cn-blue: #1f5fc4;
     --cn-red: #b4302b;
-    --cn-accent: #8e5b0e;
+    --cn-brand: #8a5a0b;
+    --cn-lit: inset 0 1px 0 color-mix(in srgb, #ffffff 70%, transparent);
   }
 }
 
-/* `t-xl` is the only size that changes across breakpoints, and only upward. */
+/* The three sizes that grow with the viewport, and only upward. */
 @media (min-width: 720px) {
   :root {
-    --cn-t-xl: 2.75rem;
+    --cn-t-lg: 1.625rem;
+    --cn-t-xl: 2.25rem;
+    --cn-t-display: 3.5rem;
   }
 }
 
@@ -95,6 +111,36 @@ body {
 }
 
 /*
+ * The display cut: Archivo at width 118, weight 800. Four places and nowhere else — the
+ * wordmark, the lobby count and its label, the result headline, the side names.
+ */
+.cn-display {
+  font-family: var(--cn-font-sans);
+  font-variation-settings: "wdth" 118;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+}
+
+/*
+ * The whole elevation system: `surface` fill, 1px `line` border, one lit top edge. There is no
+ * shadow anywhere else — a dark UI gets depth from a lit edge, not from a blur.
+ */
+.cn-card {
+  background: var(--cn-surface);
+  border: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius);
+  box-shadow: var(--cn-lit);
+}
+
+/* `raise` is the layer *inside* a card: its header bar, chips, the nav tabs, the top bar. */
+.cn-card-head {
+  background: var(--cn-raise);
+  border-bottom: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius) var(--cn-radius) 0 0;
+}
+
+/*
  * Every rating, delta, gap, percentage, duration, rank number and role label. If it is a
  * number or a role it is mono; if it is a person or a sentence it is Archivo.
  */
@@ -103,7 +149,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Not `display: none`: the sums, the off-role marker and the live dot all need a word. */
+/* Not `display: none`: the sums, the off-role marker and the live pill all need a word. */
 .cn-sr {
   position: absolute;
   width: 1px;
