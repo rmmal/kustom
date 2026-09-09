@@ -37,28 +37,43 @@ export type Database = {
       companion_commands: {
         Row: {
           acked_at: string | null
+          attempts: number
           created_at: string
+          error: string | null
+          expires_at: string
           id: string
           kind: Database["public"]["Enums"]["companion_command_kind"]
           payload: Json
+          result: Json | null
+          sent_at: string | null
           status: Database["public"]["Enums"]["companion_command_status"]
           target_player_id: string
         }
         Insert: {
           acked_at?: string | null
+          attempts?: number
           created_at?: string
+          error?: string | null
+          expires_at?: string
           id?: string
           kind: Database["public"]["Enums"]["companion_command_kind"]
           payload?: Json
+          result?: Json | null
+          sent_at?: string | null
           status?: Database["public"]["Enums"]["companion_command_status"]
           target_player_id: string
         }
         Update: {
           acked_at?: string | null
+          attempts?: number
           created_at?: string
+          error?: string | null
+          expires_at?: string
           id?: string
           kind?: Database["public"]["Enums"]["companion_command_kind"]
           payload?: Json
+          result?: Json | null
+          sent_at?: string | null
           status?: Database["public"]["Enums"]["companion_command_status"]
           target_player_id?: string
         }
