@@ -45,8 +45,10 @@ pnpm --filter web rebuild-ratings [--dry-run] [--force] [--prune] [--season <id>
                              # folds every rated-eligible game of a season in started_at order,
                              # from seeds, and writes once at the end (M5.2). Run it after a
                              # backfill batch: backfilled games are stored unrated until it does.
-                             # Idempotent. Refuses while a lobby is live (--force skips that);
-                             # exit 2 means games landed mid-run, so run it again.
+                             # Idempotent. Refuses while a lobby is live OR a game landed in the
+                             # last 15 minutes -- which is exactly the case right after a backfill
+                             # batch, so pass --force (or wait 15 minutes) then.
+                             # Exit 2 means games landed mid-run, so run it again.
 pnpm --filter companion dev  # needs the League client running on this machine (M2.1)
 pnpm --filter companion build:win   # bundle + Node SEA -> apps/companion/dist/CustomsNight.exe + CustomsNight.exe.sha256 (from any host; build:exe is an alias)
 pnpm --filter companion build:host  # the same pipeline for this machine's platform, to check the exe before a Windows run

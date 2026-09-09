@@ -47,6 +47,15 @@ const PAGE_SIZE = 1000;
 /** Rows per batched write. Small enough for a URL, large enough that a season is a few calls. */
 const WRITE_CHUNK = 500;
 
+/**
+ * How many single-row updates are in flight at once.
+ *
+ * `game_players` has no batch update through PostgREST, so a rebuild that moves a whole season
+ * is one statement per row. Locally 500 at a time is free; through a hosted gateway it is a
+ * burst somebody else's night is queued behind, and the command is not in a hurry.
+ */
+const WRITE_CONCURRENCY = 25;
+
 /** A game landing inside this window means somebody is probably still playing. */
 export const RECENT_GAME_MS = 15 * 60 * 1000;
 
@@ -107,8 +116,14 @@ export interface RebuildReport {
   ratingRowsChanged: number;
   /** Players with at least one rated game in the season. */
   playersWritten: number;
-  /** The biggest move this rebuild made to anybody's stored `mu`. */
-  largestMuChange: { puuid: string; from: number | null; to: number; delta: number } | null;
+  /**
+   * The biggest move this rebuild made to a `mu` that was **already stored**. A player who had
+   * no `ratings` row is not a move of any size — they are counted in `firstRatings` instead,
+   * because "the biggest change was 25.0" for somebody's first game is noise, not news.
+   */
+  largestMuChange: { puuid: string; from: number; to: number; delta: number } | null;
+  /** Players who had no `ratings` row in this season before the run. */
+  firstRatings: number;
   /** `ratings` rows for players with no rated game left in the season. */
   orphanRatings: number;
   prunedRatings: number;
@@ -283,6 +298,7 @@ export async function rebuildRatings(
 
   const ratingInserts: RatingInsert[] = [];
   let largestMuChange: RebuildReport['largestMuChange'] = null;
+  let firstRatings = 0;
   for (const [playerId, tally] of played) {
     const rating = current.get(playerId) as Rating;
     const previous = storedRatings.get(playerId);
@@ -302,12 +318,16 @@ export async function rebuildRatings(
         wins: tally.wins,
       });
     }
+    if (previous === undefined) {
+      firstRatings += 1;
+      continue;
+    }
     // Reported, not acted on: a move smaller than the tolerance is float noise, not news.
-    const delta = Math.abs(rating.mu - (previous?.mu ?? rating.mu));
+    const delta = Math.abs(rating.mu - previous.mu);
     if (delta > RATING_EPSILON && (largestMuChange === null || delta > largestMuChange.delta)) {
       largestMuChange = {
         puuid: puuids.get(playerId) ?? playerId,
-        from: previous?.mu ?? null,
+        from: previous.mu,
         to: rating.mu,
         delta,
       };
@@ -326,6 +346,7 @@ export async function rebuildRatings(
     ratingRowsChanged: ratingInserts.length,
     playersWritten: played.size,
     largestMuChange,
+    firstRatings,
     orphanRatings: orphans.length,
     prunedRatings: 0,
     problems,
@@ -513,8 +534,8 @@ async function selectSeasonRatings(
  * live fold's claim, because it is the one writer that knows the whole order.
  */
 async function writeGamePlayerRatings(client: ServiceClient, rows: readonly WriteRow[]): Promise<void> {
-  for (let index = 0; index < rows.length; index += WRITE_CHUNK) {
-    const chunk = rows.slice(index, index + WRITE_CHUNK);
+  for (let index = 0; index < rows.length; index += WRITE_CONCURRENCY) {
+    const chunk = rows.slice(index, index + WRITE_CONCURRENCY);
     await Promise.all(
       chunk.map(async (row) => {
         const { error } = await client
@@ -609,7 +630,7 @@ export function formatRebuildReport(report: RebuildReport): string {
       report.gamePlayerRowsChanged === 1 ? '' : 's'
     }, ${report.ratingRowsChanged} ratings row${report.ratingRowsChanged === 1 ? '' : 's'}`,
     `players       ${report.playersWritten} with a rated game`,
-    `biggest move  ${formatMuChange(report.largestMuChange)}`,
+    `biggest move  ${formatMuChange(report.largestMuChange, report.firstRatings)}`,
   ];
   if (report.orphanRatings > 0) {
     lines.push(
@@ -630,8 +651,9 @@ function formatSkipped(skipped: Record<RebuildSkipReason, number>): string {
   return parts.length === 0 ? 'none' : parts.join(', ');
 }
 
-function formatMuChange(change: RebuildReport['largestMuChange']): string {
-  if (change === null) return 'none';
-  const from = change.from === null ? 'unrated' : change.from.toFixed(3);
-  return `${change.puuid} ${from} -> ${change.to.toFixed(3)} (${change.delta.toFixed(3)})`;
+function formatMuChange(change: RebuildReport['largestMuChange'], firstRatings: number): string {
+  const first =
+    firstRatings === 0 ? '' : ` (first ratings for ${firstRatings} player${firstRatings === 1 ? '' : 's'})`;
+  if (change === null) return `none${first}`;
+  return `${change.puuid} ${change.from.toFixed(3)} -> ${change.to.toFixed(3)} (${change.delta.toFixed(3)})${first}`;
 }

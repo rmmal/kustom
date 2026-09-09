@@ -23,13 +23,35 @@ export interface PlayerIdentityInput {
 /** PUUID to `players.id`, for every PUUID passed in. */
 export type PlayerIdsByPuuid = ReadonlyMap<string, string>;
 
+export interface EnsurePlayersOptions {
+  /**
+   * **Fill, never patch** (M5.1 review). A player the database has never met is created with
+   * the names given; a row that already exists is not touched at all — not its `game_name`,
+   * not its `tag_line`, not its automatic `display_name`, not its `summoner_id`.
+   *
+   * Backfill is the caller. A match detail carries the Riot ID as it was **when the game was
+   * played**, so the ordinary refresh below would walk a friend's name backwards: the walker
+   * goes newest-first, so the *oldest* game in the batch wins, and a second friend's
+   * overlapping backfill does it again the next day. The names in old history are not news
+   * about who somebody is now.
+   *
+   * The good half of backfill's names survives: the commonest outcome is a friend who has
+   * never been in a lobby with a companion running, and they still get a row **and** a name,
+   * because that name arrives on the insert.
+   */
+  fillOnly?: boolean;
+}
+
 /**
  * Creates the missing rows, refreshes changed display data, and returns the id of every
  * PUUID given. Safe to run concurrently: the insert is `on conflict do nothing`.
+ *
+ * `options.fillOnly` turns the refresh off; see {@link EnsurePlayersOptions}.
  */
 export async function ensurePlayers(
   client: ServiceClient,
   inputs: readonly PlayerIdentityInput[],
+  options: EnsurePlayersOptions = {},
 ): Promise<PlayerIdsByPuuid> {
   const wanted = mergeByPuuid(inputs);
   if (wanted.size === 0) return new Map();
@@ -70,6 +92,8 @@ export async function ensurePlayers(
 
     const input = wanted.get(row.puuid);
     if (!input) continue;
+    // Fill-only: this row already existed, so nothing about it is this caller's business.
+    if (options.fillOnly) continue;
 
     // Only fields the client actually reported, and only when they changed, so a repeated
     // post of the same roster writes nothing at all.

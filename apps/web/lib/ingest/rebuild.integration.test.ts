@@ -279,6 +279,8 @@ if (stack === null) {
       expect(result.report.considered).toBe(4);
       expect(result.report.rated).toBe(4);
       expect(result.report.gamePlayerRowsChanged).toBeGreaterThan(0);
+      // Everybody here already had a rating, so this is a real move and not a first one.
+      expect(result.report.firstRatings).toBe(0);
       expect(result.report.largestMuChange).not.toBeNull();
 
       // The old game is now rated...

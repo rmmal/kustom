@@ -64,6 +64,8 @@ if (stack === null) {
   const outsiderGameId = baseGameId + 4;
   const scanKnownGameId = baseGameId + 5;
   const scanUnknownGameId = baseGameId + 6;
+  const staleNameGameId = baseGameId + 7;
+  const staleBackfillGameId = baseGameId + 8;
   const gameIds = [
     backfillGameId,
     eogFirstGameId,
@@ -71,6 +73,8 @@ if (stack === null) {
     outsiderGameId,
     scanKnownGameId,
     scanUnknownGameId,
+    staleNameGameId,
+    staleBackfillGameId,
   ];
 
   let ownerToken = '';
@@ -162,6 +166,17 @@ if (stack === null) {
       .single();
     if (error) throw new Error(error.message);
     return { requested: data.backfill_requested_at, approved: data.backfill_approved_at };
+  }
+
+  /** The ten `players` rows, whole and ordered: what a backfill post must not rewrite. */
+  async function readPlayers(): Promise<unknown[]> {
+    const { data, error } = await db
+      .from('players')
+      .select('id, puuid, summoner_id, game_name, tag_line, display_name')
+      .in('puuid', puuids)
+      .order('puuid');
+    if (error) throw new Error(error.message);
+    return data ?? [];
   }
 
   /** A backfill body: the eog body with `source`, no `partyId` key, and `role: null` on all ten. */
@@ -356,10 +371,25 @@ if (stack === null) {
         .eq('game_id', beforeGame.data?.id ?? '')
         .order('player_id');
 
+      const beforePlayers = await readPlayers();
+
       finished.length = 0;
+      // Carrying names, so the assertion below is about the rule and not about an empty field:
+      // a re-post of a stored game claims no name at all (M5.1 review).
+      const repost = backfillBody(eogFirstGameId, {
+        startedAt: '2020-01-01T00:00:00.000Z',
+        durationS: 999,
+      }) as Record<string, unknown>;
       const response = await postGame(
         post(
-          backfillBody(eogFirstGameId, { startedAt: '2020-01-01T00:00:00.000Z', durationS: 999 }),
+          {
+            ...repost,
+            participants: (repost.participants as Record<string, unknown>[]).map((participant) => ({
+              ...participant,
+              gameName: 'NameFromAnOldGame',
+              tagLine: 'OLD',
+            })),
+          },
           ownerToken,
         ),
       );
@@ -382,6 +412,68 @@ if (stack === null) {
       expect(afterGame.data?.source).toBe('eog');
       expect(afterRows.data).toEqual(beforeRows.data);
       expect(finished).toHaveLength(0);
+      // And not one `players` row either: a re-post of a game we have says nothing about who
+      // anybody is (M5.1 review).
+      expect(await readPlayers()).toEqual(beforePlayers);
+    });
+
+    it('never walks a name backwards: an old detail does not rename a player we know', async () => {
+      // Today's name, arriving the way names really arrive: an end-of-game post.
+      const renamed = puuids[3] as string;
+      const named = await postGame(
+        post(
+          {
+            ...eogBody({ gameId: staleNameGameId, puuids, partyId: null }),
+            participants: (
+              eogBody({ gameId: staleNameGameId, puuids, partyId: null }).participants as Record<
+                string,
+                unknown
+              >[]
+            ).map((participant) =>
+              participant.puuid === renamed
+                ? { ...participant, gameName: 'NameToday', tagLine: 'EUW' }
+                : participant,
+            ),
+          },
+          ownerToken,
+        ),
+      );
+      expect(named.status).toBe(200);
+
+      const { data: before } = await db
+        .from('players')
+        .select('game_name, tag_line, display_name')
+        .eq('puuid', renamed)
+        .single();
+      expect(before?.game_name).toBe('NameToday');
+      expect(before?.display_name).toBe('NameToday');
+
+      // Now a backfilled game from months ago, carrying the name they had then. It creates a
+      // new game row (so the name path is not skipped for being a duplicate) and must still
+      // leave every stored name exactly where it is.
+      const stale = backfillBody(staleBackfillGameId) as Record<string, unknown>;
+      const response = await postGame(
+        post(
+          {
+            ...stale,
+            participants: (stale.participants as Record<string, unknown>[]).map((participant) =>
+              participant.puuid === renamed
+                ? { ...participant, gameName: 'NameLastYear', tagLine: 'OLD' }
+                : participant,
+            ),
+          },
+          ownerToken,
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).created).toBe(true);
+
+      const { data: after } = await db
+        .from('players')
+        .select('game_name, tag_line, display_name')
+        .eq('puuid', renamed)
+        .single();
+      expect(after).toEqual(before);
     });
 
     it('403s a poster who is not on the scoreboard, even from inside the lobby', async () => {

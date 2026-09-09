@@ -18,7 +18,9 @@ pnpm --filter web test        vitest; the integration tests skip without the loc
 pnpm --filter web build
 pnpm --filter web mint-token <puuid> [label]   # /admin/tokens does this with a button now
 pnpm --filter web rebuild-ratings [--dry-run] [--force] [--prune] [--season <id>]
-                              # M5.2: refold a season from seeds. Run it after a backfill batch.
+                              # M5.2: refold a season from seeds. Run it after a backfill batch;
+                              # the guard counts a game that landed in the last 15 minutes, so
+                              # straight after a batch it needs --force (or a 15-minute wait).
 ```
 
 `rebuild-ratings` runs under `tsx`, not plain `node`: it imports `rateGame` from
@@ -61,6 +63,12 @@ not run — the answer is `{ rated: false, reason: 'backfill' }` and
 `pnpm --filter web rebuild-ratings` is what turns a batch into ratings. Whether a companion may
 send them at all is `players.backfill_approved_at`, flipped by an admin on `/admin/players` and
 read by the scan route.
+
+Names from a backfill post **fill but never patch**: a match detail reports who somebody was when
+the game was played, and the walker reads newest-first, so refreshing from one would roll every
+display name back to the oldest game in the batch. `ensurePlayers(..., { fillOnly: true })` creates
+a row for a PUUID we have never met — still the commonest good outcome of backfill — and leaves
+every existing row's name columns alone.
 
 ## The lobby state machine (M2.5)
 
