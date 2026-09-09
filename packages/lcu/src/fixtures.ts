@@ -9,8 +9,8 @@
  * `<patch>` is the first two components of the client version (`16.17.812.4632` -> `16.17`).
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
@@ -28,6 +28,10 @@ export const FixtureEnvelopeSchema = z.object({
   contentType: z.string().nullable(),
   body: z.unknown().optional(),
   bodyText: z.string().optional(),
+  /** The request body that produced this answer, for a write captured by `--verify-commands` (M4.1). */
+  request: z.unknown().optional(),
+  /** Free text from the capturing tool (which event, what the client showed). */
+  note: z.string().optional(),
 });
 export type FixtureEnvelope = z.infer<typeof FixtureEnvelopeSchema>;
 
@@ -101,6 +105,14 @@ export function readFixture(patch: string, id: string, root: string = FIXTURES_D
     return { ok: false, reason: `not a fixture envelope: ${path}` };
   }
   return { ok: true, envelope: parsed.data };
+}
+
+/** Writes one envelope to `<root>/<patch>/<id>.json` (creating the directory). Callers scrub the body first. */
+export function writeFixture(envelope: FixtureEnvelope, root: string = FIXTURES_DIR): string {
+  const path = fixturePath(envelope.patch, envelope.id, root);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(envelope, null, 2)}\n`);
+  return path;
 }
 
 /** The newest saved envelope for an endpoint id across all patch directories, if any. */

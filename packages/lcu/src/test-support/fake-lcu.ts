@@ -31,6 +31,8 @@ export interface CannedRoute {
   readonly contentType?: string;
   /** Delay before answering, for timeout tests. */
   readonly delayMs?: number;
+  /** Close the connection without answering: the client sees a network error (a client that just died). */
+  readonly drop?: boolean;
 }
 
 export interface RecordedRequest {
@@ -47,6 +49,11 @@ export interface FakeLcuOptions {
   readonly password?: string;
   /** Keyed by `"<METHOD> <path>"`; the path includes the query string. */
   readonly routes?: Readonly<Record<string, CannedRoute>>;
+  /**
+   * Consulted before `routes` for every request: a stateful stand-in (a lobby that exists after a POST, a
+   * side that changes after switch-teams). Return undefined to fall through to `routes`.
+   */
+  readonly handle?: (request: RecordedRequest) => CannedRoute | undefined;
   readonly cert?: TestCertName;
   /** When true, requests with a wrong Authorization header get a 401. Default true. */
   readonly enforceAuth?: boolean;
@@ -114,12 +121,16 @@ export async function startFakeLcu(options: FakeLcuOptions = {}): Promise<FakeLc
           );
           return;
         }
-        const route = routes[`${record.method} ${record.path}`];
+        const route = options.handle?.(record) ?? routes[`${record.method} ${record.path}`];
         if (!route) {
           res.writeHead(404, { 'content-type': 'application/json' });
           res.end(
             JSON.stringify({ errorCode: 'RPC_ERROR', httpStatus: 404, message: 'fake lcu: no such route' }),
           );
+          return;
+        }
+        if (route.drop) {
+          res.socket?.destroy();
           return;
         }
         const send = (): void => {

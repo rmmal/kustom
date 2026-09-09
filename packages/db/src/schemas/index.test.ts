@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COMMANDS_PAGE_SIZE,
+  COMPANION_COMMAND_TTL_MS,
+  commandFailureReasonSchema,
   companionBackfillScanRequestSchema,
   companionBackfillScanResponseSchema,
+  companionCommandAckRequestSchema,
+  companionCommandNackRequestSchema,
+  companionCommandPayloadSchemas,
+  companionCommandResultSchemas,
+  companionCommandSchema,
+  companionCommandsResponseSchema,
   companionGamePayloadSchema,
   companionLobbyPayloadSchema,
   companionLobbyResponseSchema,
@@ -431,5 +440,57 @@ describe('roleFromDetectedTeamPosition', () => {
   it('tolerates the casing and padding a client patch might add', () => {
     expect(roleFromDetectedTeamPosition(' middle ')).toBe('mid');
     expect(roleFromDetectedTeamPosition('Utility')).toBe('support');
+  });
+});
+
+describe('command queue contract (M4.1)', () => {
+  it('parses a poll page, applies the per-kind payload and result schemas, and bounds the page', () => {
+    const page = companionCommandsResponseSchema.parse({
+      ok: true,
+      commands: [
+        {
+          id: '3f1e2d4c-5b6a-4798-8c9d-0e1f2a3b4c5d',
+          kind: 'create_lobby',
+          payload: { lobbyName: 'Customs 09 Sep #1', lobbyPassword: '4821' },
+          createdAt: '2026-09-09T20:00:00.000Z',
+          expiresAt: '2026-09-09T20:01:00.000Z',
+        },
+        {
+          id: '3f1e2d4c-5b6a-4798-8c9d-0e1f2a3b4c5e',
+          kind: 'not_a_kind',
+          payload: {},
+          createdAt: '2026-09-09T20:00:00.000Z',
+          expiresAt: '2026-09-09T20:05:00.000Z',
+        },
+      ],
+      nextPollInMs: 5000,
+    });
+    expect(page.commands).toHaveLength(2);
+    expect(companionCommandPayloadSchemas.create_lobby.safeParse(page.commands[0]?.payload).success).toBe(
+      true,
+    );
+    // The loose envelope carries an unknown kind so the companion can nack it; the strict union refuses it.
+    expect(companionCommandSchema.safeParse(page.commands[1]).success).toBe(false);
+    expect(companionCommandPayloadSchemas.invite.parse({ puuid: PUUID_A, summonerId: null })).toEqual({
+      puuid: PUUID_A,
+      summonerId: null,
+    });
+    expect(
+      companionCommandPayloadSchemas.invite.safeParse({ puuid: PUUID_A, summonerId: 'x1' }).success,
+    ).toBe(false);
+    expect(companionCommandPayloadSchemas.switch_side.safeParse({ targetSide: 300 }).success).toBe(false);
+    expect(
+      companionCommandResultSchemas.invite.parse({ puuid: PUUID_A, method: 'puuid', state: 'Pending' }),
+    ).toEqual({ puuid: PUUID_A, method: 'puuid', state: 'Pending' });
+    expect(companionCommandResultSchemas.switch_side.safeParse({ side: 0 }).success).toBe(false);
+    expect(
+      companionCommandAckRequestSchema.parse({ result: { partyId: 'p', lobbyName: 'n' } }).result,
+    ).toEqual({ partyId: 'p', lobbyName: 'n' });
+    expect(companionCommandNackRequestSchema.safeParse({ error: '', retryable: false }).success).toBe(false);
+    expect(commandFailureReasonSchema.safeParse('side_full').success).toBe(true);
+    expect(COMMANDS_PAGE_SIZE).toBe(10);
+    expect(COMPANION_COMMAND_TTL_MS).toEqual({ create_lobby: 60_000, invite: 300_000, switch_side: 180_000 });
+    const tooMany = Array.from({ length: COMMANDS_PAGE_SIZE + 1 }, () => page.commands[0]);
+    expect(companionCommandsResponseSchema.safeParse({ ok: true, commands: tooMany }).success).toBe(false);
   });
 });

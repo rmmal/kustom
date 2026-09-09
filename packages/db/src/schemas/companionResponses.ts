@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { lobbyStatusSchema } from './common';
+import {
+  type companionCommandKindSchema,
+  jsonObjectSchema,
+  lobbyStatusSchema,
+  puuidSchema,
+  sideSchema,
+} from './common';
 
 /**
  * What `/api/companion/*` answers. These live here, beside the request schemas, so
@@ -151,6 +157,179 @@ export const companionBackfillScanResponseSchema = z.object({
   approved: z.boolean(),
   unknown: z.array(z.number().int().positive()),
 });
+
+// ---------------------------------------------------------------------------
+// The command queue (M4.1)
+// ---------------------------------------------------------------------------
+
+/** How often the companion asks for work while its client is up. The server may dial it with `nextPollInMs`. */
+export const COMMANDS_POLL_INTERVAL_MS = 5_000;
+/** Commands per poll, oldest first. The route never answers more; the companion refuses a longer page. */
+export const COMMANDS_PAGE_SIZE = 10;
+/** Time to live per kind, set by whoever writes the row (M4.2, M4.3). Expired rows are `failed` with `expired`. */
+export const COMPANION_COMMAND_TTL_MS = {
+  create_lobby: 60_000,
+  invite: 5 * 60_000,
+  switch_side: 3 * 60_000,
+} as const satisfies Record<z.infer<typeof companionCommandKindSchema>, number>;
+
+/**
+ * `GET /api/companion/commands`, `POST /api/companion/commands/{id}/ack`, `POST /api/companion/commands/{id}/nack`
+ * (M4.1). **This comment is the whole command-queue contract**; the runner (`apps/companion/src/commandRunner.ts`)
+ * and the routes implement it and nothing else restates it. Companion bearer token on all three, the usual
+ * `{ ok: true, ... }` / `{ ok: false, error }` envelope.
+ *
+ * **GET `/api/companion/commands?clientConnected=true|false`** (the query parameter is required).
+ * Answer: `{ ok: true, commands: [{ id, kind, payload, createdAt, expiresAt }], nextPollInMs? }` —
+ * `companionCommandsResponseSchema`. Rows are the token's player's only (`target_player_id`), status `pending`
+ * or `sent`, not past `expires_at`, oldest `created_at` first, at most `COMMANDS_PAGE_SIZE` (10). There is no
+ * way to ask for another player's queue. Handing a row out marks it `sent` (`sent_at`, `attempts + 1`); a `sent`
+ * row is offered again after 30 s, and the fourth delivery fails it instead (`not acked after 3 deliveries`).
+ * Every call, whatever `clientConnected` says, first sweeps expired rows to `failed` / `error = 'expired'`.
+ * `clientConnected=false` then answers `{ ok: true, commands: [] }` and **moves nothing else** — no `sent`, no
+ * `attempts`, no `last_seen_at` — so `last_seen_at` means "at their PC with League open". `nextPollInMs` is
+ * optional; absent means `COMMANDS_POLL_INTERVAL_MS`.
+ *
+ * `payload` per kind (`companionCommandPayloadSchemas`):
+ * - `create_lobby`: `{ lobbyName: string(1..30), lobbyPassword: string(4..16) }`
+ * - `invite`: `{ puuid, summonerId: string | null }` (digits; null when the server has none)
+ * - `switch_side`: `{ targetSide: 100 | 200 }`
+ * The companion applies the kind's schema itself and nacks `malformed_payload` for a kind it does not know or
+ * a payload that does not parse, so one bad row never blocks a page.
+ *
+ * **POST `/api/companion/commands/{id}/ack`**, body `{ result }` (`companionCommandAckRequestSchema`), where
+ * `result` matches the kind's result schema (`companionCommandResultSchemas`):
+ * - `create_lobby`: `{ partyId, lobbyName }`
+ * - `invite`: `{ puuid, method: 'summonerId' | 'puuid', state: 'Pending' | 'Accepted' }`
+ * - `switch_side`: `{ side: 100 | 200 }`
+ * Answer `{ ok: true }`: the row is `acked`, `acked_at` set, `result` stored, and the `onAcked` hooks run
+ * (M4.2 hangs the invite fan-out there). 404 for an id that does not exist **or belongs to another player**
+ * (never 403: a 403 would confirm somebody else's id exists). 409 when the row is already `acked` or `failed`;
+ * nothing changes. 422 when `result` fails the kind's schema; the row is left alone.
+ *
+ * **POST `/api/companion/commands/{id}/nack`**, body `{ error: string(1..500), retryable: boolean }`
+ * (`companionCommandNackRequestSchema`). `error` is **prose, stored verbatim and not validated beyond length**:
+ * the companion writes a `commandFailureReasonSchema` word first, then a detail after `: `
+ * (`already_in_lobby: partyId=...`, `client_rejected: 404 LOBBY_NOT_FOUND`, `wrong_phase: ChampSelect`), never
+ * a body, and a page that wants the reason takes the text up to the first `:`; the route must not reject a
+ * prefix it does not know (an older exe may be running). Answer `{ ok: true }`.
+ * - `retryable: false`: the row is `failed`, `acked_at = now()`, `error` stored, `result` null, hooks run.
+ * - `retryable: true`: **nothing was executed** — the row goes back to `pending` with `attempts` unchanged and
+ *   `sent_at` cleared, so it is offered again on the next poll inside its TTL and the expiry sweep is what
+ *   gives up on it; `error` is stored for the log, no hook runs. The companion sends it only for
+ *   `not_connected` and for a client that gave no HTTP answer before anything could have happened.
+ * Same 404 and 409 as ack (a 409 on a retryable nack means the sweep already failed the row).
+ *
+ * The companion treats a 409 on either as "already recorded" (a lost ack re-sent after a restart), a 404 as
+ * "nothing more to do", and any other failure as "try the ack again on the next poll" from its local
+ * `commands-done.json` record, without a second client call.
+ */
+export const commandFailureReasonSchema = z.enum([
+  'not_connected',
+  'wrong_phase',
+  'no_lobby',
+  'not_custom_lobby',
+  'already_in_lobby',
+  'not_on_a_team',
+  'side_full',
+  'endpoint_unverified',
+  'client_rejected',
+  'expired',
+  'malformed_payload',
+]);
+
+export const createLobbyCommandPayloadSchema = z.object({
+  lobbyName: z.string().trim().min(1).max(30),
+  lobbyPassword: z.string().min(4).max(16),
+});
+
+export const inviteCommandPayloadSchema = z.object({
+  puuid: puuidSchema,
+  summonerId: z.string().regex(/^\d+$/).nullable(),
+});
+
+export const switchSideCommandPayloadSchema = z.object({
+  targetSide: sideSchema,
+});
+
+export const companionCommandPayloadSchemas = {
+  create_lobby: createLobbyCommandPayloadSchema,
+  invite: inviteCommandPayloadSchema,
+  switch_side: switchSideCommandPayloadSchema,
+} as const;
+
+export const createLobbyCommandResultSchema = z.object({
+  partyId: z.string().min(1),
+  lobbyName: z.string(),
+});
+
+export const inviteCommandResultSchema = z.object({
+  puuid: puuidSchema,
+  method: z.enum(['summonerId', 'puuid']),
+  state: z.enum(['Pending', 'Accepted']),
+});
+
+export const switchSideCommandResultSchema = z.object({
+  side: sideSchema,
+});
+
+export const companionCommandResultSchemas = {
+  create_lobby: createLobbyCommandResultSchema,
+  invite: inviteCommandResultSchema,
+  switch_side: switchSideCommandResultSchema,
+} as const;
+
+/**
+ * One command as the writer creates it and the server stores it: the kind decides the payload. The poll
+ * response below is deliberately looser (`kind: string`, `payload: object`) so the companion can nack a kind
+ * it does not know instead of dropping the whole page.
+ */
+export const companionCommandSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('create_lobby'), payload: createLobbyCommandPayloadSchema }),
+  z.object({ kind: z.literal('invite'), payload: inviteCommandPayloadSchema }),
+  z.object({ kind: z.literal('switch_side'), payload: switchSideCommandPayloadSchema }),
+]);
+
+export const companionCommandEnvelopeSchema = z.object({
+  id: z.uuid(),
+  kind: z.string().min(1),
+  payload: jsonObjectSchema,
+  createdAt: z.iso.datetime({ offset: true }),
+  expiresAt: z.iso.datetime({ offset: true }),
+});
+
+export const companionCommandsResponseSchema = z.object({
+  ok: z.literal(true),
+  commands: z.array(companionCommandEnvelopeSchema).max(COMMANDS_PAGE_SIZE),
+  nextPollInMs: z.number().int().positive().optional(),
+});
+
+export const companionCommandAckRequestSchema = z.object({
+  result: jsonObjectSchema,
+});
+
+export const companionCommandNackRequestSchema = z.object({
+  error: z.string().trim().min(1).max(500),
+  retryable: z.boolean(),
+});
+
+export const companionCommandAckResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
+export type CommandFailureReason = z.infer<typeof commandFailureReasonSchema>;
+export type CreateLobbyCommandPayload = z.infer<typeof createLobbyCommandPayloadSchema>;
+export type InviteCommandPayload = z.infer<typeof inviteCommandPayloadSchema>;
+export type SwitchSideCommandPayload = z.infer<typeof switchSideCommandPayloadSchema>;
+export type CreateLobbyCommandResult = z.infer<typeof createLobbyCommandResultSchema>;
+export type InviteCommandResult = z.infer<typeof inviteCommandResultSchema>;
+export type SwitchSideCommandResult = z.infer<typeof switchSideCommandResultSchema>;
+export type CompanionCommand = z.infer<typeof companionCommandSchema>;
+export type CompanionCommandEnvelope = z.infer<typeof companionCommandEnvelopeSchema>;
+export type CompanionCommandsResponse = z.infer<typeof companionCommandsResponseSchema>;
+export type CompanionCommandAckRequest = z.infer<typeof companionCommandAckRequestSchema>;
+export type CompanionCommandNackRequest = z.infer<typeof companionCommandNackRequestSchema>;
+export type CompanionCommandAckResponse = z.infer<typeof companionCommandAckResponseSchema>;
 
 export type CompanionErrorResponse = z.infer<typeof companionErrorResponseSchema>;
 export type CompanionBackfillScanRequest = z.infer<typeof companionBackfillScanRequestSchema>;

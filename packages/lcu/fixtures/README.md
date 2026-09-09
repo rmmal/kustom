@@ -49,6 +49,12 @@ Each `<endpoint-id>.json` wraps the raw body so a 404 or a non-JSON reply is rec
 `body` is the parsed JSON exactly as returned. When the body was not JSON, `bodyText` holds the text instead.
 Schemas in M0.3 parse `envelope.body`, not the envelope.
 
+Write fixtures (M4.1) come from `pnpm --filter companion verify-commands`, never from `smoke`: `method` is
+`POST`, `request` holds the scrubbed request body (absent for switch-teams, which sends none), `note` says
+which probe, and `contentType` is null (the write helpers do not keep it). Ids: `create-lobby`,
+`create-lobby--draft`, `lobby-invitations`, `lobby-invitations--by-puuid`, `switch-teams-v1`,
+`switch-teams-v2`, `switch-teams--full-side`. None exist yet; the first live run on a patch adds them.
+
 ## Captures
 
 - `16.17` (2026-09-08, macOS, TLS pinned to riotgames.pem on every run). The smoke fixtures and `manifest.json`

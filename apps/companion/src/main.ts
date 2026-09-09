@@ -8,18 +8,23 @@
  *
  * Flags: `--version` / `-v` prints the version and exits 0; `--help` / `-h` prints the usage and exits 0.
  * Both are answered before anything is read or written, so the build's smoke test can run the bundle on any
- * machine. `--show-token` makes the first-run token prompt echo what is typed (M2.19).
+ * machine. `--show-token` makes the first-run token prompt echo what is typed (M2.19). `--verify-commands`
+ * runs the M4.1 live verification of the three lobby writes against the client (`verifyCommands.ts`) and
+ * exits; it makes no API call and needs no token.
  *
  * Environment:
- *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json, logs/, queue/ and backfill.json).
+ *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json, logs/, queue/, backfill.json,
+ *    commands-done.json and the verify-commands reports).
  *  - `CUSTOMS_NIGHT_LOG_LEVEL` sets the console level (`debug`, `info`, `warn`, `error`; default `info`).
  *    The file always gets `debug`.
  *  - `CUSTOMS_NIGHT_SHOW_TOKEN=1` is `--show-token` for a shortcut that cannot pass flags.
+ *  - `CUSTOMS_NIGHT_VERIFY_COMMANDS=1` is `--verify-commands` for the same reason.
  *  - `LCU_LOCKFILE_CANDIDATES` (from `@customs/lcu`) replaces the default lockfile paths.
  */
 
 import { ApiClient, healthCheck } from './api.js';
 import { Backfill } from './backfill.js';
+import { CommandRunner } from './commandRunner.js';
 import {
   type CompanionConfig,
   configDir,
@@ -36,6 +41,7 @@ import { announceIdentity, checkIdentity } from './identity.js';
 import { LobbyWatcher } from './lobbyWatcher.js';
 import { type CompanionLogger, createFileLogger, errorFields, isLogLevel } from './log.js';
 import { RankSync } from './rankSync.js';
+import { runVerifyCommands } from './verifyCommands.js';
 import { COMPANION_VERSION } from './version.js';
 
 export const APP_NAME = 'Customs Night companion';
@@ -52,11 +58,17 @@ export function usage(): string {
     '  --help, -h      print this text and exit',
     '  --show-token    show the token as you type it at the first-run prompt (for a terminal that',
     '                  cannot paste into a hidden prompt); it is still never written to the log',
+    '  --verify-commands',
+    '                  verify the lobby writes (create, invite, switch side) against the running client,',
+    '                  one prompt per probe, and write a report to paste back; no API call, no token needed',
     '',
     'Environment:',
-    '  CUSTOMS_NIGHT_CONFIG_DIR   config directory (config.json, logs/, queue/, backfill.json)',
+    '  CUSTOMS_NIGHT_CONFIG_DIR   config directory (config.json, logs/, queue/, backfill.json,',
+    '                             commands-done.json, verify-commands reports)',
     '  CUSTOMS_NIGHT_LOG_LEVEL    console level: debug | info | warn | error (default info)',
     '  CUSTOMS_NIGHT_SHOW_TOKEN   1 is the same as --show-token',
+    '  CUSTOMS_NIGHT_VERIFY_COMMANDS',
+    '                             1 is the same as --verify-commands',
     '',
     `Config: ${configDir()}`,
   ].join('\n');
@@ -120,6 +132,24 @@ async function main(): Promise<number> {
     return 0;
   }
   const dir = configDir();
+  if (args.includes('--verify-commands') || process.env.CUSTOMS_NIGHT_VERIFY_COMMANDS === '1') {
+    // The live verification of the lobby writes (M4.1). No API, no token: the config is read only for a
+    // `lockfilePath`, and a missing config is fine.
+    const loaded = loadConfig(dir);
+    const lockfilePath =
+      loaded.status === 'ok'
+        ? loaded.config.lockfilePath
+        : loaded.status === 'missing'
+          ? loaded.partial?.lockfilePath
+          : undefined;
+    const code = await runVerifyCommands({
+      configDir: dir,
+      io: stdioPrompt(),
+      ...(lockfilePath ? { lockfilePath } : {}),
+    });
+    await holdWindowOpen();
+    return code;
+  }
   const consoleLevelRaw = process.env.CUSTOMS_NIGHT_LOG_LEVEL ?? 'info';
   const consoleLevel = isLogLevel(consoleLevelRaw) ? consoleLevelRaw : 'info';
   const logger = createFileLogger({ dir: logsDir(dir), consoleLevel, fileLevel: 'debug' });
@@ -158,10 +188,14 @@ async function main(): Promise<number> {
   // Who this token is, on every start and right after the first-run prompt. One attempt; never blocks.
   announceIdentity(await checkIdentity(api), logger);
 
+  // The command queue (M4.1): polls the API, runs create-lobby / invite / switch-side through packages/lcu,
+  // acks or nacks. Each kind is gated on its reference row being verified; see commandRunner.ts.
+  const commandRunner = new CommandRunner({ api, logger, configDir: dir });
   const lobbyWatcher = new LobbyWatcher({
     api,
     logger,
     onResponse: (response) => rankSync.needed(response.ranksNeeded),
+    passwordFor: (partyId) => commandRunner.passwordFor(partyId),
   });
   const rankSync = new RankSync({ api, logger, names: lobbyWatcher.knownNames });
   // Past customs from match history (M5.1): 60 s after the first connect, then every 6 h, only while the
@@ -176,9 +210,11 @@ async function main(): Promise<number> {
       gameWatcher.hooks(),
       rankSync.hooks(),
       backfill.hooks(),
+      commandRunner.hooks(),
     ),
     lockfile: config.lockfilePath ? { overridePath: config.lockfilePath } : {},
   });
+  commandRunner.start();
 
   let signals = 0;
   const onSignal = (signal: NodeJS.Signals): void => {
@@ -200,6 +236,7 @@ async function main(): Promise<number> {
   });
 
   await machine.run();
+  commandRunner.stop();
   lobbyWatcher.stop();
   rankSync.stop();
   backfill.stop();

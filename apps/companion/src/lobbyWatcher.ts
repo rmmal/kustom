@@ -66,6 +66,14 @@ export interface LobbyWatcherOptions {
   readonly schedule?: Scheduler;
   /** Called with every successful answer; the rank sync (M2.4) takes `ranksNeeded` from it. Never awaited. */
   readonly onResponse?: (response: CompanionLobbyResponse) => void;
+  /**
+   * The password this process set when it created the party (the command runner, M4.1/M4.2), or null. A
+   * non-null value rides on every lobby post for that party; null leaves `lobbyPassword` null, which the
+   * server never treats as "clear it". The lobby `Create` event usually lands before the runner has read the
+   * new party id back, so the first post after a create may carry null and the password rides on the next
+   * roster change.
+   */
+  readonly passwordFor?: (partyId: string) => string | null;
 }
 
 interface Item {
@@ -83,6 +91,7 @@ export class LobbyWatcher {
   private readonly retryBackoff: Backoff;
   private readonly schedule: Scheduler;
   private readonly onResponse: ((response: CompanionLobbyResponse) => void) | undefined;
+  private readonly passwordFor: ((partyId: string) => string | null) | undefined;
   private readonly stopController = new AbortController();
 
   private context: ConnectedContext | null = null;
@@ -110,6 +119,7 @@ export class LobbyWatcher {
     this.retryBackoff = new Backoff(options.backoff);
     this.schedule = options.schedule ?? realScheduler;
     this.onResponse = options.onResponse;
+    this.passwordFor = options.passwordFor;
   }
 
   /** The last answer the API gave, or null before the first successful post. */
@@ -238,7 +248,10 @@ export class LobbyWatcher {
       return;
     }
     this.currentLobby = lobby;
-    if (this.enqueue(mapLobby(lobby, this.names), source)) {
+    const mapped = mapLobby(lobby, this.names);
+    const password = this.passwordFor?.(lobby.partyId) ?? null;
+    const payload = password === null ? mapped : { ...mapped, lobbyPassword: password };
+    if (this.enqueue(payload, source)) {
       // Names are only worth fetching for a roster that is actually being posted.
       this.scheduleLookups(lobby);
     }
