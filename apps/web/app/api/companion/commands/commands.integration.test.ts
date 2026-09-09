@@ -717,6 +717,32 @@ if (stack === null) {
       }
     });
 
+    it('is the listener on the balanced hook, and that listener is harmless with the gate off', async () => {
+      // The seam itself (`lib/commands/register.ts`), called the way `emitLobbyBalanced` calls
+      // it: with the whole event and no client, reading the service client from the
+      // environment. Everything M2.5 does must still pass with this listener registered.
+      const { commandLobbyHook } = await import('@/lib/commands/register');
+      const seats = cast.map((seat, index) => ({ ...seat, side: index < 5 ? 200 : 100 }) as Seat);
+      const lobbyId = await lobbyWith(seats, 'balanced');
+      const { split, playing } = eventFor(seats, lobbyId);
+
+      await commandLobbyHook.onBalanced?.({
+        lobbyId,
+        splitId: randomUUID(),
+        rosterKey: seats.map((seat) => seat.puuid).join(','),
+        split,
+        explanation: 'a split',
+        lobbyName: 'kustom night',
+        lobbyPassword: null,
+        sitters: [],
+        seatMoves: [],
+        tiedOnGames: true,
+        playing,
+      });
+
+      expect(await pendingFor(seats.map((seat) => seat.playerId))).toEqual([]);
+    });
+
     it('never queues a spectator, or a friend whose companion was last seen eleven minutes ago', async () => {
       const stale = await mint('stale', {
         lastSeenAt: new Date(Date.now() - COMPANION_AROUND_MS - 60_000),
