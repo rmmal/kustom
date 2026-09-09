@@ -207,15 +207,44 @@
   gap: var(--cn-sp-4);
 }
 
-/* The role column exists only when it distinguishes: `1fr · role 6.5rem · rating 4.5rem`. */
+/* The role column exists only when it distinguishes: `1fr · role · rating 4.5rem`. */
 .cn-rack-roled .cn-rack-row {
   grid-template-columns: 1fr 6.5rem 4.5rem;
+}
+
+/*
+ * The second role costs a phone row more than it gives: `jungle · support` does not fit beside
+ * a name on a 390px screen, and a column that ends in `t…` is worse than one that says the
+ * role somebody actually plays. It comes back the moment there is room for it.
+ */
+.cn-rack-second {
+  display: none;
+}
+
+@media (min-width: 480px) {
+  .cn-rack-roled .cn-rack-row {
+    grid-template-columns: 1fr 8.5rem 4.5rem;
+  }
+
+  .cn-rack-second {
+    display: inline;
+  }
 }
 
 /* A team seat leads with its role, because the five of them are read as a lane order. */
 .cn-seat {
   grid-template-columns: 6.5rem 1fr 5.5rem;
   gap: var(--cn-sp-2);
+}
+
+/*
+ * A result row carries the rating **and** its delta, and `1393 (−41)` on two lines reads as
+ * two numbers. The role column pays for it: with the icon beside it, `support` is the widest
+ * word there is and it fits in 5rem.
+ */
+.cn-team-won .cn-seat,
+.cn-team-lost .cn-seat {
+  grid-template-columns: 5rem 1fr 7.5rem;
 }
 
 .cn-rack-row + .cn-rack-row,

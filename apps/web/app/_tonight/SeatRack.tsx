@@ -75,8 +75,13 @@ export function SeatRack({ members, viewerPuuid }: SeatRackProps) {
       {around.length === 0 ? null : (
         <div className="cn-around-block">
           <p className="cn-num cn-around">{AROUND_LABEL}</p>
-          {/* The same row shape, and nothing reserved for them. */}
-          <ul className="cn-rack-list cn-rack-around">
+          {/* The same row shape — including the role column, or the rating wraps under the
+              name and the row is a different height from the ten above it. */}
+          <ul
+            className={
+              showRoles ? 'cn-rack-list cn-rack-around cn-rack-roled' : 'cn-rack-list cn-rack-around'
+            }
+          >
             {around.map((member) => (
               <SeatRow key={member.puuid} member={member} viewerPuuid={viewerPuuid} showRoles={showRoles} />
             ))}
@@ -134,7 +139,10 @@ function RoleCell({ member }: { member: MemberView }) {
     <span className="cn-num cn-rack-roles">
       <RoleIcon role={member.mainRole} />
       {member.mainRole}
-      {member.secondaryRole === null ? null : ` · ${member.secondaryRole}`}
+      {member.secondaryRole === null ? null : (
+        // Hidden below 480px by `tonight.css`, where the pair does not fit beside a name.
+        <span className="cn-rack-second">{` · ${member.secondaryRole}`}</span>
+      )}
     </span>
   );
 }
