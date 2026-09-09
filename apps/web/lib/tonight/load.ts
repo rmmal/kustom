@@ -2,6 +2,7 @@ import { displayRating, isOffRole, type Role, seedFromRank } from '@customs/core
 import type { RoleValue, SideValue } from '@customs/db';
 import { readAssignments } from '../discord/assemble';
 import { inLaneOrder } from '../laneOrder';
+import { formatNightLabel } from '../night';
 import type { PublicClient } from '../publicClient';
 import { renderWebName } from './copy';
 import type {
@@ -37,6 +38,12 @@ export interface LoadTonightOptions {
    * means: one definition, on the server, in the timezone the deployment is configured with.
    */
   nightStart: Date;
+  /**
+   * The zone the slug line is written in. The page passes `nightTimeZone()`; the browser's
+   * re-read has no environment and falls back to the group's own zone, which is the same
+   * answer on every deployment that has not overridden `CUSTOMS_NIGHT_TZ`.
+   */
+  timeZone?: string;
 }
 
 export async function loadTonight(
@@ -44,11 +51,14 @@ export async function loadTonight(
   options: LoadTonightOptions,
 ): Promise<TonightSnapshot> {
   const nightStart = options.nightStart.toISOString();
-  const [lobbyRow, seasonId] = await Promise.all([selectLobby(client, nightStart), selectSeasonId(client)]);
+  const [lobbyRow, season] = await Promise.all([selectLobby(client, nightStart), selectSeason(client)]);
+  const seasonId = season?.id ?? null;
 
   return {
     nightStart,
+    nightLabel: formatNightLabel(options.nightStart, options.timeZone),
     seasonActive: seasonId !== null,
+    seasonName: season?.name ?? null,
     lobby: lobbyRow === null ? null : await loadLobby(client, lobbyRow, seasonId),
   };
 }
@@ -79,16 +89,22 @@ async function selectLobby(client: PublicClient, nightStart: string): Promise<Lo
   return data ?? null;
 }
 
-/** The active season, or `null`: the page then prints `NO_ACTIVE_SEASON_MESSAGE`. */
-async function selectSeasonId(client: PublicClient): Promise<string | null> {
+/**
+ * The active season, or `null`: the page then prints `NO_ACTIVE_SEASON_TONIGHT_MESSAGE` and
+ * the slug line is the date alone.
+ *
+ * The name comes back alongside the id because the strip's slug says which season this is —
+ * one query, two facts, and no second read of the same row.
+ */
+async function selectSeason(client: PublicClient): Promise<{ id: string; name: string } | null> {
   const { data, error } = await client
     .from('seasons')
-    .select('id')
+    .select('id, name')
     .eq('is_active', true)
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`tonight: season lookup failed: ${error.message}`);
-  return data?.id ?? null;
+  return data ?? null;
 }
 
 async function loadLobby(client: PublicClient, lobby: LobbyRow, seasonId: string | null): Promise<LobbyView> {

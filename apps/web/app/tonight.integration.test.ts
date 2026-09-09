@@ -264,7 +264,8 @@ if (stack === null) {
       }
 
       const html = await firstPaint();
-      expect(html).toMatch(/(Blue|Red) wins/);
+      // Floodlit's result headline: the display cut, upper case, in the winner's colour.
+      expect(html).toMatch(/(BLUE|RED) WINS/);
       // The delta is rendered, and it is signed.
       expect(html).toMatch(/\((\+|−)\d+\)/);
     });

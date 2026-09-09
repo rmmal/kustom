@@ -110,8 +110,17 @@ export interface TonightSnapshot {
   lobby: LobbyView | null;
   /** ISO 8601. The start of the night this snapshot was taken for. */
   nightStart: string;
+  /**
+   * `TUESDAY 9 SEPTEMBER`: the strip's slug, from `nightStart`, so a 01:00 game still says
+   * Tuesday. **Formatted on the server**, in a fixed locale and the configured timezone
+   * (`lib/night.ts`), because a date formatted by the browser would disagree with the server
+   * render and the line would change under the reader (05-design.md, "The status strip").
+   */
+  nightLabel: string;
   /** False prints `NO_ACTIVE_SEASON_MESSAGE`, the same sentence `/admin` and the API use. */
   seasonActive: boolean;
+  /** The active season's name, for the slug line. `null` when none is active. */
+  seasonName: string | null;
 }
 
 /**

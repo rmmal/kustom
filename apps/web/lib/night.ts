@@ -62,6 +62,32 @@ export function formatDayMonth(instant: Date, timeZone: string = DEFAULT_NIGHT_T
   return `${read('day')} ${read('month').slice(0, 3)}`;
 }
 
+const nightLabelFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * `Tuesday 9 September`: the tonight page's slug line (M3.18, `05-design.md`, "The status
+ * strip"), rendered upper case by the stylesheet and left as a readable date in the DOM.
+ *
+ * Same locale and same configured timezone as every other date on a public page, and for the
+ * same reason: this is formatted **on the server** and travels in the snapshot, because a date
+ * the browser formatted in the reader's own locale would disagree with the server's render and
+ * the line would change under them.
+ *
+ * It is given the night's start, not the current instant, so a game at 01:00 still says
+ * Tuesday.
+ */
+export function formatNightLabel(
+  nightStartInstant: Date,
+  timeZone: string = DEFAULT_NIGHT_TIME_ZONE,
+): string {
+  const cached = nightLabelFormatters.get(timeZone);
+  const formatter =
+    cached ??
+    new Intl.DateTimeFormat(DISPLAY_LOCALE, { timeZone, weekday: 'long', day: 'numeric', month: 'long' });
+  if (cached === undefined) nightLabelFormatters.set(timeZone, formatter);
+  return formatter.format(nightStartInstant);
+}
+
 /** Is this a timezone `Intl` knows? Used to validate `CUSTOMS_NIGHT_TZ` at the boundary. */
 export function isValidTimeZone(timeZone: string): boolean {
   try {

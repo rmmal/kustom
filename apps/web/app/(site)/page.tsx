@@ -1,6 +1,6 @@
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
-import { tonightStart } from '@/lib/tonight/night';
+import { nightTimeZone, tonightStart } from '@/lib/tonight/night';
 import { currentViewer } from '@/lib/viewer';
 import { TonightLive } from '../_tonight/TonightLive';
 import '../tonight.css';
@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function TonightPage() {
   const [snapshot, viewer] = await Promise.all([
-    loadTonight(createPublicClient(), { nightStart: tonightStart() }),
+    loadTonight(createPublicClient(), { nightStart: tonightStart(), timeZone: nightTimeZone() }),
     currentViewer(),
   ]);
 
