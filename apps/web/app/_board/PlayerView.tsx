@@ -14,12 +14,12 @@ import {
 import type { PlayerBoardView, RecentGame } from '@/lib/board/types';
 import { formatDuration } from '@/lib/discord/embeds';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
-import { renderWebName } from '@/lib/tonight/copy';
-import { SettlingChip, SettlingNote } from './parts';
+import { isNameless, renderWebName } from '@/lib/tonight/copy';
+import { NamelessHint, SettlingChip, SettlingNote } from './parts';
 import { RatingChart } from './RatingChart';
 
 /**
- * `/p/[puuid]` (M3.5, M3.8): the two numbers, the `Rating` history, the role record and
+ * `/p/[puuid]` (M3.5, M3.8, M3.10): the two numbers, the `Rating` history, the role record and
  * the last few games.
  *
  * **Two numbers with two names, and no third.** `Rating` and `Proven` are the board's words,
@@ -42,6 +42,9 @@ export interface PlayerViewProps {
 }
 
 export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
+  const nameless =
+    isNameless(player.name) || player.recent.some((game) => game.team.some((seat) => isNameless(seat.name)));
+
   return (
     <main className="cn-page">
       <header className="cn-strip">
@@ -107,6 +110,8 @@ export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
           </ul>
         </section>
       )}
+
+      {nameless ? <NamelessHint /> : null}
     </main>
   );
 }

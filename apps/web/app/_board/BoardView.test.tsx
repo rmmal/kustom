@@ -10,14 +10,15 @@ import {
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
 import { workedBoard, workedBoardRows } from '@/lib/testing/boardFixtures';
 import { workedPuuid } from '@/lib/testing/workedExample';
+import { NAMELESS_HINT } from '@/lib/tonight/copy';
 import { BoardView } from './BoardView';
 
 /**
- * `/leaderboard` (M3.5, M3.8) from fixture data.
+ * `/leaderboard` (M3.5, M3.8, M3.10) from fixture data.
  *
  * These stand in for the acceptance checks a night cannot be run to re-check: the primary
- * column never goes up, line 2 names `Rating` on every row, and the `settling` chip is per row
- * while its sentence is per page.
+ * column never goes up, line 2 names `Rating` on every row, the `settling` chip is per row and
+ * its sentence is per page, and a nameless player is `Someone` with one line under the list.
  */
 
 function draw(board: BoardViewModel = workedBoard(), viewerPuuid: string | null = null) {
@@ -129,6 +130,27 @@ describe('the still-settling marker (M3.8)', () => {
 
     expect(screen.queryByText(SETTLING_CHIP)).not.toBeInTheDocument();
     expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
+  });
+});
+
+describe('a player with no name (M3.10)', () => {
+  it('is `Someone`, with one line under the list and never a puuid', () => {
+    const [first, ...rest] = workedBoardRows();
+    draw({
+      season: { id: 'season-1', name: 'Season 1' },
+      rows: [{ ...(first as (typeof rest)[number]), name: null }, ...rest],
+    });
+
+    expect(screen.getByText('Someone')).toBeInTheDocument();
+    expect(screen.getAllByText(NAMELESS_HINT)).toHaveLength(1);
+    // Everything else about the row is unaffected.
+    expect(rows()[0]?.querySelector('.cn-proven')?.textContent).toContain('1548');
+  });
+
+  it('says nothing about names when every row has one', () => {
+    draw();
+
+    expect(screen.queryByText(NAMELESS_HINT)).not.toBeInTheDocument();
   });
 });
 

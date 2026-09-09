@@ -11,11 +11,11 @@ import {
 } from '@/lib/board/copy';
 import { formatStreak } from '@/lib/board/streak';
 import type { BoardRow, BoardView as BoardViewModel } from '@/lib/board/types';
-import { renderWebName } from '@/lib/tonight/copy';
-import { SettlingChip, SettlingNote } from './parts';
+import { isNameless, renderWebName } from '@/lib/tonight/copy';
+import { NamelessHint, SettlingChip, SettlingNote } from './parts';
 
 /**
- * `/leaderboard` (M3.5, M3.8). A pure function of one snapshot and who is looking, so
+ * `/leaderboard` (M3.5, M3.8, M3.10). A pure function of one snapshot and who is looking, so
  * every edge case in the brief — a season with no games, a player with none, a nameless row,
  * a near-tie on Proven — is a component test rather than a night of waiting.
  *
@@ -32,6 +32,7 @@ export interface BoardViewProps {
 
 export function BoardView({ board, viewerPuuid }: BoardViewProps) {
   const settling = board.rows.some((row) => row.settling);
+  const nameless = board.rows.some((row) => isNameless(row.name));
   const noGamesYet = board.rows.length === 0 || board.rows.every((row) => row.games === 0);
 
   return (
@@ -75,6 +76,8 @@ export function BoardView({ board, viewerPuuid }: BoardViewProps) {
           </>
         )}
       </section>
+
+      {nameless ? <NamelessHint /> : null}
     </main>
   );
 }

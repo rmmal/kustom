@@ -9,10 +9,12 @@ import {
 } from '@/lib/board/copy';
 import type { PlayerBoardView } from '@/lib/board/types';
 import { workedPlayer, workedRecentGame } from '@/lib/testing/boardFixtures';
+import { workedPuuid } from '@/lib/testing/workedExample';
+import { NAMELESS_HINT } from '@/lib/tonight/copy';
 import { PlayerView } from './PlayerView';
 
 /**
- * `/p/[puuid]` (M3.5, M3.8) from fixture data.
+ * `/p/[puuid]` (M3.5, M3.8, M3.10) from fixture data.
  *
  * The checks that matter here are the ones a page can get subtly wrong and nobody notices for
  * a week: both numbers under the two fixed labels, the chart plotting `Rating` and not Proven,
@@ -138,6 +140,41 @@ describe('the recent games', () => {
 
     draw(workedPlayer('Hana', { recent: [workedRecentGame({ won: true })] }));
     expect(screen.getByText('Won')).toBeInTheDocument();
+  });
+});
+
+describe('a player with no name (M3.10)', () => {
+  it('is `Someone` in the heading, with one line at the foot and never a puuid', () => {
+    draw(workedPlayer('Hana', { name: null }));
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Someone');
+    expect(screen.getAllByText(NAMELESS_HINT)).toHaveLength(1);
+    expect(document.body.textContent).not.toContain(workedPuuid('Hana'));
+  });
+
+  it('is `Someone` for a nameless teammate too, and the line is still said once', () => {
+    draw(
+      workedPlayer('Hana', {
+        recent: [
+          workedRecentGame({
+            team: [
+              { puuid: workedPuuid('Hana'), name: 'Hana', role: 'top' },
+              { puuid: 'puuid-x', name: null, role: 'jungle' },
+              { puuid: 'puuid-y', name: null, role: 'mid' },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    expect(screen.getAllByText('Someone')).toHaveLength(2);
+    expect(screen.getAllByText(NAMELESS_HINT)).toHaveLength(1);
+  });
+
+  it('says nothing about names when everybody on the page has one', () => {
+    draw();
+
+    expect(screen.queryByText(NAMELESS_HINT)).not.toBeInTheDocument();
   });
 });
 

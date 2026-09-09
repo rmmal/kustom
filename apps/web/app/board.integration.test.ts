@@ -1,15 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@customs/db';
 import { createClient } from '@supabase/supabase-js';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resolveLocalStack } from '@/lib/testing/localStack';
 
 /**
- * `/leaderboard` and `/p/[puuid]` against the Supabase CLI local stack (M3.5, M3.8).
+ * `/leaderboard` and `/p/[puuid]` against the Supabase CLI local stack (M3.5, M3.8, M3.10).
  *
  * What it proves that a component test cannot: both pages are assembled **with the anon key**,
  * through RLS, from real rows — the ordering is the database's rows put through
- * `provenRating`, and the names come out of `players_public` for the ids being rendered.
+ * `provenRating`, the names come out of `players_public` for the ids being rendered, and a
+ * player with a null name reaches the page as `Someone` with no puuid anywhere near it.
  *
  * Rows are namespaced by a run id and deleted afterwards; the active season is shared with
  * every other file here, so nothing asserts an absolute rank — only the order of this run's
@@ -33,6 +36,9 @@ if (stack === null) {
 
   const { loadBoard, loadPlayerBoard } = await import('@/lib/board/load');
   const { createPublicClient } = await import('@/lib/publicClient');
+  const { BoardView } = await import('./_board/BoardView');
+  const { PlayerView } = await import('./_board/PlayerView');
+  const { NAMELESS_HINT } = await import('@/lib/tonight/copy');
 
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -47,6 +53,22 @@ if (stack === null) {
     nameless: `it-${runId}-lb1`,
     ali: `it-${runId}-lb2`,
   };
+
+  /**
+   * The rendered page as a reader sees it: no tags, and the entities React escapes decoded.
+   * The apostrophe in `someone's` comes out of `renderToStaticMarkup` as `&#x27;`, and a
+   * puuid is in the href of a row's link on purpose — the page is keyed by PUUID — so "no
+   * puuid on the page" is a statement about text, not about markup.
+   */
+  function textOf(html: string): string {
+    return html
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&#x27;|&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
 
   let seasonId = '';
   const playerIds: Record<keyof typeof puuid, string> = { zoe: '', nameless: '', ali: '' };
@@ -166,6 +188,17 @@ if (stack === null) {
 
       expect(seeded).toMatchObject({ name: null, games: 0, wins: 0, streak: null, settling: true });
     });
+
+    it('renders the nameless row as `Someone`, with the hint once and no puuid', async () => {
+      const board = await loadBoard(anon);
+      const html = renderToStaticMarkup(createElement(BoardView, { board, viewerPuuid: null }));
+
+      const text = textOf(html);
+      expect(text).toContain('Someone');
+      // Never as text: the puuid is in the row's href, which is how the page is keyed.
+      expect(text).not.toContain(puuid.nameless);
+      expect(text.split(NAMELESS_HINT)).toHaveLength(2);
+    });
   });
 
   describe('the player page with the anon key', () => {
@@ -192,6 +225,22 @@ if (stack === null) {
       // Zoe's side only, in lane order, names read from `players_public` by these ids.
       expect(player?.recent[0]?.team.map((seat) => seat.role)).toEqual(['jungle', 'mid']);
       expect(player?.recent[0]?.team.map((seat) => seat.name)).toEqual([null, 'Zoe']);
+    });
+
+    it('renders a nameless teammate as `Someone` and never a puuid', async () => {
+      const player = await loadPlayerBoard(anon, puuid.zoe);
+      const html = renderToStaticMarkup(
+        createElement(PlayerView, { player: player as NonNullable<typeof player>, viewerPuuid: null }),
+      );
+
+      const text = textOf(html);
+      expect(text).toContain('Someone');
+      expect(text).not.toContain(puuid.nameless);
+      expect(text.split(NAMELESS_HINT)).toHaveLength(2);
+      // The delta is computed at render and adds up with the rating beside it: the newest
+      // game took Zoe from 25.6 to 25.2, which is 1536 to 1512. One string, so a rating copied
+      // off the page reads `1512 (−24)`, and a loss is `dim` at 400, never coloured by sign.
+      expect(html).toContain('1512<span class="cn-delta"> (−24)</span>');
     });
 
     it('is nobody for a puuid the database has never met', async () => {

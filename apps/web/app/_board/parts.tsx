@@ -1,10 +1,12 @@
 import { SETTLING_CHIP, SETTLING_SENTENCE } from '@/lib/board/copy';
+import { NAMELESS_HINT } from '@/lib/tonight/copy';
 
 /**
- * The pieces `/leaderboard` and `/p/[puuid]` share (M3.8).
+ * The pieces `/leaderboard` and `/p/[puuid]` share (M3.8, M3.10).
  *
  * They live in one file because both pages have to say them the same way: the chip is the same
- * chip and the sentence appears **once per page** on both.
+ * chip, the sentence appears **once per page** on both, and the nameless hint is the tonight
+ * page's own line, imported rather than retyped.
  */
 
 /**
@@ -24,4 +26,9 @@ export function SettlingChip() {
  */
 export function SettlingNote() {
   return <p className="cn-settling">{SETTLING_SENTENCE}</p>;
+}
+
+/** M3.10's quiet line, once per page, while any row on it reads `Someone`. */
+export function NamelessHint() {
+  return <p className="cn-hint">{NAMELESS_HINT}</p>;
 }
