@@ -1321,6 +1321,19 @@ still-settling sentence · `By role` · `Recent games` · the nameless hint.
   **Every other name is a link to that player's page**; the viewed player's own row is plain text. This is the
   one screen in the product that lists other people by name, and hopping between friends is what the board is
   for.
+- **A recent game shows its side as a rule, never as a fill** (designer, 2026-09-10, from the rendered page).
+  Each game block carries the 3px side rule on its leading edge and nothing else: the block's headline is
+  `Won` / `Lost`, and a 10% red tint behind the word `Won` teaches a reader that red means lost. The side
+  tint stays on the tonight page's team cards, where "which side?" is the question the card exists to answer;
+  here side is a detail under a result. Same rule in light and dark.
+- **Four of the five names are links, so they have to look like it without a hover** (designer, 2026-09-10,
+  from the rendered page). The teammates carry a `line`-coloured underline at rest, raised to `currentColor`
+  on hover and focus; the viewed player's own row is plain text with no underline. This is the one place in
+  the product where a link is not the only thing in its row and its neighbour is not a link, and the page is
+  read on a phone, which has no hover to reveal anything. And the `brand` inset rule in that lineup marks
+  **one** row — the player whose page this is. It is not also drawn on the signed-in viewer's seat: with
+  twenty friends and five seats the viewer is often in the same lineup, and two identical marks meaning two
+  different things leave a reader unable to tell which row the page is about.
 - **The back link is `← Leaderboard`** until the shell lands, and is deleted then: the `Leaderboard` tab is
   the same destination, and a page does not carry two ways to one place.
 - **The player's name outranks the section headings.** In Floodlit the name is the display cut, the two
