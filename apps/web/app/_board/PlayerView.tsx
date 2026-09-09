@@ -15,10 +15,11 @@ import type { PlayerBoardView, RecentGame } from '@/lib/board/types';
 import { formatDuration } from '@/lib/discord/embeds';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import { renderWebName } from '@/lib/tonight/copy';
+import { SettlingChip, SettlingNote } from './parts';
 import { RatingChart } from './RatingChart';
 
 /**
- * `/p/[puuid]` (M3.5): the two numbers, the `Rating` history, the role record and
+ * `/p/[puuid]` (M3.5, M3.8): the two numbers, the `Rating` history, the role record and
  * the last few games.
  *
  * **Two numbers with two names, and no third.** `Rating` and `Proven` are the board's words,
@@ -57,7 +58,7 @@ export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
       <section className="cn-block">
         {/*
          * Above the chart, once: the number people arrive knowing and the primary number,
-         * under the same two labels the board uses.
+         * under the same two labels the board uses. The chip sits beside them (M3.8).
          */}
         <p className="cn-numbers">
           <span className="cn-number">
@@ -68,6 +69,7 @@ export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
             <span className="cn-number-label">{PROVEN_LABEL}</span>{' '}
             <span className="cn-num cn-number-value">{player.proven}</span>
           </span>
+          {player.settling ? <SettlingChip /> : null}
         </p>
 
         {player.history.length === 0 ? (
@@ -75,6 +77,9 @@ export function PlayerView({ player, viewerPuuid }: PlayerViewProps) {
         ) : (
           <RatingChart history={player.history} seed={player.seed} />
         )}
+
+        {/* Under the chart, once per page (M3.8). */}
+        {player.settling ? <SettlingNote /> : null}
       </section>
 
       {player.roles.length === 0 ? null : (

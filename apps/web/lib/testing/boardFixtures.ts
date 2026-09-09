@@ -1,4 +1,5 @@
 import { displayRating, seedFromRank } from '@customs/core';
+import { SETTLING_GAMES } from '../board/copy';
 import { sortBoardRows } from '../board/order';
 import type { BoardRow, BoardView, PlayerBoardView, RecentGame } from '../board/types';
 import { provenRating } from '../ratingDisplay';
@@ -13,7 +14,7 @@ import { WORKED_ROSTER, workedPuuid } from './workedExample';
  * doc line for line. Nothing is hand-computed: `provenRating` and `displayRating` do it.
  *
  * The game counts are the design doc's illustrative ones (the docs pin none), which is what
- * puts Nadia and Yuki under thirty.
+ * puts Nadia and Yuki under thirty and therefore under the `settling` chip.
  */
 
 export const WORKED_GAMES: Readonly<Record<string, number>> = {
@@ -48,6 +49,7 @@ export function workedBoardRows(): BoardRow[] {
         wins,
         losses: games - wins,
         streak: games === 0 ? null : ({ kind: 'L', length: 2 } as const),
+        settling: games < SETTLING_GAMES,
       };
     }),
   );
@@ -76,6 +78,7 @@ export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> 
     games,
     wins,
     losses: games - wins,
+    settling: games < SETTLING_GAMES,
     seed,
     // A short walk that ends where the roster says they are, so the chart's last point and the
     // `Rating` beside it are the same number — and that starts above the seed, so the

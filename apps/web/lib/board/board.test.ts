@@ -2,14 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { provenRating } from '../ratingDisplay';
 import { workedBoardRows } from '../testing/boardFixtures';
 import { CHART_HEIGHT, CHART_WIDTH, chartGeometry } from './chart';
-import { gamesLabel, NO_GAMES_YET, SETTLING_GAMES, SETTLING_SENTENCE_SHORT, winLossLabel } from './copy';
+import {
+  gamesLabel,
+  NO_GAMES_YET,
+  SETTLING_GAMES,
+  SETTLING_SENTENCE,
+  SETTLING_SENTENCE_SHORT,
+  winLossLabel,
+} from './copy';
 import { compareBoardRows, sortBoardRows } from './order';
 import { currentStreak, formatStreak } from './streak';
 import type { BoardRow } from './types';
 
 /**
- * The pure half of the board (M3.5): the sort, the streak, the chart's geometry and the copy
- * product owns. Everything with a page around it is in `app/_board/*.test.tsx`; everything
+ * The pure half of the board (M3.5, M3.8): the sort, the streak, the chart's geometry and the
+ * copy product owns. Everything with a page around it is in `app/_board/*.test.tsx`; everything
  * with a database behind it is in `app/board.integration.test.ts`.
  */
 
@@ -23,19 +30,28 @@ function row(overrides: Partial<BoardRow>): BoardRow {
     wins: 20,
     losses: 20,
     streak: null,
+    settling: false,
     ...overrides,
   };
 }
 
 describe('the copy product owns', () => {
+  it('is the still-settling sentence, word for word', () => {
+    expect(SETTLING_SENTENCE).toBe(
+      'The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.',
+    );
+  });
+
   it('is the short form Discord gets as a footer', () => {
     expect(SETTLING_SENTENCE_SHORT).toBe(
       "Proven stays below a new player's rating until the board has seen about 30 games.",
     );
   });
 
-  it('says the number the threshold is set to, rather than a typed one', () => {
+  // M3.8's acceptance check: the number in the sentence is the threshold the marker uses.
+  it('says the same number the marker switches off at', () => {
     expect(SETTLING_GAMES).toBe(30);
+    expect(SETTLING_SENTENCE).toContain(`about ${SETTLING_GAMES} games`);
     expect(SETTLING_SENTENCE_SHORT).toContain(`about ${SETTLING_GAMES} games`);
   });
 

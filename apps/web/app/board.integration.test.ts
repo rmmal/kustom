@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resolveLocalStack } from '@/lib/testing/localStack';
 
 /**
- * `/leaderboard` and `/p/[puuid]` against the Supabase CLI local stack (M3.5).
+ * `/leaderboard` and `/p/[puuid]` against the Supabase CLI local stack (M3.5, M3.8).
  *
  * What it proves that a component test cannot: both pages are assembled **with the anon key**,
  * through RLS, from real rows — the ordering is the database's rows put through
@@ -154,7 +154,7 @@ if (stack === null) {
       const zoe = board.rows.find((row) => row.puuid === puuid.zoe);
       const ali = board.rows.find((row) => row.puuid === puuid.ali);
 
-      expect(zoe).toMatchObject({ games: 2, wins: 1, losses: 1 });
+      expect(zoe).toMatchObject({ games: 2, wins: 1, losses: 1, settling: true });
       // Newest game first: Zoe was on the losing side of it, Ali on the winning side.
       expect(zoe?.streak).toEqual({ kind: 'L', length: 1 });
       expect(ali?.streak).toEqual({ kind: 'W', length: 1 });
@@ -164,7 +164,7 @@ if (stack === null) {
       const board = await loadBoard(anon);
       const seeded = board.rows.find((row) => row.puuid === puuid.nameless);
 
-      expect(seeded).toMatchObject({ name: null, games: 0, wins: 0, streak: null });
+      expect(seeded).toMatchObject({ name: null, games: 0, wins: 0, streak: null, settling: true });
     });
   });
 

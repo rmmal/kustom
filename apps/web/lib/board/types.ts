@@ -33,6 +33,8 @@ export interface BoardRow {
   losses: number;
   /** `null` for a player with no rated games this season. */
   streak: Streak | null;
+  /** Fewer than 30 recorded games (M3.8). */
+  settling: boolean;
 }
 
 export interface BoardView {
@@ -83,6 +85,7 @@ export interface PlayerBoardView {
   games: number;
   wins: number;
   losses: number;
+  settling: boolean;
   /** `round(seedMu * 60)`: the chart's reference line, in the series' own units. */
   seed: number;
   /** The `Rating` series in `started_at` order, oldest first. Empty for no games. */

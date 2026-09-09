@@ -1,16 +1,23 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { BOARD_LEGEND, NO_GAMES_YET, NO_SEASON_BOARD } from '@/lib/board/copy';
+import {
+  BOARD_LEGEND,
+  NO_GAMES_YET,
+  NO_SEASON_BOARD,
+  SETTLING_CHIP,
+  SETTLING_SENTENCE,
+} from '@/lib/board/copy';
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
 import { workedBoard, workedBoardRows } from '@/lib/testing/boardFixtures';
 import { workedPuuid } from '@/lib/testing/workedExample';
 import { BoardView } from './BoardView';
 
 /**
- * `/leaderboard` (M3.5) from fixture data.
+ * `/leaderboard` (M3.5, M3.8) from fixture data.
  *
  * These stand in for the acceptance checks a night cannot be run to re-check: the primary
- * column never goes up and line 2 names `Rating` on every row.
+ * column never goes up, line 2 names `Rating` on every row, and the `settling` chip is per row
+ * while its sentence is per page.
  */
 
 function draw(board: BoardViewModel = workedBoard(), viewerPuuid: string | null = null) {
@@ -61,7 +68,9 @@ describe('the two numbers', () => {
     draw();
 
     const nadia = rows().find((row) => within(row).queryByText('Nadia'));
-    expect(nadia?.querySelector('.cn-row-meta')?.textContent).toBe('28 games · 14W 14L · L2');
+    expect(nadia?.querySelector('.cn-row-meta')?.textContent).toBe(
+      `28 games · 14W 14L · L2 · ${SETTLING_CHIP}`,
+    );
     expect(nadia?.querySelector('.cn-row-rating')?.textContent).toBe('Rating 1266');
   });
 });
@@ -92,6 +101,37 @@ describe('the row', () => {
   });
 });
 
+describe('the still-settling marker (M3.8)', () => {
+  it('chips the players under 30 games and nobody else', () => {
+    draw();
+
+    const chipped = rows()
+      .filter((row) => within(row).queryByText(SETTLING_CHIP))
+      .map((row) => row.querySelector('.cn-row-name')?.textContent);
+    expect(chipped).toEqual(['Nadia', 'Yuki']);
+  });
+
+  it('says the sentence once on the page, not once per row', () => {
+    draw();
+
+    expect(screen.getAllByText(SETTLING_SENTENCE)).toHaveLength(1);
+  });
+
+  it('disappears at 30 games, with the sentence', () => {
+    const settled = workedBoardRows().map((row) => ({
+      ...row,
+      games: 30,
+      wins: 15,
+      losses: 15,
+      settling: false,
+    }));
+    draw({ season: { id: 'season-1', name: 'Season 1' }, rows: settled });
+
+    expect(screen.queryByText(SETTLING_CHIP)).not.toBeInTheDocument();
+    expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
+  });
+});
+
 describe('the empty states', () => {
   it('is a heading, the sentence and one line when the season has no games yet', () => {
     const seeded = workedBoardRows().map((row) => ({
@@ -100,10 +140,12 @@ describe('the empty states', () => {
       wins: 0,
       losses: 0,
       streak: null,
+      settling: true,
     }));
     draw({ season: { id: 'season-1', name: 'Season 1' }, rows: seeded });
 
     expect(screen.getByText(NO_GAMES_YET)).toBeInTheDocument();
+    expect(screen.getByText(SETTLING_SENTENCE)).toBeInTheDocument();
     // Not an empty page: a friend seeded last night still finds themselves, with `0 games`.
     expect(rows()).toHaveLength(10);
     expect(rows()[0]?.querySelector('.cn-row-meta')?.textContent).toContain('0 games');

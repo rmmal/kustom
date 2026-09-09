@@ -1,6 +1,6 @@
 /**
- * Every word `/leaderboard` and `/p/[puuid]` say (M3.5), in one file, spelled the way product
- * and `docs/05-design.md` spell them.
+ * Every word `/leaderboard` and `/p/[puuid]` say (M3.5, M3.8, M3.10), in one file, spelled the
+ * way product and `docs/05-design.md` spell them.
  *
  * The two names are fixed on every surface — **Proven** (`round(ordinal * 60)`, the sort key
  * and the primary number) and **Rating** (`round(mu * 60)`, the number the embeds print) — and
@@ -25,18 +25,27 @@ export const BOARD_LEGEND = `${PROVEN_LABEL} · ${RATING_LABEL}`;
 export const STANDINGS_LABEL = 'standings';
 
 /**
- * The number in the footer sentence below. Product's round number for M1.3's finding that a
- * mis-seeded player's sigma first falls below 5.00 somewhere between game 26 and game 36; the
- * marker that switches off at it is M3.8.
+ * When the marker switches off. Product's round number for M1.3's finding that a mis-seeded
+ * player's sigma first falls below 5.00 somewhere between game 26 and game 36 (M3.8 brief):
+ * the sentence says "about 30 games" and the chip switches off at exactly 30.
  */
 export const SETTLING_GAMES = 30;
 
+/** The chip. A word, not a warning: no colour, no dot, no emoji, no asterisk. */
+export const SETTLING_CHIP = 'settling';
+
 /**
- * The short form the nightly Discord embed carries as its footer (`05-design.md`).
+ * The sentence, once per page — under the leaderboard heading, under the rating chart on the
+ * player page — and never once per row (product, 2026-09-08 — final, `05-design.md`).
  *
- * The number is interpolated from {@link SETTLING_GAMES} rather than typed, so the sentence and
- * the threshold cannot drift apart.
+ * The number is interpolated from {@link SETTLING_GAMES} rather than typed, because the M3.8
+ * acceptance check is that the number in the sentence is the threshold the marker itself uses.
+ * `board/copy.test.ts` pins the assembled string against product's words.
  */
+export const SETTLING_SENTENCE =
+  `The board sorts on ${PROVEN_LABEL}, which stays below your rating until it has seen about ${SETTLING_GAMES} games. New players start low on purpose and climb as they play.` as const;
+
+/** The short form, for the one-line Discord footer where two sentences will not fit. */
 export const SETTLING_SENTENCE_SHORT =
   `${PROVEN_LABEL} stays below a new player's rating until the board has seen about ${SETTLING_GAMES} games.` as const;
 

@@ -4,6 +4,7 @@ import { inLaneOrder, LANE_ORDER } from '../laneOrder';
 import type { PublicClient } from '../publicClient';
 import { provenRating } from '../ratingDisplay';
 import type { PlayerName } from '../tonight/types';
+import { SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
 import { currentStreak } from './streak';
 import type {
@@ -107,6 +108,7 @@ export async function loadBoard(client: PublicClient): Promise<BoardView> {
       wins,
       losses: games - wins,
       streak: currentStreak(results.get(player.id) ?? []),
+      settling: games < SETTLING_GAMES,
     };
   });
 
@@ -133,6 +135,7 @@ export async function loadPlayerBoard(client: PublicClient, puuid: string): Prom
       games: 0,
       wins: 0,
       losses: 0,
+      settling: true,
       seed,
       history: [],
       roles: [],
@@ -170,6 +173,7 @@ export async function loadPlayerBoard(client: PublicClient, puuid: string): Prom
     games: gamesPlayed,
     wins,
     losses: gamesPlayed - wins,
+    settling: gamesPlayed < SETTLING_GAMES,
     seed,
     history: historySeries(played),
     roles: roleRecord(played),

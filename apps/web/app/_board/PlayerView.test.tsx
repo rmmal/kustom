@@ -1,16 +1,22 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { NO_GAMES_YET, NO_SEASON_BOARD, SEED_LABEL } from '@/lib/board/copy';
+import {
+  NO_GAMES_YET,
+  NO_SEASON_BOARD,
+  SEED_LABEL,
+  SETTLING_CHIP,
+  SETTLING_SENTENCE,
+} from '@/lib/board/copy';
 import type { PlayerBoardView } from '@/lib/board/types';
 import { workedPlayer, workedRecentGame } from '@/lib/testing/boardFixtures';
 import { PlayerView } from './PlayerView';
 
 /**
- * `/p/[puuid]` (M3.5) from fixture data.
+ * `/p/[puuid]` (M3.5, M3.8) from fixture data.
  *
  * The checks that matter here are the ones a page can get subtly wrong and nobody notices for
  * a week: both numbers under the two fixed labels, the chart plotting `Rating` and not Proven,
- * a delta that adds up, and the five in lane order.
+ * a delta that adds up, the five in lane order, and the chip and its sentence.
  */
 
 function draw(player: PlayerBoardView = workedPlayer(), viewerPuuid: string | null = null) {
@@ -69,6 +75,22 @@ describe('the rating history chart', () => {
 
     expect(screen.getByText(NO_GAMES_YET)).toBeInTheDocument();
     expect(container.querySelector('svg')).not.toBeInTheDocument();
+  });
+});
+
+describe('the still-settling marker (M3.8)', () => {
+  it('chips a player under 30 games and says the sentence once', () => {
+    draw(workedPlayer('Nadia'));
+
+    expect(screen.getByText(SETTLING_CHIP)).toBeInTheDocument();
+    expect(screen.getAllByText(SETTLING_SENTENCE)).toHaveLength(1);
+  });
+
+  it('is gone at 30 games, chip and sentence together', () => {
+    draw(workedPlayer('Nadia', { games: 30, settling: false }));
+
+    expect(screen.queryByText(SETTLING_CHIP)).not.toBeInTheDocument();
+    expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
   });
 });
 
