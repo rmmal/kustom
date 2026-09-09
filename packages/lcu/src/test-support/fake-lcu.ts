@@ -47,6 +47,11 @@ export interface FakeLcuOptions {
   readonly password?: string;
   /** Keyed by `"<METHOD> <path>"`; the path includes the query string. */
   readonly routes?: Readonly<Record<string, CannedRoute>>;
+  /**
+   * Consulted before `routes` for every request: a stateful stand-in (a lobby that exists after a POST, a
+   * side that changes after switch-teams). Return undefined to fall through to `routes`.
+   */
+  readonly handle?: (request: RecordedRequest) => CannedRoute | undefined;
   readonly cert?: TestCertName;
   /** When true, requests with a wrong Authorization header get a 401. Default true. */
   readonly enforceAuth?: boolean;
@@ -114,7 +119,7 @@ export async function startFakeLcu(options: FakeLcuOptions = {}): Promise<FakeLc
           );
           return;
         }
-        const route = routes[`${record.method} ${record.path}`];
+        const route = options.handle?.(record) ?? routes[`${record.method} ${record.path}`];
         if (!route) {
           res.writeHead(404, { 'content-type': 'application/json' });
           res.end(

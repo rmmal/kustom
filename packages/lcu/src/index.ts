@@ -42,6 +42,7 @@ export {
   patchFromVersion,
   readFixture,
   type ShapeDiff,
+  writeFixture,
 } from './fixtures.js';
 export {
   createLockfileDiscovery,
@@ -199,3 +200,25 @@ export {
   type TlsMode,
   tlsConnectionOptions,
 } from './tls.js';
+export {
+  assertLobbyWritePath,
+  type CreateLobbyOptions,
+  CUSTOM_LOBBY_DEFAULTS,
+  CUSTOM_LOBBY_MUTATOR_ID,
+  createLobbyBody,
+  describeWriteResponse,
+  type InviteTarget,
+  inviteBody,
+  inviteWithFallback,
+  isLobbyWritePath,
+  isLobbyWriteVerified,
+  LOBBY_WRITE_PATHS,
+  LOBBY_WRITE_REFERENCE_ROW,
+  LOBBY_WRITE_VERIFICATION,
+  type LobbyWrite,
+  type LobbyWriteKind,
+  postCreateLobby,
+  postInvite,
+  postSwitchTeams,
+  type WriteVerification,
+} from './writes.js';

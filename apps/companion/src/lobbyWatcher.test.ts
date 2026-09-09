@@ -274,6 +274,23 @@ describe('LobbyWatcher: posting the roster', () => {
     expect(posted?.fields).toMatchObject({ partyId: PARTY, members: 1, status: 'open', rosterFrozen: false });
   });
 
+  it('carries the password this process set for the party (M4.1 `passwordFor`), and null for any other party', async () => {
+    const h = await setup({
+      watcher: { passwordFor: (partyId) => (partyId === PARTY ? '4821' : null) },
+    });
+    update(h, lobbyFixture('lobby'));
+    await h.watcher.settled();
+    expect(h.lobbyPosts()[0]?.lobbyPassword).toBe('4821');
+    expect(companionLobbyPayloadSchema.safeParse(h.lobbyPosts()[0]).success).toBe(true);
+    // The password is not a secret (it goes on the tonight page), but the log line still does not carry it.
+    expect(h.logger.lines.some((line) => JSON.stringify(line).includes('4821'))).toBe(false);
+
+    const other = await setup({ watcher: { passwordFor: () => null } });
+    update(other, lobbyFixture('lobby'));
+    await other.watcher.settled();
+    expect(other.lobbyPosts()[0]?.lobbyPassword).toBeNull();
+  });
+
   it('posts the two-player and spectator fixtures with sides and the spectator flag (checks 3, 4)', async () => {
     const h = await setup({
       lcuRoutes: { [FRIEND_LOOKUP]: { status: 404, body: { errorCode: 'RPC_ERROR' } } },

@@ -208,7 +208,10 @@ watching: on lobby event -> POST /api/companion/lobby
   `%APPDATA%/customs-night/queue/` until the API has them (M2.3: written before the first POST, replayed on
   start, deleted on a 2xx or a permanent 4xx), and keeps the backfill cache in
   `%APPDATA%/customs-night/backfill.json` (M5.1: which past customs were handled; deleting it costs fetches,
-  nothing else). Nothing else is written to disk.
+  nothing else), and the execute-once record `%APPDATA%/customs-night/commands-done.json` (M4.1: every
+  command this companion finished, written after the client call and before the ack, so a lost ack is re-sent
+  from it and never re-run; 200 entries, 24 h). `--verify-commands` writes its report beside them. Nothing
+  else is written to disk.
 
 ## Web (`apps/web`)
 
