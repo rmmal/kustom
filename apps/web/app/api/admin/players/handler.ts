@@ -1,6 +1,7 @@
 import type { NextResponse } from 'next/server';
 import {
   setPlayerAdmin,
+  setPlayerBackfill,
   setPlayerDiscordId,
   setPlayerDisplayName,
   setPlayerRoles,
@@ -54,6 +55,14 @@ function runAction(input: AdminPlayersRequest, context: AdminContext): Promise<A
         isAdmin: input.isAdmin,
         actingPlayerId: context.admin.playerId,
       });
+    case 'set-backfill':
+      // No self-rule here, unlike `set-admin`: approving your own companion is the ordinary
+      // case (M5.1's live check is the user approving themselves), and revoking backfill locks
+      // nobody out of anything.
+      return setPlayerBackfill(context.client, {
+        playerId: input.playerId,
+        approved: input.approved,
+      });
   }
 }
 
@@ -71,5 +80,11 @@ function noticeFor(input: AdminPlayersRequest): string {
       return input.discordId === null ? 'Discord id cleared' : 'Discord id linked';
     case 'set-admin':
       return input.isAdmin ? 'admin granted' : 'admin removed';
+    case 'set-backfill':
+      // The second sentence is the whole reason M5.1 and M5.2 ship together: an admin who
+      // approves someone and then looks at the leaderboard must not think backfill is broken.
+      return input.approved
+        ? 'backfill allowed. Backfilled games are not rated until the ratings are rebuilt.'
+        : 'backfill revoked';
   }
 }

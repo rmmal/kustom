@@ -19,12 +19,13 @@ pnpm --filter web build
 pnpm --filter web mint-token <puuid> [label]   # /admin/tokens does this with a button now
 ```
 
+
 Environment: copy the `apps/web` block of the repo's `.env.example` into `apps/web/.env.local`.
 `supabase status -o env` (from `packages/db`) prints the local URL and keys.
 
 ## The companion API
 
-Four routes, all bearer-token gated by `withCompanionAuth` / `withCompanionIdentity`
+Five routes, all bearer-token gated by `withCompanionAuth` / `withCompanionIdentity`
 (`lib/companionRoute.ts`), which resolves the identity from the token **before** it parses the
 body. The token decides who the caller is; nothing in a payload does.
 
@@ -34,6 +35,9 @@ POST /api/companion/lobby   the whole member list, every time it changes. Idempo
                             runs the state machine; answers ranksNeeded[] (M2.4) and recheckInMs (M2.5).
 POST /api/companion/game    phase in_progress | eog. Idempotent on gameId; eog runs the rating fold.
 POST /api/companion/rank    one queue's rank reading for one puuid.
+POST /api/companion/backfill/scan
+                            M5.1: { gameIds } -> { approved, unknown }. Whether this player may send
+                            match history at all, and which of those ids we do not already have.
 ```
 
 Request **and** response schemas live in `@customs/db/schemas` (`companion.ts`,
@@ -42,6 +46,14 @@ definitions — see "The companion wire contract" in `packages/db/README.md` for
 rules and where each value comes from in the client. Refusals before any write: 403 for a lobby or
 game the caller was not in, 422 for a non-custom game, a block nobody won (a remake or
 `TerminatedInError`) or a duplicated participant, 400 for a body that does not parse.
+
+**Backfill (M5.1).** A game posted with `source: 'backfill'` is the same body walked out of match
+history: the participant check has **no** lobby fallback (the token's player must be on the
+scoreboard), the game is linked to no lobby, nothing is posted to Discord, and the rating fold does
+not run — the answer is `{ rated: false, reason: 'backfill' }` and
+`pnpm --filter web rebuild-ratings` is what turns a batch into ratings. Whether a companion may
+send them at all is `players.backfill_approved_at`, flipped by an admin on `/admin/players` and
+read by the scan route.
 
 ## The lobby state machine (M2.5)
 

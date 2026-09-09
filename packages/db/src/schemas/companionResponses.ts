@@ -98,6 +98,17 @@ export const companionGameResponseSchema = z.object({
   lobbyId: z.uuid().nullable(),
   /** Rows in `game_players` for this game. */
   participants: z.number().int().nonnegative(),
+  /**
+   * Whether the rating fold ran for this post (M5.1). Optional so an older companion, and the
+   * `in_progress` phase, are unaffected: the field the companion acts on is still `created`.
+   *
+   * A `source: 'backfill'` game is always `{ rated: false, reason: 'backfill' }` — stored, in
+   * order, waiting for `pnpm --filter web rebuild-ratings` (M5.2). For an end-of-game post
+   * `reason` names M2.5's gate when it did not rate: `duration`, `participant-count`,
+   * `side-split`, `already-rated`.
+   */
+  rated: z.boolean().optional(),
+  reason: z.string().nullable().optional(),
 });
 
 /**

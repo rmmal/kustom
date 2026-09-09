@@ -1,21 +1,19 @@
-import { type Rating, rateGame, seedFromRank } from '@customs/core';
+import { type Rating, seedFromRank } from '@customs/core';
 import type { RatingInsert, SideValue } from '@customs/db';
-import { MIN_RATED_DURATION_S, PLAYERS_PER_GAME } from '../lobbyState';
+import { PLAYERS_PER_GAME } from '../lobbyState';
 import type { ServiceClient } from '../supabase';
+import { type FoldSkipReason, foldGame, gateGame, mustGet } from './fold';
 
 /**
  * The rating fold (M2.5): what an end-of-game block does to the leaderboard.
  *
  * `rateGame` comes from `@customs/core` and the maths is not repeated here. This file is the
- * gate, the claim, the read of the ratings that went in, and the write of the ones that came
- * out — in `started_at` order for one game, which is the same fold M5.2 replays for all of
- * them.
+ * claim, the read of the ratings that went in, and the write of the ones that came out — in
+ * `started_at` order for one game. The gate and the fold itself are `fold.ts`, shared with the
+ * rebuild (M5.2), which replays exactly this for every game of a season.
  */
 
-/** Five a side. Anything else is not a game we rate. */
-const TEAM_SIZE = PLAYERS_PER_GAME / 2;
-
-export type RatingSkipReason = 'already-rated' | 'participant-count' | 'side-split' | 'duration';
+export type RatingSkipReason = FoldSkipReason | 'already-rated' | 'backfill';
 
 export interface RatingFoldResult {
   rated: boolean;
@@ -35,33 +33,34 @@ interface GamePlayerRow {
 }
 
 /**
+ * A game the route stored but deliberately did not fold (M5.1).
+ *
+ * `source: 'backfill'` arrives out of `started_at` order by definition, so rating it as it
+ * lands would write numbers the first rebuild throws away. It is stored with four null rating
+ * columns and `pnpm --filter web rebuild-ratings` (M5.2) is what turns a batch into ratings.
+ */
+export const BACKFILL_NOT_RATED: RatingFoldResult = { rated: false, reason: 'backfill', claimed: 0 };
+
+/**
  * Rate one stored game, once.
  *
- * The gate first: ten `game_players` rows, five a side, `duration_s` over 300 seconds. M1.5
- * stores *every* `CUSTOM_GAME` block — remakes and four-minute surrenders included — so this
- * is where a game nobody played stops. 300 exactly is not rated. The row is kept either way;
- * only `ratings` is left alone.
+ * The gate first (`fold.ts`): ten `game_players` rows, five a side, `duration_s` over 300
+ * seconds. M1.5 stores *every* `CUSTOM_GAME` block — remakes and four-minute surrenders
+ * included — so this is where a game nobody played stops. 300 exactly is not rated. The row is
+ * kept either way; only `ratings` is left alone.
  */
 export async function rateStoredGame(client: ServiceClient, gameId: string): Promise<RatingFoldResult> {
   const game = await selectGame(client, gameId);
   const rows = await selectGamePlayers(client, gameId);
 
-  if (rows.length !== PLAYERS_PER_GAME) {
-    console.info(`rating: game ${gameId} not rated: ${rows.length} participants, needs ten`);
-    return { rated: false, reason: 'participant-count', claimed: 0 };
-  }
-  const blueRows = rows.filter((row) => row.side === 100).sort(byPuuid);
-  const redRows = rows.filter((row) => row.side === 200).sort(byPuuid);
-  if (blueRows.length !== TEAM_SIZE || redRows.length !== TEAM_SIZE) {
+  const gate = gateGame(rows, game.durationS);
+  if (!gate.ok) {
     console.info(
-      `rating: game ${gameId} not rated: sides are ${blueRows.length} and ${redRows.length}, needs five each`,
+      `rating: game ${gameId} not rated: ${gate.reason} (${rows.length} rows, ${game.durationS}s)`,
     );
-    return { rated: false, reason: 'side-split', claimed: 0 };
+    return { rated: false, reason: gate.reason, claimed: 0 };
   }
-  if (game.durationS <= MIN_RATED_DURATION_S) {
-    console.info(`rating: game ${gameId} not rated: ${game.durationS}s is not over ${MIN_RATED_DURATION_S}s`);
-    return { rated: false, reason: 'duration', claimed: 0 };
-  }
+  const { blue: blueRows, red: redRows } = gate;
 
   // Ordered by puuid on both sides, so the arrays handed to core are deterministic and a
   // rebuild (M5.2) reproduces exactly these numbers.
@@ -79,19 +78,7 @@ export async function rateStoredGame(client: ServiceClient, gameId: string): Pro
     );
   }
 
-  const rated = rateGame(
-    blueRows.map((row) => mustGet(before, row.playerId)),
-    redRows.map((row) => mustGet(before, row.playerId)),
-    game.winningSide,
-  );
-
-  const after = new Map<string, Rating>();
-  blueRows.forEach((row, index) => {
-    after.set(row.playerId, mustIndex(rated.blue, index));
-  });
-  redRows.forEach((row, index) => {
-    after.set(row.playerId, mustIndex(rated.red, index));
-  });
+  const after = foldGame(blueRows, redRows, before, game.winningSide);
 
   // The claim is the null rating column, not a new column: whoever writes the first row owns
   // the fold. Two companions post the same game and both requests get this far; the loser's
@@ -122,22 +109,6 @@ export async function rateStoredGame(client: ServiceClient, gameId: string): Pro
   await applyRatings(client, game.seasonId, game.winningSide, rows, after, stored);
 
   return { rated: true, reason: null, claimed };
-}
-
-function byPuuid(a: GamePlayerRow, b: GamePlayerRow): number {
-  return a.puuid < b.puuid ? -1 : a.puuid > b.puuid ? 1 : 0;
-}
-
-function mustGet(map: Map<string, Rating>, key: string): Rating {
-  const value = map.get(key);
-  if (value === undefined) throw new Error(`rating: no rating for player ${key}`);
-  return value;
-}
-
-function mustIndex(list: readonly Rating[], index: number): Rating {
-  const value = list[index];
-  if (value === undefined) throw new Error(`rating: core returned no rating at index ${index}`);
-  return value;
 }
 
 interface StoredGame {

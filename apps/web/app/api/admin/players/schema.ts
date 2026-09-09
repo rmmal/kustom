@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { booleanFieldSchema, idSchema, nullableRoleSchema, nullableTextSchema } from '@/lib/admin/formValues';
 
 /**
- * `POST /api/admin/players`. One route, four actions, discriminated on `action` — the repo's
+ * `POST /api/admin/players`. One route, five actions, discriminated on `action` — the repo's
  * convention (`CLAUDE.md`) and what lets a plain HTML form say which button was pressed with a
  * hidden field.
  *
@@ -46,18 +46,29 @@ export const setAdminRequestSchema = z.object({
   isAdmin: booleanFieldSchema,
 });
 
+/**
+ * Backfill approval (M5.1). Same shape and same reason as `set-admin`: the target state, so a
+ * form that has been sitting open in a tab cannot flip the wrong way.
+ */
+export const setBackfillRequestSchema = z.object({
+  action: z.literal('set-backfill'),
+  playerId: idSchema,
+  approved: booleanFieldSchema,
+});
+
 export const adminPlayersRequestSchema = z.discriminatedUnion('action', [
   setRolesRequestSchema,
   setNameRequestSchema,
   setDiscordRequestSchema,
   setAdminRequestSchema,
+  setBackfillRequestSchema,
 ]);
 
 export type AdminPlayersRequest = z.infer<typeof adminPlayersRequestSchema>;
 
 export const adminPlayersResponseSchema = z.object({
   ok: z.literal(true),
-  action: z.enum(['set-roles', 'set-name', 'set-discord', 'set-admin']),
+  action: z.enum(['set-roles', 'set-name', 'set-discord', 'set-admin', 'set-backfill']),
   playerId: z.uuid(),
 });
 

@@ -11,7 +11,10 @@ import { selectLatestLobby } from './lobby';
 import { ensurePlayers } from './players';
 
 /**
- * Game ingest from an end-of-game block.
+ * Game ingest from an end-of-game block, live (`source: 'eog'`) or walked out of match history
+ * months later (`source: 'backfill'`, M5.1). One writer, because the row is the same row: the
+ * differences are that a backfilled game is linked to no lobby and is not rated inline, and
+ * both of those are decided by the caller and the two lines below.
  *
  * Deliberately not here: `rateGame` and the `ratings` update (`rating.ts`) and moving the lobby
  * to `finished` (`lobbyState.ts`, from the game route). This writes `games` and `game_players`
@@ -19,7 +22,9 @@ import { ensurePlayers } from './players';
  * from — including a rebuild (M5.2) that replays the fold from scratch.
  *
  * Idempotency is on `lcu_game_id`: two companions in the same game both post, and the second
- * post changes no rows.
+ * post changes no rows. That is also what makes an eog row win over a backfill of the same
+ * game — `ignoreDuplicates` means not one column of the stored row changes, whichever arrived
+ * first (M5.1).
  */
 
 /** The only `gameType` we ingest. Anything else is not our night (`M2.5`). */
@@ -65,7 +70,14 @@ export async function ingestEogGame(
   client: ServiceClient,
   payload: CompanionGameEogPayloadWithWinner,
 ): Promise<GameIngestResult> {
-  const lobbyId = await findLobbyId(client, payload.partyId ?? null, payload.startedAt);
+  // A backfilled game belongs to no lobby (M5.1). The contract says the body carries no
+  // `partyId` at all, and this is the belt to that braces: a months-old game must never be
+  // linked to a lobby cycle the party id happens to still match, and `games.lobby_id` being
+  // null is already a rated-eligible state (M2.5).
+  const lobbyId =
+    payload.source === 'backfill'
+      ? null
+      : await findLobbyId(client, payload.partyId ?? null, payload.startedAt);
 
   const insert: GameInsert = {
     lcu_game_id: payload.gameId,

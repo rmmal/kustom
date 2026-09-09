@@ -19,7 +19,7 @@ import {
 import '@/lib/ingest/discord';
 import { emitGameFinished } from '@/lib/ingest/hooks';
 import { isLobbyMemberOfGame, selectActiveLobby } from '@/lib/ingest/lobby';
-import { rateStoredGame } from '@/lib/ingest/rating';
+import { BACKFILL_NOT_RATED, rateStoredGame } from '@/lib/ingest/rating';
 import { moveLobbyLogged, sweepIdleLobbies } from '@/lib/lobbyState';
 import { hasActiveSeason, NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { siteOrigin } from '@/lib/siteUrl';
@@ -53,6 +53,13 @@ export const dynamic = 'force-dynamic';
  *
  * The raw block is scrubbed of its chat credentials before it goes anywhere near the database:
  * `games.raw` is public-read under RLS (M2.10, point 11).
+ *
+ * **`source: 'backfill'` (M5.1)** is the same body walked out of match history months later,
+ * and it takes three turns off this path: the participant check has no lobby fallback, the game
+ * is linked to no lobby, and the rating fold does not run — the answer says
+ * `{ rated: false, reason: 'backfill' }` and `pnpm --filter web rebuild-ratings` (M5.2) is what
+ * turns a batch into ratings. Nothing is posted to Discord for one. Whether a companion may
+ * send them at all is `POST /api/companion/backfill/scan` and `players.backfill_approved_at`.
  */
 export const POST = withCompanionAuth(
   companionGamePayloadSchema,
@@ -94,12 +101,19 @@ export const POST = withCompanionAuth(
       return jsonError(422, 'the same puuid appears twice in participants');
     }
 
+    // A backfilled game is one this player played months ago, so M2.8's lobby fallback cannot
+    // apply to it: nobody sat out a round of a game there is no lobby row for. The token's
+    // player must be on the scoreboard or nothing is written (M5.1, `04-decisions.md`).
+    const backfill = payload.source === 'backfill';
+    const onScoreboard = isParticipant(payload, identity.puuid);
+
     // M2.8: a friend who sits out a round and watches is a real reporter. Their PUUID is not on
     // the scoreboard, but it is in `lobby_members` for the lobby this game was played from
     // (spectators are in the client's `members[]`, confirmed on 16.17 by M2.13).
     if (
-      !isParticipant(payload, identity.puuid) &&
-      !(await isLobbyMemberOfGame(client, payload.partyId ?? null, identity.playerId, payload.startedAt))
+      !onScoreboard &&
+      (backfill ||
+        !(await isLobbyMemberOfGame(client, payload.partyId ?? null, identity.playerId, payload.startedAt)))
     ) {
       return jsonError(403, 'a companion may only report a game its own player was in');
     }
@@ -117,7 +131,13 @@ export const POST = withCompanionAuth(
     const result = await ingestEogGame(client, { ...payload, raw: scrubRawEogBlock(payload.raw) });
 
     // The fold: ten rows, five a side, over five minutes, and exactly once per game (M2.5).
-    const fold = await rateStoredGame(client, result.gameId);
+    //
+    // Never for a backfilled game (M5.1): ratings are a fold in `started_at` order and backfill
+    // delivers games out of order by definition, so the four `game_players` rating columns stay
+    // null and `ratings` does not move until `pnpm --filter web rebuild-ratings` (M5.2) folds
+    // the season. The answer is still a 2xx with `created` — a 2xx is what lets the companion
+    // delete its queue file.
+    const fold = backfill ? BACKFILL_NOT_RATED : await rateStoredGame(client, result.gameId);
 
     // A lobby that is already `finished` (the second companion's post) or that the sweep
     // abandoned between resolving it and here claims nothing and says so in the log.
@@ -130,8 +150,10 @@ export const POST = withCompanionAuth(
     }
 
     // M3.3's seam. Only the post that actually did something announces it, so two companions in
-    // one game produce one result.
-    if (result.created || fold.rated) {
+    // one game produce one result. A backfilled game announces nothing at all: it is unrated
+    // until a rebuild, and a result embed for a custom from three weeks ago would read as
+    // tonight's game in the channel (M5.1).
+    if (!backfill && (result.created || fold.rated)) {
       await emitGameFinished({
         gameId: result.gameId,
         lobbyId: result.lobbyId,
@@ -148,6 +170,8 @@ export const POST = withCompanionAuth(
       gameId: result.gameId,
       lobbyId: result.lobbyId,
       participants: result.participants,
+      rated: fold.rated,
+      reason: fold.reason,
     });
   },
 );
