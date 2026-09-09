@@ -258,8 +258,8 @@ export async function promptFirstRun(options: FirstRunOptions): Promise<Companio
   const partial = options.partial ?? {};
   io.say(
     options.reason === 'bad_token'
-      ? 'Customs Night companion: the saved token does not look like one from the admin page. Paste it again; it is stored locally only.'
-      : 'Customs Night companion: first run. Paste the token from the admin page; it is stored locally only.',
+      ? 'Kustom companion: the saved token does not look like one from the admin page. Paste it again; it is stored locally only.'
+      : 'Kustom companion: first run. Paste the token from the admin page; it is stored locally only.',
   );
 
   let apiBase = partial.apiBase ?? DEFAULT_API_BASE;

@@ -139,7 +139,7 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
     'It POSTs only to /lol-lobby/v2/lobby, /lol-lobby/v2/lobby/invitations and the two switch-teams paths,',
   );
   report.say('prompts before each one, and never touches champion select, matchmaking or a game.');
-  report.say('Answer Enter to run a probe, s to skip it. Nothing here talks to the Customs Night API.');
+  report.say('Answer Enter to run a probe, s to skip it. Nothing here talks to the Kustom API.');
   report.say();
 
   const discovered = await discoverLockfile({

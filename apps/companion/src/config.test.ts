@@ -423,6 +423,23 @@ describe('promptFirstRun', () => {
     expect(said[0]).not.toContain('first run');
   });
 
+  it('opens both prompt variants with the product name, never the codename (M2.20)', async () => {
+    const first = scriptedIo([''], [TOKEN]);
+    await promptFirstRun({ io: first.io, checkApiBase: async () => null });
+    expect(first.said[0]).toBe(
+      'Kustom companion: first run. Paste the token from the admin page; it is stored locally only.',
+    );
+    const again = scriptedIo([''], [TOKEN]);
+    await promptFirstRun({
+      io: again.io,
+      partial: { apiBase: 'https://kept.example' },
+      reason: 'bad_token',
+      checkApiBase: async () => null,
+    });
+    expect(again.said[0]?.startsWith('Kustom companion: ')).toBe(true);
+    expect([...first.said, ...again.said].join('\n')).not.toMatch(/customs night/i);
+  });
+
   it('falls back to the address question when the built-in apiBase does not answer', async () => {
     const { io, said, asked } = scriptedIo(['https://other.example'], [TOKEN]);
     const config = await promptFirstRun({

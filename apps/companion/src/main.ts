@@ -44,13 +44,13 @@ import { RankSync } from './rankSync.js';
 import { runVerifyCommands } from './verifyCommands.js';
 import { COMPANION_VERSION } from './version.js';
 
-export const APP_NAME = 'Customs Night companion';
+export const APP_NAME = 'Kustom companion';
 
 export function usage(): string {
   return [
     `${APP_NAME} ${COMPANION_VERSION}`,
     '',
-    'Watches the League client and reports lobbies and results to the Customs Night API.',
+    'Watches the League client and reports lobbies and results to Kustom, so nobody picks teams or reports scores.',
     'Double-click it (or run it with no arguments) and leave it running.',
     '',
     'Flags:',

@@ -20,7 +20,7 @@ describe('bundle', () => {
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), 'companion-bundle-'));
     result = await bundle({
-      outfile: join(dir, 'customs-night.cjs'),
+      outfile: join(dir, 'kustom.cjs'),
       apiBase: 'https://example.test',
       version: '9.9.9',
     });
@@ -48,7 +48,7 @@ describe('bundle', () => {
   it('answers --help and exits 0 without writing anything', () => {
     const { status, stdout } = run('--help');
     expect(status).toBe(0);
-    expect(stdout).toContain('Customs Night companion 9.9.9');
+    expect(stdout).toContain('Kustom companion 9.9.9');
     expect(stdout).toContain('--version');
     expect(() => readFileSync(join(dir, 'config', 'config.json'))).toThrow();
   });

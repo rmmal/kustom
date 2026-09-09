@@ -61,7 +61,7 @@ docs. **M0 exists to turn every row we need for M2 to `verified`.** Do not build
   error. A refused or timed-out connection stops the probe (exit 3) so a client that is still starting is
   never recorded as "needed insecure".
 - Both scripts are GET-only. Nothing in M0.1 creates a lobby, invites, or sends anything but subscribe frames.
-- `pnpm --filter companion verify-commands` (packaged: `CustomsNight.exe --verify-commands`, or
+- `pnpm --filter companion verify-commands` (packaged: `Kustom.exe --verify-commands`, or
   `CUSTOMS_NIGHT_VERIFY_COMMANDS=1`) is the **only** code that POSTs to the client while the three write rows
   above are `unverified` (M4.1, `apps/companion/src/verifyCommands.ts`). Human-run, with the client in `None` or
   `Lobby` and one friend online: it prompts before each probe (create with the reference body, blind, name
