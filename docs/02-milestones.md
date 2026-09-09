@@ -12,7 +12,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18, M2.19 done; M2.6 built as 0.1.1, publish and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.4, M3.7, M3.11 to M3.17 done (tonight page live). Open: M3.5, M3.6, M3.8, M3.10. |
 | M4 Lobby automation, voice split, presence | in progress | M4.1 companion half landed (all three lobby writes gated off until the user runs verify-commands with a friend); server half next after M3.5. Needs M3. |
-| M5 Backfill, seasons, stats | in progress | M5.1 companion half done (walker, mapMatchDetail, scan contract in packages/db); server half (scan route, approval, store-without-rating) and M5.2 next, then M3.5. The rest needs M3. Independent of M4. |
+| M5 Backfill, seasons, stats | in progress | M5.1 and M5.2 landed (backfill walker, scan route, approval toggle, rebuild-ratings); migration 0004 pushed to kustom. M5.3 to M5.7 need M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
 
 Update this table as tasks complete. Status values: `not started`, `in progress`, `blocked: <why>`, `done`.
@@ -2811,7 +2811,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
 
 ## M5 Backfill, seasons, stats (2 to 3 days, needs M3; skip backfill if M0.4 said no)
 
-- [~] **M5.1** (companion half landed 2026-09-09; server half pending) Backfill: on companion start and daily, walk the local player's match history, filter `CUSTOM_GAME`, fetch details for unknown game IDs, POST as `source: backfill`. Server verifies the reporting player is a participant.
+- [x] **M5.1** (both halves landed 2026-09-09; acceptance check 11, the live walk against a real client, is the user's) Backfill: on companion start and daily, walk the local player's match history, filter `CUSTOM_GAME`, fetch details for unknown game IDs, POST as `source: backfill`. Server verifies the reporting player is a participant.
 
     > **Note (product, 2026-09-08, after M0.3).** M0.4 is resolved yes — customs are in match history (17 of
     > 21 games in the 16.17 capture, queue 3100/3110/3270). Three facts from that capture pin this task down.
@@ -3025,7 +3025,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > ranks, and M2.4 already owns that sweep. Any use of the Riot public API, now or as a fallback: there is no
     > key in this project and there is not going to be one.
 
-- [ ] **M5.2** Rating rebuild: `pnpm --filter web rebuild-ratings` folds every game in `started_at` order from seeds. Run after any backfill batch. Idempotent.
+- [x] **M5.2** Rating rebuild: `pnpm --filter web rebuild-ratings` folds every game in `started_at` order from seeds. Run after any backfill batch. Idempotent.
 
     > **Brief (product, 2026-09-09)**
     >
