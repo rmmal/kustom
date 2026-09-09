@@ -12,7 +12,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18, M2.19 done; M2.6 built as 0.1.1, publish and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.3, M3.11 to M3.15 done. Next: M3.4 tonight page, then M3.5, M3.6, M3.7, M3.8, M3.10, M3.16. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
-| M5 Backfill, seasons, stats | not started | M5.1 backfill and M5.2 rebuild pulled forward to right after M3.4/M3.5 (user wants past customs to seed ratings); the rest needs M3. Independent of M4. |
+| M5 Backfill, seasons, stats | in progress | M5.1 companion half done (walker, mapMatchDetail, scan contract in packages/db); server half (scan route, approval, store-without-rating) and M5.2 next, then M3.5. The rest needs M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
 
 Update this table as tasks complete. Status values: `not started`, `in progress`, `blocked: <why>`, `done`.
@@ -2811,7 +2811,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
 
 ## M5 Backfill, seasons, stats (2 to 3 days, needs M3; skip backfill if M0.4 said no)
 
-- [ ] **M5.1** Backfill: on companion start and daily, walk the local player's match history, filter `CUSTOM_GAME`, fetch details for unknown game IDs, POST as `source: backfill`. Server verifies the reporting player is a participant.
+- [~] **M5.1** (companion half landed 2026-09-09; server half pending) Backfill: on companion start and daily, walk the local player's match history, filter `CUSTOM_GAME`, fetch details for unknown game IDs, POST as `source: backfill`. Server verifies the reporting player is a participant.
 
     > **Note (product, 2026-09-08, after M0.3).** M0.4 is resolved yes — customs are in match history (17 of
     > 21 games in the 16.17 capture, queue 3100/3110/3270). Three facts from that capture pin this task down.
