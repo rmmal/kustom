@@ -17,7 +17,14 @@ pnpm --filter web dev         http://localhost:3000
 pnpm --filter web test        vitest; the integration tests skip without the local stack
 pnpm --filter web build
 pnpm --filter web mint-token <puuid> [label]   # /admin/tokens does this with a button now
+pnpm --filter web rebuild-ratings [--dry-run] [--force] [--prune] [--season <id>]
+                              # M5.2: refold a season from seeds. Run it after a backfill batch.
 ```
+
+`rebuild-ratings` runs under `tsx`, not plain `node`: it imports `rateGame` from
+`@customs/core`, and Node's type stripping cannot resolve that package's extensionless relative
+imports. `mint-token` gets away with plain `node` because everything it imports across a package
+boundary is a type (`04-decisions.md`).
 
 
 Environment: copy the `apps/web` block of the repo's `.env.example` into `apps/web/.env.local`.

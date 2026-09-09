@@ -1,0 +1,517 @@
+import { randomUUID } from 'node:crypto';
+import { type Database, SEASON_ONE_ID } from '@customs/db';
+import { createClient } from '@supabase/supabase-js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mintCompanionToken } from '@/lib/companionAuth';
+import { ensurePlayers } from '@/lib/ingest/players';
+import { eogBody, testGameId, testPuuids } from '@/lib/testing/fixtures';
+import { resolveLocalStack } from '@/lib/testing/localStack';
+
+/**
+ * The rating rebuild (M5.2) against the Supabase CLI local stack, seeded through the same
+ * ingest path the companion uses — because the claim being tested is that the rebuild
+ * reproduces the *live* fold, and a hand-inserted row would not be that fold.
+ *
+ * The file runs in a **season of its own**, started at the top and handed back at the bottom:
+ * a rebuild is a season-wide operation, so it cannot be namespaced by row the way every other
+ * integration test here is. Season 1 is snapshotted and asserted untouched.
+ *
+ * Skipped, not failed, when the stack is not running (`pnpm db:start`).
+ */
+
+const stack = await resolveLocalStack();
+
+if (stack === null) {
+  describe.skip('rebuild-ratings against the local Supabase stack', () => {
+    it('needs the local stack: run `pnpm db:start`', () => {
+      expect(true).toBe(true);
+    });
+  });
+} else {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = stack.url;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = stack.serviceRoleKey;
+  process.env.BOOTSTRAP_ADMIN_PUUID = '';
+  process.env.DISCORD_WEBHOOK_URL = '';
+
+  const { POST: postGame } = await import('@/app/api/companion/game/route');
+  const { FENCE_MESSAGE, GUARD_MESSAGE, rebuildRatings } = await import('./rebuild');
+
+  const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  const runId = randomUUID().slice(0, 8);
+  const puuids = testPuuids(runId);
+  const ownerPuuid = puuids[0] as string;
+  const seasonName = `it-${runId} rebuild`;
+
+  const base = testGameId();
+  const liveGameIds = [base + 1, base + 2, base + 3];
+  const oldBackfillGameId = base + 4;
+  const shortGameId = base + 5;
+  const shortHandedGameId = base + 6;
+  const fenceGameId = base + 7;
+  // Two games to the same millisecond, which backfill produces the first time two customs
+  // started inside the same second of `gameCreation`.
+  const tiedHighGameId = base + 9;
+  const tiedLowGameId = base + 8;
+  const allGameIds = [
+    ...liveGameIds,
+    oldBackfillGameId,
+    shortGameId,
+    shortHandedGameId,
+    fenceGameId,
+    tiedLowGameId,
+    tiedHighGameId,
+  ];
+
+  let token = '';
+  let seasonId = '';
+  let playerIds: string[] = [];
+  let seasonOneRatings = '';
+
+  function post(body: unknown): Request {
+    return new Request('http://localhost/api/companion/game', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * A canonical dump of everything the rebuild is allowed to write: every rating column of
+   * every `game_players` row of this season's games, and every `ratings` row. Ordered and
+   * serialised, so "byte-identical" is one `expect`.
+   */
+  async function dump(): Promise<string> {
+    const { data: rows, error } = await db
+      .from('game_players')
+      .select('game_id, player_id, mu_before, sigma_before, mu_after, sigma_after, games!inner(season_id)')
+      .eq('games.season_id', seasonId)
+      .order('game_id')
+      .order('player_id');
+    if (error) throw new Error(error.message);
+
+    const { data: ratings, error: ratingsError } = await db
+      .from('ratings')
+      .select('player_id, mu, sigma, games, wins')
+      .eq('season_id', seasonId)
+      .order('player_id');
+    if (ratingsError) throw new Error(ratingsError.message);
+
+    return JSON.stringify({ rows, ratings });
+  }
+
+  async function dumpSeasonOne(): Promise<string> {
+    const { data, error } = await db
+      .from('ratings')
+      .select('player_id, mu, sigma, games, wins, updated_at')
+      .eq('season_id', SEASON_ONE_ID)
+      .order('player_id');
+    if (error) throw new Error(error.message);
+    return JSON.stringify(data);
+  }
+
+  async function ratingColumns(
+    lcuGameId: number,
+  ): Promise<{ player_id: string; mu_before: number | null; mu_after: number | null }[]> {
+    const { data: game } = await db.from('games').select('id').eq('lcu_game_id', lcuGameId).single();
+    const { data, error } = await db
+      .from('game_players')
+      .select('player_id, mu_before, mu_after')
+      .eq('game_id', game?.id ?? '')
+      .order('player_id');
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
+  function rebuild(options: Parameters<typeof rebuildRatings>[1] = {}) {
+    return rebuildRatings(db, { seasonId, force: true, ...options });
+  }
+
+  beforeAll(async () => {
+    const ids = await ensurePlayers(
+      db,
+      puuids.map((puuid) => ({ puuid })),
+    );
+    playerIds = puuids.map((puuid) => ids.get(puuid) ?? '');
+
+    // Different seeds, so the order of the fold changes the answer and the tests below are
+    // measuring something. Ranks stay still for the whole file — the M5.7 caveat is that a rank
+    // that moves between a game and a rebuild moves history, and this file controls for it.
+    await db
+      .from('players')
+      .update({ rank_tier: 'GOLD', rank_division: 'II' })
+      .in('id', playerIds.slice(0, 3));
+    await db
+      .from('players')
+      .update({ rank_tier: 'DIAMOND', rank_division: 'IV' })
+      .in('id', playerIds.slice(3, 5));
+
+    const { token: raw, tokenHash } = mintCompanionToken();
+    await db.from('companion_tokens').insert({
+      player_id: ids.get(ownerPuuid) ?? '',
+      token_hash: tokenHash,
+      label: `it-${runId}-rebuild`,
+    });
+    token = raw;
+
+    seasonOneRatings = await dumpSeasonOne();
+
+    // A season of this file's own: the rebuild folds a whole season, so isolating it by row is
+    // not possible and isolating it by season is exact.
+    const { data: season, error } = await db.rpc('start_season', { p_name: seasonName });
+    if (error) throw new Error(`start_season: ${error.message}`);
+    seasonId = (season as unknown as { id: string }[])[0]?.id ?? (season as unknown as { id: string }).id;
+    expect(seasonId).toBeTruthy();
+  });
+
+  afterAll(async () => {
+    // Season 1 back in one statement (0002), so there is never a window with no active season.
+    await db.rpc('set_active_season', { p_id: SEASON_ONE_ID });
+    await db.from('games').delete().in('lcu_game_id', allGameIds);
+    await db.from('ratings').delete().eq('season_id', seasonId);
+    await db.from('seasons').delete().eq('id', seasonId);
+    await db.from('players').delete().in('puuid', puuids);
+  });
+
+  describe('the rebuild reproduces the incremental fold', () => {
+    it('changes nothing after three games rated inline through the game route', async () => {
+      for (const [index, gameId] of liveGameIds.entries()) {
+        const response = await postGame(
+          post(
+            eogBody({
+              gameId,
+              puuids,
+              partyId: null,
+              winningSide: index % 2 === 0 ? 100 : 200,
+              startedAt: `2026-09-0${index + 2}T20:00:00.000Z`,
+              durationS: 1_500 + index,
+            }),
+          ),
+        );
+        expect(response.status).toBe(200);
+        expect((await response.json()).rated).toBe(true);
+      }
+
+      const before = await dump();
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.report.considered).toBe(3);
+      expect(result.report.rated).toBe(3);
+      // The whole claim: the live fold already wrote exactly what the rebuild computes.
+      expect(result.report.gamePlayerRowsChanged).toBe(0);
+      expect(result.report.ratingRowsChanged).toBe(0);
+      expect(await dump()).toBe(before);
+    });
+
+    it('is idempotent: two runs are byte-identical', async () => {
+      const first = await rebuild();
+      expect(first.ok).toBe(true);
+      const afterFirst = await dump();
+
+      const second = await rebuild();
+      expect(second.ok).toBe(true);
+      expect(await dump()).toBe(afterFirst);
+    });
+
+    it('writes nothing on --dry-run, and still says what would change', async () => {
+      const before = await dump();
+      // Something to change: a row with numbers the fold does not agree with.
+      const { data: game } = await db
+        .from('games')
+        .select('id')
+        .eq('lcu_game_id', liveGameIds[0] as number)
+        .single();
+      await db
+        .from('game_players')
+        .update({ mu_after: 99 })
+        .eq('game_id', game?.id ?? '')
+        .eq('player_id', playerIds[0] as string);
+      const dirtied = await dump();
+
+      const result = await rebuild({ dryRun: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.report.gamePlayerRowsChanged).toBe(1);
+      expect(await dump()).toBe(dirtied);
+
+      // And a real run puts it back exactly as the fold says it should be.
+      expect((await rebuild()).ok).toBe(true);
+      expect(await dump()).toBe(before);
+    });
+  });
+
+  describe('a backfilled game older than everything else', () => {
+    it('folds first, and shifts every later game', async () => {
+      const beforeColumns = await ratingColumns(liveGameIds[2] as number);
+
+      const body = eogBody({
+        gameId: oldBackfillGameId,
+        puuids,
+        partyId: null,
+        winningSide: 200,
+        // Before all three live games: this is exactly what a backfill batch does.
+        startedAt: '2026-08-01T19:00:00.000Z',
+        durationS: 1_800,
+      }) as Record<string, unknown>;
+      const { partyId: _dropped, ...rest } = body;
+      const response = await postGame(
+        post({
+          ...rest,
+          source: 'backfill',
+          participants: (body.participants as Record<string, unknown>[]).map((p) => ({ ...p, role: null })),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ created: true, rated: false, reason: 'backfill' });
+
+      // Stored unrated, as M5.1 promises.
+      for (const row of await ratingColumns(oldBackfillGameId)) {
+        expect(row.mu_before).toBeNull();
+        expect(row.mu_after).toBeNull();
+      }
+
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.report.considered).toBe(4);
+      expect(result.report.rated).toBe(4);
+      expect(result.report.gamePlayerRowsChanged).toBeGreaterThan(0);
+      expect(result.report.largestMuChange).not.toBeNull();
+
+      // The old game is now rated...
+      for (const row of await ratingColumns(oldBackfillGameId)) {
+        expect(row.mu_before).not.toBeNull();
+        expect(row.mu_after).not.toBeNull();
+      }
+      // ...and it moved the games that came after it: the last game's before-values shifted.
+      const afterColumns = await ratingColumns(liveGameIds[2] as number);
+      expect(afterColumns).not.toEqual(beforeColumns);
+      expect(afterColumns.map((row) => row.player_id)).toEqual(beforeColumns.map((row) => row.player_id));
+
+      // Still idempotent with it in.
+      const dumped = await dump();
+      expect((await rebuild()).ok).toBe(true);
+      expect(await dump()).toBe(dumped);
+    });
+
+    it('produces the same numbers as if the four games had arrived in order', async () => {
+      // The proof that arrival order does not matter: wipe every rating column and rating row
+      // for the season and fold from scratch. Same answer.
+      const ordered = await dump();
+
+      const { data: games } = await db.from('games').select('id').eq('season_id', seasonId);
+      for (const game of games ?? []) {
+        await db
+          .from('game_players')
+          .update({ mu_before: null, sigma_before: null, mu_after: null, sigma_after: null })
+          .eq('game_id', game.id);
+      }
+      await db.from('ratings').delete().eq('season_id', seasonId);
+
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+      expect(await dump()).toBe(ordered);
+    });
+  });
+
+  describe('the gate', () => {
+    it('skips a 300-second game and a short-handed one, and nulls their columns', async () => {
+      // Exactly 300 seconds is not rated (M2.5), and nine players is not a game.
+      const short = await postGame(
+        post(
+          eogBody({
+            gameId: shortGameId,
+            puuids,
+            partyId: null,
+            durationS: 300,
+            startedAt: '2026-09-06T20:00:00.000Z',
+          }),
+        ),
+      );
+      expect(short.status).toBe(200);
+      const shortHanded = await postGame(
+        post(
+          eogBody({
+            gameId: shortHandedGameId,
+            puuids: puuids.slice(0, 9),
+            partyId: null,
+            startedAt: '2026-09-07T20:00:00.000Z',
+          }),
+        ),
+      );
+      expect(shortHanded.status).toBe(200);
+
+      // Stale numbers from some earlier life, which the rebuild must clear rather than keep.
+      const { data: game } = await db.from('games').select('id').eq('lcu_game_id', shortGameId).single();
+      await db
+        .from('game_players')
+        .update({ mu_before: 1, sigma_before: 1, mu_after: 2, sigma_after: 2 })
+        .eq('game_id', game?.id ?? '');
+
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.report.considered).toBe(6);
+      expect(result.report.rated).toBe(4);
+      expect(result.report.skipped.duration).toBe(1);
+      expect(result.report.skipped['participant-count']).toBe(1);
+
+      for (const row of await ratingColumns(shortGameId)) {
+        expect(row.mu_before).toBeNull();
+        expect(row.mu_after).toBeNull();
+      }
+      for (const row of await ratingColumns(shortHandedGameId)) {
+        expect(row.mu_after).toBeNull();
+      }
+    });
+  });
+
+  describe('no lock', () => {
+    it('refuses while a game has just landed, and runs with --force', async () => {
+      // The games above were all posted seconds ago, which is exactly what the guard is for.
+      const refused = await rebuildRatings(db, { seasonId });
+      expect(refused.ok).toBe(false);
+      if (refused.ok) return;
+      expect(refused.code).toBe('guard');
+      expect(refused.message).toContain(GUARD_MESSAGE);
+
+      expect((await rebuild()).ok).toBe(true);
+    });
+
+    it('refuses while a lobby is live', async () => {
+      const partyId = `it-party-${runId}-guard`;
+      const { data: lobby } = await db
+        .from('lobbies')
+        .insert({ lcu_party_id: partyId, status: 'balanced' })
+        .select('id')
+        .single();
+
+      const refused = await rebuildRatings(db, { seasonId, now: new Date(Date.now() + 3_600_000) });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) {
+        expect(refused.code).toBe('guard');
+        expect(refused.message).toContain(GUARD_MESSAGE);
+        expect(refused.message).toContain('balanced');
+      }
+
+      await db
+        .from('lobbies')
+        .delete()
+        .eq('id', lobby?.id ?? '');
+    });
+
+    it('exits 2 when a game lands between the snapshot and the write, and is fine on the next run', async () => {
+      const result = await rebuild({
+        afterSnapshot: async () => {
+          const { error } = await db.from('games').insert({
+            lcu_game_id: fenceGameId,
+            season_id: seasonId,
+            started_at: '2026-09-08T20:00:00.000Z',
+            duration_s: 1_500,
+            winning_side: 100,
+            source: 'eog',
+            raw: { gameId: fenceGameId },
+          });
+          if (error) throw new Error(error.message);
+        },
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('fence');
+      expect(result.message).toContain(FENCE_MESSAGE);
+
+      // Running it again is the fix, and it is free.
+      const again = await rebuild();
+      expect(again.ok).toBe(true);
+      if (!again.ok) return;
+      expect(again.report.considered).toBe(7);
+
+      await db.from('games').delete().eq('lcu_game_id', fenceGameId);
+    });
+  });
+
+  describe('the tie-break', () => {
+    it('folds two games with the same started_at by lcu_game_id, whatever order they arrived in', async () => {
+      const tiedAt = '2026-09-09T20:00:00.000Z';
+      // The higher id is posted **first**, so arrival order and fold order disagree.
+      for (const gameId of [tiedHighGameId, tiedLowGameId]) {
+        const response = await postGame(
+          post(eogBody({ gameId, puuids, partyId: null, startedAt: tiedAt, durationS: 1_700 })),
+        );
+        expect(response.status).toBe(200);
+      }
+
+      expect((await rebuild()).ok).toBe(true);
+
+      const low = await ratingColumns(tiedLowGameId);
+      const high = await ratingColumns(tiedHighGameId);
+      // The lower id folded first: its after-values are the higher id's before-values, for all ten.
+      expect(high.map((row) => row.mu_before)).toEqual(low.map((row) => row.mu_after));
+
+      // And the answer does not depend on the order the rows come back in: wipe and refold.
+      const ordered = await dump();
+      const { data: games } = await db.from('games').select('id').eq('season_id', seasonId);
+      for (const game of games ?? []) {
+        await db
+          .from('game_players')
+          .update({ mu_before: null, sigma_before: null, mu_after: null, sigma_after: null })
+          .eq('game_id', game.id);
+      }
+      await db.from('ratings').delete().eq('season_id', seasonId);
+      expect((await rebuild()).ok).toBe(true);
+      expect(await dump()).toBe(ordered);
+    });
+  });
+
+  describe('a ratings row nobody played for', () => {
+    it('is reported and left alone, and only --prune deletes it', async () => {
+      // Somebody who has a rating in this season but no rated game in it: what a deleted game,
+      // or a season carried forward by hand, leaves behind.
+      const strayPuuid = `it-${runId}-stray`;
+      const ids = await ensurePlayers(db, [{ puuid: strayPuuid }]);
+      const strayId = ids.get(strayPuuid) as string;
+      await db.from('ratings').insert({ player_id: strayId, season_id: seasonId, mu: 25, sigma: 8 });
+
+      const reported = await rebuild();
+      expect(reported.ok).toBe(true);
+      if (!reported.ok) return;
+      expect(reported.report.orphanRatings).toBe(1);
+      expect(reported.report.prunedRatings).toBe(0);
+
+      const { count: kept } = await db
+        .from('ratings')
+        .select('player_id', { count: 'exact', head: true })
+        .eq('player_id', strayId);
+      expect(kept).toBe(1);
+
+      const pruned = await rebuild({ prune: true });
+      expect(pruned.ok).toBe(true);
+      if (!pruned.ok) return;
+      expect(pruned.report.prunedRatings).toBe(1);
+
+      const { count: gone } = await db
+        .from('ratings')
+        .select('player_id', { count: 'exact', head: true })
+        .eq('player_id', strayId);
+      expect(gone).toBe(0);
+
+      await db.from('players').delete().eq('id', strayId);
+    });
+  });
+
+  describe('seasons', () => {
+    it('leaves every other season alone', async () => {
+      expect((await rebuild()).ok).toBe(true);
+      expect(await dumpSeasonOne()).toBe(seasonOneRatings);
+    });
+
+    it('says so, and writes nothing, for a season id that does not exist', async () => {
+      const result = await rebuildRatings(db, { seasonId: randomUUID(), force: true });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe('no-season');
+    });
+  });
+}
