@@ -7,10 +7,12 @@
  * - `gate.ts`      which kinds may be queued at all (the reference rows, as booleans)
  * - `queue.ts`     write, sweep, hand out, ack, nack, supersede
  * - `switchSide.ts` who is on the wrong side, and what the `balanced` transition writes
+ * - `invites.ts`   who is "around", and the invite fan-out that follows a lobby opening (M4.2)
  * - `hooks.ts`     the `onAcked` seam M4.2 hangs the invite fan-out off
  * - `register.ts`  the one import with a side effect: it makes the `balanced` hook listen
  */
 export * from './gate';
 export * from './hooks';
+export * from './invites';
 export * from './queue';
 export * from './switchSide';
