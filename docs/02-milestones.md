@@ -9,7 +9,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 |---|---|---|
 | M0 Spike: verify the client | done | Verified on 16.17 (2026-09-08) with fixtures and schemas. Still open: switch-side path and invite body (M4), Windows run (M2.11). Spectator shape captured 2026-09-08 (M2.13). |
 | M1 Foundation | done | M1.1 to M1.10 done; M1.1 to M1.11 done (M1.11 landed 2026-09-09; the wildcard allow-list entry can be removed). Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
-| M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15 done; M2.6 built, publish and Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
+| M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18, M2.19 done; M2.6 built as 0.1.1, publish and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.3, M3.11 to M3.15 done. Next: M3.4 tonight page, then M3.5, M3.6, M3.7, M3.8, M3.10, M3.16. |
 | M4 Lobby automation, voice split, presence | not started | Needs M3. |
 | M5 Backfill, seasons, stats | not started | M5.1 backfill and M5.2 rebuild pulled forward to right after M3.4/M3.5 (user wants past customs to seed ratings); the rest needs M3. Independent of M4. |
@@ -1672,6 +1672,7 @@ Acceptance: two people run the companion, play one custom, and the game appears 
 > fixture lands in `packages/lcu/fixtures/16.17/`, and `schemas.test.ts` parses it. This is a byproduct of
 > the acceptance run, not a task that blocks it.
 
+- [x] **M2.19** Windows first-run fixes from the 0.1.0 field test (2026-09-09): the hidden token prompt discards terminal escape sequences and validates the token shape before saving (re-prompts, `--show-token`); a custom League install is found via the process list when the default lockfile is missing (`lockfilePath` still wins). Ships as companion 0.1.1.
 ## M3 Teams in Discord and on the web (2 to 3 days, needs M2)
 
 Goal: first real night. Ten join the lobby, teams appear in Discord with an explanation, results and leaderboard follow.
