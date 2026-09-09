@@ -1,4 +1,5 @@
 import type { LobbyStatusValue } from '@customs/db';
+import { supersedeLobbyCommands } from './commands/queue';
 import type { ServiceClient } from './supabase';
 
 /**
@@ -130,7 +131,36 @@ export async function moveLobby(client: ServiceClient, input: MoveLobbyInput): P
     .in('status', input.from)
     .select('id');
   if (error) throw new Error(`moveLobby: ${input.to} failed: ${error.message}`);
-  return (data ?? []).length > 0;
+  if ((data ?? []).length === 0) return false;
+
+  await expireCommandsOnLeavingBalanced(client, input);
+  return true;
+}
+
+/**
+ * A lobby that leaves `balanced` takes its pending `switch_side` commands with it (M4.1).
+ *
+ * The rows were written for the split that was on the board; once the lobby is `in_game`,
+ * `finished`, `dropped`, `abandoned` — or back at `open` because somebody joined — that split
+ * is not the answer any more, and a command that lands afterwards moves a friend for no
+ * reason. They are `failed` with `superseded` rather than left to their three-minute TTL,
+ * because three minutes is long enough to be somebody's champion select.
+ *
+ * It lives inside `moveLobby` rather than in a hook because there is exactly one function that
+ * moves a lobby, and this is part of the move: a caller cannot forget it. The only transition
+ * that keeps its commands is `balanced -> balanced` (a reroll), which supersedes and re-queues
+ * in one write of its own (`switchSide.ts`).
+ *
+ * A failure here is logged and swallowed: a stale command is a nuisance, and a lobby that
+ * cannot go `in_game` because of one is a night.
+ */
+async function expireCommandsOnLeavingBalanced(client: ServiceClient, input: MoveLobbyInput): Promise<void> {
+  if (input.to === 'balanced' || !input.from.includes('balanced')) return;
+  try {
+    await supersedeLobbyCommands(client, input.lobbyId, `lobby is now ${input.to}`);
+  } catch (error) {
+    console.error(`moveLobby: superseding commands for lobby ${input.lobbyId} failed`, error);
+  }
 }
 
 /**
@@ -189,6 +219,12 @@ export async function sweepIdleLobbies(client: ServiceClient, now: Date = new Da
   if (abandoned > 0) {
     console.info(`lobby sweep: ${abandoned} lobby(ies) idle for over two hours -> abandoned`);
   }
+  // The same rule as every other exit from `balanced`, for the one path that does not go
+  // through `moveLobby` (M4.1). A lobby nobody has mentioned for two hours has no side left
+  // worth moving anybody to.
+  for (const row of data ?? []) {
+    await supersedeCommandsQuietly(client, row.id, 'abandoned');
+  }
 
   const { data: stuck, error: stuckError } = await client
     .from('lobbies')
@@ -206,8 +242,24 @@ export async function sweepIdleLobbies(client: ServiceClient, now: Date = new Da
       console.warn(`lobby sweep: lobby ${row.id} was in_game for over two hours with no result -> dropped`);
     }
   }
+  for (const row of stuck ?? []) {
+    await supersedeCommandsQuietly(client, row.id, 'dropped');
+  }
 
   return abandoned + dropped;
+}
+
+/** {@link supersedeLobbyCommands}, with the sweep's own rule: one line, never a thrown error. */
+async function supersedeCommandsQuietly(
+  client: ServiceClient,
+  lobbyId: string,
+  status: LobbyStatusValue,
+): Promise<void> {
+  try {
+    await supersedeLobbyCommands(client, lobbyId, `lobby is now ${status}`);
+  } catch (error) {
+    console.error(`lobby sweep: superseding commands for lobby ${lobbyId} failed`, error);
+  }
 }
 
 export interface RecheckInput {

@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resolveLocalStack } from './localStack';
 import {
+  COMPANION_COMMAND_TTL_MS,
   companionCommandKindSchema,
   companionCommandPayloadSchemas,
   companionCommandResultSchemas,
   companionCommandStatusSchema,
-  COMPANION_COMMAND_TTL_MS,
 } from './schemas';
 
 /**
@@ -42,11 +42,7 @@ if (stack === null) {
 } else {
   const { url, anonKey, serviceRoleKey } = stack;
 
-  async function rest(
-    caller: 'service' | 'anon',
-    path: string,
-    init: RequestInit = {},
-  ): Promise<RestResult> {
+  async function rest(caller: 'service' | 'anon', path: string, init: RequestInit = {}): Promise<RestResult> {
     const key = caller === 'service' ? serviceRoleKey : anonKey;
     const response = await fetch(`${url}/rest/v1/${path}`, {
       ...init,

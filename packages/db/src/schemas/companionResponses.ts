@@ -309,6 +309,18 @@ export const companionCommandEnvelopeSchema = z.object({
   expiresAt: z.iso.datetime({ offset: true }),
 });
 
+/**
+ * The poll's query string, which is a boundary like any other body: `clientConnected` is
+ * **required** and is one of the two words. A missing or misspelt one is a 400 rather than a
+ * default, because the two answers differ in what they write — `true` hands out work and
+ * touches `last_seen_at`, `false` moves nothing at all — and guessing wrong drains a queue
+ * into a client that is not there. The companion builds the string by hand
+ * (`?clientConnected=true|false`); this is what the route parses it with.
+ */
+export const companionCommandsQuerySchema = z.object({
+  clientConnected: z.enum(['true', 'false']).transform((value) => value === 'true'),
+});
+
 export const companionCommandsResponseSchema = z.object({
   ok: z.literal(true),
   commands: z.array(companionCommandEnvelopeSchema).max(COMMANDS_PAGE_SIZE),
@@ -338,6 +350,7 @@ export type SwitchSideCommandResult = z.infer<typeof switchSideCommandResultSche
 export type CompanionCommand = z.infer<typeof companionCommandSchema>;
 export type CompanionCommandEnvelope = z.infer<typeof companionCommandEnvelopeSchema>;
 export type CompanionCommandsResponse = z.infer<typeof companionCommandsResponseSchema>;
+export type CompanionCommandsQuery = z.infer<typeof companionCommandsQuerySchema>;
 export type CompanionCommandAckRequest = z.infer<typeof companionCommandAckRequestSchema>;
 export type CompanionCommandNackRequest = z.infer<typeof companionCommandNackRequestSchema>;
 export type CompanionCommandAckResponse = z.infer<typeof companionCommandAckResponseSchema>;
