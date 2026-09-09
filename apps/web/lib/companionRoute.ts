@@ -38,6 +38,18 @@ export type CompanionHandler<T> = (input: T, context: CompanionContext) => Promi
 export interface CompanionRouteDeps {
   /** Injection point for tests. Defaults to the process-wide service-role client. */
   getClient?: () => ServiceClient;
+  /**
+   * Whether this request may write `companion_tokens.last_seen_at`. Defaults to yes, which is
+   * what every route but one wants: they all imply a live League client.
+   *
+   * The exception is the commands poll with `clientConnected=false` (M4.1,
+   * `04-decisions.md` 2026-09-09). `last_seen_at` is what M4.2 and M4.3 read as "this friend is
+   * at their PC with League open", and a companion that keeps polling from a machine with no
+   * client would otherwise keep that timestamp fresh for a client that is not there. The
+   * decision is taken from the query string, before the token is looked up, because a poll that
+   * touches nothing must touch nothing.
+   */
+  shouldTouch?: (request: Request) => boolean;
 }
 
 export function withCompanionAuth<S extends z.ZodType>(
@@ -80,10 +92,11 @@ export function withCompanionIdentity(
     try {
       await ensureBootstrapAdmin(client);
 
+      const touch = deps.shouldTouch?.(request) ?? true;
       const auth = await authenticateCompanion({
         authorization: request.headers.get('authorization'),
         lookup: supabaseTokenLookup(client),
-        touch: supabaseTokenTouch(client),
+        ...(touch ? { touch: supabaseTokenTouch(client) } : {}),
       });
       if (!auth.ok) {
         return jsonError(auth.status, auth.error);

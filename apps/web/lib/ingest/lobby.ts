@@ -6,6 +6,7 @@ import {
   type LobbyUpdate,
   rosterKey,
 } from '@customs/db';
+import { supersedeLobbyCommands } from '../commands/queue';
 import type { CompanionIdentity } from '../companionAuth';
 import {
   assertLegalTransition,
@@ -307,6 +308,17 @@ async function restartClock(client: ServiceClient, lobby: ExistingLobby): Promis
     .select(LOBBY_COLUMNS)
     .maybeSingle();
   if (error) throw new Error(`ingestLobby: clock restart failed: ${error.message}`);
+
+  // Leaving `balanced` takes the split's pending `switch_side` commands with it (M4.1). This is
+  // the one exit from `balanced` that does not go through `moveLobby`, so it says so itself.
+  if (data !== null && lobby.status === 'balanced') {
+    try {
+      await supersedeLobbyCommands(client, lobby.id, 'the roster changed');
+    } catch (commandError) {
+      console.error(`ingestLobby: superseding commands for lobby ${lobby.id} failed`, commandError);
+    }
+  }
+
   // No row back means another request moved the lobby out from under us (to `in_game`, say).
   // Its status wins; this post has already replaced the members and there is nothing to undo.
   return data ? toExistingLobby(data) : lobby;

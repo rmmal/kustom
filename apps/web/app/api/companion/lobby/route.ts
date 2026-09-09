@@ -1,4 +1,9 @@
 import { companionLobbyPayloadSchema, companionLobbyResponseSchema } from '@customs/db/schemas';
+// Registers the command queue's `balanced` listener on `hooks.ts` at module load (M4.1).
+// Another side-effect import: with this line removed, a balance queues nothing and every M2.5
+// check still passes. It queues nothing today anyway — every kind's verification row is still
+// `unverified`, so the gate in `lib/commands/gate.ts` is off.
+import '@/lib/commands/register';
 import { withCompanionAuth } from '@/lib/companionRoute';
 import { readServerEnv } from '@/lib/env';
 import { jsonError, jsonOk } from '@/lib/http';

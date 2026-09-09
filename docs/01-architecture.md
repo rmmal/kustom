@@ -65,7 +65,8 @@ games          (id, lcu_game_id unique, lobby_id null, season_id, started_at, du
 game_players   (game_id, player_id, side, role null, champion_id, kills, deaths, assists, gold, damage_to_champs,
                 cs, mu_before null, sigma_before null, mu_after null, sigma_after null)
 companion_tokens (id, player_id, token_hash, label, last_seen_at, revoked_at null, created_at)
-companion_commands (id, target_player_id, kind, payload jsonb, status, created_at, acked_at)
+companion_commands (id, target_player_id, kind, payload jsonb, status, created_at, acked_at,
+                sent_at, attempts, result jsonb, error, expires_at)   -- 0006, M4.1
 discord_config (guild_id pk, webhook_url, results_channel_id, lobby_voice_channel_id,
                 blue_voice_channel_id, red_voice_channel_id, created_at, updated_at)
 
@@ -194,6 +195,13 @@ in_game ---(2h idle, no result)---> dropped ---(a late eog block)---> finished
 - The `lastSplit` passed to the balancer is the five puuids on one side of the most recent chosen split whose
   lobby had the same ten players as tonight's; if there is no such split, `lastSplit` is null.
 - Discord posting happens from the API on state transitions, through the webhook stored in `discord_config`.
+- A split going on the board is what queues `switch_side` commands for the chosen ten whose client has them on
+  the other side (M4.1/M4.3), and that happens in two places: reaching `balanced`, and a **reroll**, which
+  promotes another split without the lobby ever leaving `balanced` (`promoteSplit` supersedes the old split's
+  rows and queues the new ones in the same write). **Leaving** `balanced` — to `open`, `in_game`, `finished`,
+  `abandoned` — fails the ones still pending with `superseded`, inside `moveLobby` itself. Nobody is dragged to
+  a side from a split the group has moved on from. `create_lobby` and `invite` are never queued by a transition
+  (they are M4.2's button) and never superseded by one; they expire on their own TTL.
 
 ## Companion (`apps/companion`)
 
@@ -227,7 +235,12 @@ watching: on lobby event -> POST /api/companion/lobby
 - `/leaderboard` Season table by ordinal, wins, games, streak.
 - `/p/[puuid]` Player page: rating history chart, role record, recent games.
 - `/admin` Discord OAuth gated, `players.is_admin`. Link Discord IDs, set roles, mint companion tokens, set Discord config, start a season.
-- `/api/companion/*` bearer token, zod-validated.
+- `/api/companion/*` bearer token, zod-validated. The command queue is three of them (M4.1):
+  `GET /commands?clientConnected=`, `POST /commands/{id}/ack`, `POST /commands/{id}/nack`. The contract is one
+  doc comment on `companionCommandsResponseSchema` in `packages/db/src/schemas/companionResponses.ts`; the
+  rules are `apps/web/lib/commands/`. `clientConnected=false` is the one request in the whole API that does
+  not write `companion_tokens.last_seen_at`, which is what makes that column mean "at their PC with League
+  open".
 - `/api/admin/*` session-gated.
 
 ## Discord
