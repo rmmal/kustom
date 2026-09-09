@@ -442,7 +442,7 @@ Nobody has a role set, so the balancer treats everyone as flexible.
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 ┏━━━━━━━━━━━━━━ 4px red ━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ RED  · ●off-role                          7595 ┃
+┃ RED · ● off-role                          7595 ┃  legend: mono t-xs dim, brand dot; sum unmoved
 ┃ ◺ top       Omar                          1469 ┃
 ┃ …                                              ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -459,7 +459,10 @@ Nobody has a role set, so the balancer treats everyone as flexible.
   filled side-coloured block behind five names.**
 - Role column: icon + word, `dim`; **off-role turns the icon and word `brand` and adds a dotted underline
   under the word**, plus the `brand` dot before the name and the visually-hidden `off-role` — colour is never
-  the only signal, and the stored explanation names them in a sentence anyway.
+  the only signal, and the stored explanation names them in a sentence anyway. The header bar of a card that
+  has any marked seat also carries a `· off-role` legend, and a card with **three or more** marked seats
+  drops the amber from its role words. Both are specified in full in the two sub-sections below, and both are
+  counted **per card**.
 - Lane order, always, top to support. Never sorted by rating. The sum stays a bare number with its
   visually-hidden `sum of the five ratings` (product, 2026-09-08 — not reopened).
 - The explanation strip is unchanged in every way that matters: `splits.explanation` verbatim, one `<p>`,
@@ -473,6 +476,140 @@ Nobody has a role set, so the balancer treats everyone as flexible.
   leading rule and **no header bar**: its own sentence opens `Sitting out this game: …`, and a `SITTING OUT`
   label above that is the same three words twice, 45px above the fold on the one screen where the second team
   card is already below it.
+
+##### The `· off-role` legend in a team card header (designer, 2026-09-10)
+
+The rendered Floodlit build marks off-role seats inside the rows and says nothing about them in the header, so
+a reader who scans the two headers — which is what the eye does first on a card with a 4px side rule and a
+display-cut side name — learns nothing until they read five rows. The legend is the key to the amber dot, and
+it is the header's only amber.
+
+Markup, and this is the whole change to `TeamCard`'s header in `apps/web/app/_tonight/TonightView.tsx`:
+
+```html
+<header class="cn-card-head cn-team-head">
+  <div class="cn-team-heading">
+    <h2 class="cn-display cn-side">RED</h2>
+    <span class="cn-head-sep" aria-hidden="true">·</span>
+    <p class="cn-num cn-off-legend">
+      <span class="cn-off-dot" aria-hidden="true"></span>
+      off-role<span class="cn-sr"> seats in this card</span>
+    </p>
+  </div>
+  <p class="cn-num cn-sum">7595<span class="cn-sr"> sum of the five ratings</span></p>
+</header>
+```
+
+- **Placement.** After the side name, in reading order, inside a new leading group `.cn-team-heading`. The sum
+  stays the header's second and last flex child. **Adding the legend may not move the sum by a pixel**: blue
+  with no legend and red with one keep their sums on their own card's right edge, which is exactly what
+  `justify-content: space-between` on `.cn-team-head` already does — and it is why the legend goes inside the
+  leading group and not in as a third child. `.cn-team-heading { display: flex; align-items: baseline; gap:
+  var(--cn-sp-2); min-width: 0; }` and `.cn-sum { flex: 0 0 auto; }`.
+- **Separator.** One middot, `·`, in its own `aria-hidden` span, mono `t-xs`, `dim`, with the group's `sp-2`
+  gap on each side. The same separator as the rack header's `SEATS · 9 of 10`; one punctuation mark for one
+  job across the page. **Not a CSS `::before`** — generated content is announced by VoiceOver, and this is
+  punctuation.
+- **Type.** Mono `t-xs`, weight 400, `dim`, letter-spacing `0.08em`, lower case, `white-space: nowrap`. It is a
+  legend and it is dressed exactly like `rating`, `SEATS`, `live` and `open`. **The word is never `brand`.**
+  The one amber in the header is the dot — amber on the word as well would put three amber elements in a
+  32px bar and start the same fight the threshold rule below settles.
+- **The dot.** The same 6px `.cn-off-dot` the marked rows use, `aria-hidden`, `brand`, `vertical-align:
+  middle`, `sp-2` to the word from its own `margin-right`, with the row's reserved-slot margin cancelled in
+  one line: `.cn-off-legend .cn-off-dot { margin-left: 0; }`. One dot definition in `tonight.css`, so the
+  legend is literally the same mark it is a key for.
+- **Baseline.** The legend sits on the side name's baseline, not centred against it: 12px mono hanging off a
+  display-cut `t-lg` is the intended relationship, and `align-items: baseline` on both the header and the
+  group is what produces it.
+- **When it appears.** Exactly when that card has at least one seat with `offRole === true`, in the `balanced`
+  and `in_game` states. **When it disappears:** when that card has none — including when the *other* card has
+  some. It is per card, never per page. It never appears on the result card's team headers (M3.16: the marker
+  is not repeated once the game has been played, and neither is its key), never in the seat rack, and never in
+  an embed — the teams embed already appends ` · off-role` to the player's own line.
+- **No height change.** A reroll that removes the last marked seat removes the legend and the header keeps its
+  height: 12px of mono inside a bar whose height is set by the display-cut side name. This is the no-shift rule
+  and it costs nothing here.
+- **390px.** The header's content box is `390 − 2×16 gutter − 2×12 padding = 334px`. Budget: `BLUE` (the longer
+  name) at `t-lg` 24px ≈ 74px, separator plus its two gaps ≈ 21px, dot plus gap 14px, `off-role` at 12px mono
+  with `0.08em` ≈ 60px, a four-digit sum at mono `t-md` tabular ≈ 46px — about 215px used, ~120px spare. One
+  line at 390, and it is not allowed to become two: `white-space: nowrap` on the legend, `flex: 0 0 auto` on
+  the sum, and the side name never shrinks. Those are budgets, not measurements: check the real thing at 390px
+  with `BLUE` and a five-digit sum before calling it done.
+- **1280px.** The cards are side by side inside the main column (~330px each once the rail takes 20rem), so the
+  budget is the phone's and the same rule holds. At this width the two headers are read as a pair, which is the
+  point: a legend on one and none on the other says at a glance which side is carrying the compromise.
+- **Accessible name: `off-role seats in this card`.** The visible word plus a `cn-sr` suffix ` seats in this
+  card`; the dot and the separator are `aria-hidden`. The plural is a category, like `rating` over a column of
+  many, so nothing pluralises at render. It is deliberately **not** the bare word `off-role`, which straight
+  after `RED` reads as a property of the side; and it is deliberately **not** `aria-hidden` in full, because a
+  listener moving header to header should get the same warning a reader gets before hearing five rows. Each
+  marked row keeps its own hidden `off-role` — that one is per seat, this one is per card, and they do not
+  collide.
+- **Test note.** `TonightView.test.tsx:297` asserts `screen.getAllByText('off-role')` has the marked-seat
+  count. It keeps passing, because the legend's own text content is `off-role seats in this card` and not
+  `off-role` — but that is a coincidence of the accessible name, so the same commit adds an explicit
+  assertion: one `.cn-off-legend` per card that has a marked seat, and none on a card that has not.
+
+##### The amber threshold — three or more marked seats in one card (designer, 2026-09-10)
+
+> **Count the marked seats in one team card. At one or two, the off-role marker is unchanged. At three or
+> more, the role icon and word go back to `dim`. The dotted underline, the `brand` dot before the name, the
+> visually-hidden `off-role` and the header legend all stay.**
+
+| Marked seats in the card | role icon + word | dotted underline | dot before the name | hidden `off-role` | header legend |
+|---|---|---|---|---|---|
+| 0 | `dim`, no underline | — | — | — | absent |
+| 1–2 | `brand` | yes | yes | yes | present |
+| 3–5 | **`dim`** | yes | yes | yes | present |
+
+Only one thing changes at the threshold, and it is the colour of the icon-and-word pair. Nothing is removed.
+
+**Why there is a threshold at all.** A ten-mid-main night puts four amber role words and four amber icons into
+one card. That is more lit area than the card's own 4px side rule and its side name put together, so the card
+stops reading as *blue* or *red* and starts reading as *the amber one* — and side is the first of the three
+questions this page answers ("Am I in, and which side?"), while off-role is part of the second. A marker that
+outranks the identity of the thing it is marking is not a marker.
+
+**Why three.** Three of five is the majority. Below it the marked seats are the minority and colour is the
+fastest way to find them, which is the entire job. At or above it the *unmarked* seats are the minority, and
+colour spread over the majority is a wash rather than a mark — it points at nothing because it points at most
+things. The same arithmetic in the other direction is a nice check: at 3 marked, colouring the two unmarked
+seats instead would be the minority rule again, and it is rejected because inverting a marker's meaning between
+two cards on one screen is worse than dropping its colour on one of them.
+
+**Why the rest survives.** The dotted underline is the non-colour signal that the colour rule has always been
+paired with (`Colour is never the only signal`), and it is still legible under `dim` — an underline is a shape,
+not a hue. The 6px dot per row is ~36px² of amber for five rows against a role word's ~600px², so five dots
+never out-weigh a side rule, and the dots are what the header legend is a key to. The hidden `off-role` is what
+a listener hears and it is not visual at all. And the fact itself is never lost: the explanation line under the
+cards prints `4 off-role: Hana at support, …` verbatim, which is the sentence that actually answers "why me".
+
+**Per card, not per page.** Each card counts its own five seats. A split with 2 marked on blue and 3 on red
+renders blue's role words amber and red's `dim`, on the same screen, and that is correct, not an
+inconsistency: the question a card answers is "which of *these five* seats", the two cards are read one at a
+time, and a page-wide count would let a red seat change colour because of something that happened on blue.
+The threshold is also the same in light and dark — one threshold, not two — because it is about what share of a
+card is marked, not about how loud the amber is.
+
+**Implementation.** One class, one declaration, no new token:
+
+```css
+/* Three or more marked seats in one card: the mark keeps its shape and gives up its colour. */
+.cn-team-many-off .cn-off {
+  color: var(--cn-dim);
+}
+```
+
+`TeamCard` computes `const marked = seats.filter((seat) => seat.offRole).length;`, adds `cn-team-many-off` to
+the card's `<section>` when `marked >= 3`, and renders the legend when `marked >= 1`. `.cn-off` keeps its
+`text-decoration: underline dotted` and its offset, so the underline survives the override, and `RoleIcon`
+draws in `currentColor` so the icon follows the word with no second rule. This rule applies to the **teams
+block only**: the result card does not repeat the marker at all, and the seat rack does not have one.
+
+**Test.** A split with three marked seats on one side and one on the other asserts `cn-team-many-off` on the
+first card's section and not on the second, with `.cn-off` still present on every marked seat of both — the
+class is a colour override, not a removal, and a test that checks `.cn-off` disappeared would be testing the
+wrong rule.
 
 #### Result
 
@@ -672,6 +809,8 @@ the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc,
 | player page sections | `By role` · `Recent games` | *(shipped)* kept |
 | a player with no name | `Someone` | *(shipped, M3.10)* kept |
 | nameless hint, once per page while any row reads `Someone` | `Names fill in after someone's first game.` | *(shipped, M3.10)* kept |
+| rating column, unrated game | `not rated` | **new**, product 2026-09-10 (M3.23) |
+| hint under Recent games, when any row is unrated | `Some games don't move ratings: too short, short a player, or added from match history and not counted yet.` | **new**, product 2026-09-10 (M3.23) |
 | nightly embed, field name | `Top ten` | *(shipped)* kept |
 
 **Why the three new ones stand.**
@@ -1173,6 +1312,7 @@ still-settling sentence · `By role` · `Recent games` · the nameless hint.
   `1392 (−42)` right. A list of results with no dates cannot answer the first question anybody asks of it. The
   section header carries a right-aligned `rating` legend and the number carries visually-hidden `Rating`, the
   same rule the board row's bare Proven already follows.
+- **Unrated games are listed, not hidden** (product, 2026-09-10, M3.23). `Recent games` is the last five games the player played, rated or not, in `started_at` order, and an unrated one counts toward the five. Its rating column reads `not rated` — mono `t-sm` `dim`, right-aligned where `1392 (−42)` sits, no delta, no em-dash, no visually-hidden `Rating` on that row — while `Won` / `Lost`, the date and the duration print as normal. A refused game (too short, nine players, a duplicate player) and a backfilled game that `rebuild-ratings` has not folded yet read the same two words; the backfill row gains its number when the rebuild runs. Everything else on the page stays rated-only: the two numbers, the chart, the seed line, `By role` and the `37 games · 20W 17L` record, which is why the record may count fewer games than the list shows. Once per page, only when at least one row reads `not rated`, directly under the list with the nameless hint's placement rule: `Some games don't move ratings: too short, short a player, or added from match history and not counted yet.`
 - **The five are the player's own side, in lane order**, their own row marked with the `brand` inset rule.
   **Every other name is a link to that player's page**; the viewed player's own row is plain text. This is the
   one screen in the product that lists other people by name, and hopping between friends is what the board is
