@@ -139,9 +139,14 @@
   gap: var(--cn-sp-1);
 }
 
+/*
+ * The two labels sit on one line and their numbers hang under them: with the numbers at two
+ * very different sizes, bottom-aligning the pair puts `Rating` and `Proven` at two different
+ * heights and the smaller label reads as a caption for the bigger number.
+ */
 .cn-numbers {
   display: flex;
-  align-items: flex-end;
+  align-items: baseline;
   flex-wrap: wrap;
   gap: var(--cn-sp-5);
   margin: 0;
@@ -177,9 +182,9 @@
   letter-spacing: -0.02em;
 }
 
-/* The chip sits on the numbers' own line, not below them. */
+/* The chip sits on the labels' line, where it is a label about the number under it. */
 .cn-numbers .cn-chip {
-  margin-bottom: var(--cn-sp-1);
+  align-self: baseline;
 }
 
 .cn-chart {
