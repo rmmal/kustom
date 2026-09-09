@@ -11,7 +11,8 @@
  * The file is written with mode 0600 (owner only; Windows ignores the mode). Nothing else is ever written to
  * the config directory except `logs/`.
  *
- * The token is never printed, logged or echoed; the hidden prompt masks it.
+ * The token is never printed or logged; the hidden prompt masks it, and `--show-token` only ever echoes it to
+ * the console of the person typing it.
  */
 
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -48,9 +49,55 @@ export const apiBaseSchema = z
     message: 'apiBase must be an origin like https://customs.example (no path)',
   });
 
+/**
+ * What a minted token looks like: `apps/web/lib/companionAuth.ts` `mintCompanionToken` is 32 random bytes as
+ * base64url without padding, so 43 characters from `A-Z a-z 0-9 - _`. The companion cannot import that file
+ * (it must not depend on the web app), so the shape is pinned here and checked in `config.test.ts`. A pasted
+ * value of any other shape cannot be a token: it is a corrupted paste, not a credential (M2.19).
+ */
+export const COMPANION_TOKEN_LENGTH = 43;
+export const COMPANION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+export const TOKEN_SHAPE_MESSAGE = `That does not look like a token from the admin page (expected ${COMPANION_TOKEN_LENGTH} characters, letters, digits, - and _). Try pasting it again.`;
+
+/** How many pastes the first-run prompt accepts before it gives up and says so. */
+export const TOKEN_ATTEMPTS = 3;
+
+export function looksLikeCompanionToken(value: string): boolean {
+  return COMPANION_TOKEN_PATTERN.test(value);
+}
+
+// ESC [ params intermediates final (CSI, e.g. bracketed paste's ESC[200~), ESC O x (SS3), or ESC + one char.
+const ESC = String.fromCharCode(0x1b);
+const ESCAPE_SEQUENCE = new RegExp(`${ESC}(?:\\[[0-?]*[ -/]*[@-~]|O[@-~]|[\\s\\S])`, 'g');
+const CONTROL_CHARS = new RegExp(
+  `[${String.fromCharCode(0)}-${String.fromCharCode(0x1f)}${String.fromCharCode(0x7f)}${String.fromCharCode(0xfeff)}]`,
+  'g',
+);
+const SURROUNDING_QUOTES = /^["'`\u201c\u201d\u2018\u2019]+|["'`\u201c\u201d\u2018\u2019]+$/gu;
+
+/**
+ * A pasted token as a person meant it: terminal escape sequences gone (a terminal with bracketed paste wraps a
+ * paste in `ESC[200~` ... `ESC[201~`, and a cooked-mode read may still hand them over), control characters
+ * gone, whitespace and quotes around it gone. Pure; used on every path the token comes in by.
+ */
+export function cleanTokenInput(raw: string): string {
+  return raw
+    .replace(ESCAPE_SEQUENCE, '')
+    .replace(CONTROL_CHARS, '')
+    .trim()
+    .replace(SURROUNDING_QUOTES, '')
+    .trim();
+}
+
+export const companionTokenSchema = z
+  .string()
+  .transform(cleanTokenInput)
+  .refine(looksLikeCompanionToken, { message: TOKEN_SHAPE_MESSAGE });
+
 export const configSchema = z.object({
   apiBase: apiBaseSchema,
-  companionToken: z.string().trim().min(1),
+  companionToken: companionTokenSchema,
   /** A non-default League install. Tried before the platform default lockfile paths. */
   lockfilePath: z.string().trim().min(1).optional(),
 });
@@ -95,10 +142,21 @@ export function logsDir(dir: string): string {
   return join(dir, LOGS_DIR_NAME);
 }
 
+/**
+ * Why the prompt is needed: no file at all, a file with no token, or a file whose token cannot be one (the
+ * corrupted paste of M2.19, saved by 0.1.0). The prompt words its first line by it.
+ */
+export type MissingConfigReason = 'no_file' | 'no_token' | 'bad_token';
+
 export type LoadConfigResult =
   | { readonly status: 'ok'; readonly config: CompanionConfig; readonly path: string }
   /** No file, or a file without a usable token: the first-run prompt is needed. */
-  | { readonly status: 'missing'; readonly path: string; readonly partial: Partial<CompanionConfig> }
+  | {
+      readonly status: 'missing';
+      readonly path: string;
+      readonly partial: Partial<CompanionConfig>;
+      readonly reason: MissingConfigReason;
+    }
   /** A file that exists but is not JSON. Refuse to overwrite it silently. */
   | { readonly status: 'invalid'; readonly path: string; readonly reason: string };
 
@@ -111,7 +169,7 @@ export function loadConfig(dir: string): LoadConfigResult {
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
     if (code === 'ENOENT') {
-      return { status: 'missing', path, partial: {} };
+      return { status: 'missing', path, partial: {}, reason: 'no_file' };
     }
     return { status: 'invalid', path, reason: error instanceof Error ? error.message : String(error) };
   }
@@ -129,6 +187,7 @@ export function loadConfig(dir: string): LoadConfigResult {
   }
   // Keep whatever fields are usable so the prompt can offer them as defaults.
   const partial: Partial<CompanionConfig> = {};
+  let reason: MissingConfigReason = 'no_token';
   if (raw && typeof raw === 'object') {
     const record = raw as Record<string, unknown>;
     const apiBase = apiBaseSchema.safeParse(record.apiBase);
@@ -138,8 +197,11 @@ export function loadConfig(dir: string): LoadConfigResult {
     if (typeof record.lockfilePath === 'string' && record.lockfilePath.trim().length > 0) {
       partial.lockfilePath = record.lockfilePath.trim();
     }
+    if (typeof record.companionToken === 'string' && record.companionToken.trim().length > 0) {
+      reason = 'bad_token';
+    }
   }
-  return { status: 'missing', path, partial };
+  return { status: 'missing', path, partial, reason };
 }
 
 /** Writes the config with owner-only permissions. Creates the directory. Throws on I/O failure. */
@@ -177,7 +239,13 @@ export interface FirstRunOptions {
   readonly io: PromptIo;
   readonly partial?: Partial<CompanionConfig>;
   readonly checkApiBase?: ApiBaseCheck;
+  /** Why the prompt is running; words the first line. Default `no_file`. */
+  readonly reason?: MissingConfigReason;
 }
+
+/** Thrown by `promptFirstRun` after `TOKEN_ATTEMPTS` pastes that could not be a token. */
+export const NO_TOKEN_MESSAGE =
+  'No token after three tries. Get one from the admin page and start the companion again.';
 
 /**
  * The first-run conversation. When the built-in origin answers `GET /api/health`, the only question is the
@@ -189,7 +257,9 @@ export async function promptFirstRun(options: FirstRunOptions): Promise<Companio
   const { io } = options;
   const partial = options.partial ?? {};
   io.say(
-    'Customs Night companion: first run. Paste the token from the admin page; it is stored locally only.',
+    options.reason === 'bad_token'
+      ? 'Customs Night companion: the saved token does not look like one from the admin page. Paste it again; it is stored locally only.'
+      : 'Customs Night companion: first run. Paste the token from the admin page; it is stored locally only.',
   );
 
   let apiBase = partial.apiBase ?? DEFAULT_API_BASE;
@@ -226,12 +296,21 @@ export async function promptFirstRun(options: FirstRunOptions): Promise<Companio
     }
   }
 
-  let companionToken = '';
-  while (companionToken.length === 0) {
-    companionToken = (await io.askHidden('Companion token (input hidden): ')).trim();
-    if (companionToken.length === 0) {
+  // Three pastes. Anything that is not 43 base64url characters cannot be a token (a corrupted paste, a
+  // bracketed-paste wrapper, the wrong clipboard); saying so beats a 401 forever with a wrong file.
+  let companionToken: string | null = null;
+  for (let attempt = 0; attempt < TOKEN_ATTEMPTS && companionToken === null; attempt += 1) {
+    const cleaned = cleanTokenInput(await io.askHidden('Companion token (input hidden): '));
+    if (cleaned.length === 0) {
       io.say('  A token is required.');
+    } else if (!looksLikeCompanionToken(cleaned)) {
+      io.say(`  ${TOKEN_SHAPE_MESSAGE}`);
+    } else {
+      companionToken = cleaned;
     }
+  }
+  if (companionToken === null) {
+    throw new Error(NO_TOKEN_MESSAGE);
   }
 
   const config: CompanionConfig = { apiBase, companionToken };
@@ -241,13 +320,82 @@ export async function promptFirstRun(options: FirstRunOptions): Promise<Companio
   return config;
 }
 
+export type HiddenLineEvent =
+  | { readonly kind: 'more' }
+  | { readonly kind: 'line'; readonly line: string }
+  /** Ctrl-C. */
+  | { readonly kind: 'interrupt' };
+
+const CTRL_C = String.fromCharCode(0x03);
+const DEL = String.fromCharCode(0x7f);
+
+/**
+ * Reads one line of raw-mode terminal input a chunk at a time, the way the hidden token prompt sees it, and
+ * keeps only the printable characters. A terminal escape sequence is swallowed whole even when a chunk
+ * boundary falls inside it: `ESC [` then parameter (`0-?`) and intermediate (space-`/`) bytes up to a final
+ * byte (`@-~`) — bracketed paste's `ESC[200~` / `ESC[201~`, arrow keys — `ESC O x`, or `ESC` plus one
+ * character. 0.1.0 dropped the ESC and kept `[200~`, which is how a valid token became a 401 (M2.19).
+ * Backspace and DEL erase; CR or LF ends the line; other control characters are dropped.
+ */
+export class HiddenLineReader {
+  private line = '';
+  private escape: 'none' | 'esc' | 'csi' = 'none';
+
+  feed(text: string): HiddenLineEvent {
+    for (const ch of text) {
+      if (this.escape === 'csi') {
+        // Parameter and intermediate bytes continue the sequence; a final byte (or anything odd) ends it.
+        if (!(ch >= '0' && ch <= '?') && !(ch >= ' ' && ch <= '/')) {
+          this.escape = 'none';
+        }
+        continue;
+      }
+      if (this.escape === 'esc') {
+        this.escape = ch === '[' || ch === 'O' ? 'csi' : 'none';
+        continue;
+      }
+      if (ch === ESC) {
+        this.escape = 'esc';
+        continue;
+      }
+      if (ch === CTRL_C) {
+        return { kind: 'interrupt' };
+      }
+      if (ch === '\r' || ch === '\n') {
+        const line = this.line;
+        this.line = '';
+        return { kind: 'line', line };
+      }
+      if (ch === DEL || ch === '\b') {
+        this.line = this.line.slice(0, -1);
+        continue;
+      }
+      if (ch >= ' ') {
+        this.line += ch;
+      }
+    }
+    return { kind: 'more' };
+  }
+}
+
+export interface StdioPromptOptions {
+  /**
+   * `--show-token` / `CUSTOMS_NIGHT_SHOW_TOKEN=1`: the token prompt echoes what is typed, for a terminal that
+   * cannot paste into a hidden prompt. Console only; the logger never sees the prompt either way.
+   */
+  readonly showToken?: boolean;
+}
+
 /**
  * A `PromptIo` over the process's stdin/stdout. The hidden prompt puts a TTY into raw mode and reads keys
- * itself so the token is never echoed; on a non-TTY stdin (piped input) it falls back to a plain line read.
+ * itself so the token is never echoed; on a non-TTY stdin (piped input), or with `showToken`, it is a plain
+ * line read. Both go through `cleanTokenInput` in `promptFirstRun`, so an escape sequence that survives a
+ * cooked-mode read is stripped there too.
  */
 export function stdioPrompt(
   input: NodeJS.ReadStream = process.stdin,
   output: NodeJS.WriteStream = process.stdout,
+  options: StdioPromptOptions = {},
 ): PromptIo {
   const say = (line: string): void => {
     output.write(`${line}\n`);
@@ -261,12 +409,15 @@ export function stdioPrompt(
     }
   };
   const askHidden = (question: string): Promise<string> => {
+    if (options.showToken) {
+      return askLine(question.replace('(input hidden)', '(shown as you type)'));
+    }
     if (!input.isTTY || typeof input.setRawMode !== 'function') {
       return askLine(question);
     }
     output.write(question);
     return new Promise((resolve) => {
-      let buffer = '';
+      const reader = new HiddenLineReader();
       const wasRaw = input.isRaw;
       input.setRawMode(true);
       input.resume();
@@ -278,25 +429,15 @@ export function stdioPrompt(
         resolve(value);
       };
       const onData = (chunk: Buffer | string): void => {
-        const text = chunk.toString('utf8');
-        for (const ch of text) {
-          if (ch === '\u0003') {
-            // Ctrl-C during the prompt: leave the terminal sane and exit.
-            input.setRawMode(wasRaw);
-            output.write('\n');
-            process.exit(130);
-          }
-          if (ch === '\r' || ch === '\n') {
-            finish(buffer);
-            return;
-          }
-          if (ch === '\u007f' || ch === '\b') {
-            buffer = buffer.slice(0, -1);
-            continue;
-          }
-          if (ch >= ' ') {
-            buffer += ch;
-          }
+        const event = reader.feed(chunk.toString('utf8'));
+        if (event.kind === 'interrupt') {
+          // Ctrl-C during the prompt: leave the terminal sane and exit.
+          input.setRawMode(wasRaw);
+          output.write('\n');
+          process.exit(130);
+        }
+        if (event.kind === 'line') {
+          finish(event.line);
         }
       };
       input.on('data', onData);

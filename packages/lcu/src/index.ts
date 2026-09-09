@@ -42,6 +42,7 @@ export {
   type ShapeDiff,
 } from './fixtures.js';
 export {
+  createLockfileDiscovery,
   type DiscoverLockfileOptions,
   type DiscoverLockfileResult,
   defaultLockfileCandidates,
@@ -50,9 +51,14 @@ export {
   type LockfileAttempt,
   type LockfileCredentials,
   LockfileCredentialsSchema,
+  type LockfileDiscovery,
+  type LockfileDiscoveryOptions,
+  type LockfileSource,
   lockfileCandidatesFromEnv,
   MACOS_LOCKFILE_PATH,
   type ParseLockfileResult,
+  PROCESS_ARGS_PATH,
+  PROCESS_LIST_PATH,
   parseLockfile,
   WINDOWS_LOCKFILE_PATH,
 } from './lockfile.js';
@@ -70,6 +76,20 @@ export {
   RANK_QUEUE,
   type RiotIdName,
 } from './mapper.js';
+export {
+  type CommandLineCredentials,
+  LEAGUE_UX_PROCESS_NAME,
+  type LeagueProcess,
+  lockfilePathFromExecutable,
+  type ProcessLister,
+  type ProcessListResult,
+  parsePowerShellProcessList,
+  parseUxCommandLine,
+  parseWmicProcessList,
+  resolveProcessLister,
+  type WindowsProcessListerOptions,
+  windowsProcessLister,
+} from './processDiscovery.js';
 export {
   type AliasLookup,
   AliasLookupSchema,

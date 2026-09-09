@@ -57,6 +57,53 @@ src/log.ts           daily JSON log file (debug) plus the console (info)
 build/               the release build (M2.6): bundle, exe, publish
 ```
 
+### The token prompt (M2.19)
+
+The first Windows run of 0.1.0 saved a corrupted token: Windows Terminal wraps a paste in bracketed-paste
+markers (`ESC[200~` ... `ESC[201~`), the raw-mode reader dropped the `ESC` and kept `[200~`, and the API said
+401 to `[200~<token>[201~`. Since 0.1.1 the hidden prompt (`HiddenLineReader` in `src/config.ts`) swallows
+whole escape sequences even across chunk boundaries, and every path the token comes in by — the hidden prompt,
+a piped stdin, `--show-token`, and `config.json` itself — goes through `cleanTokenInput`, which strips escape
+sequences, control characters, surrounding whitespace and quotes.
+
+A token from the admin page is 32 random bytes as base64url: exactly 43 characters from `A-Z a-z 0-9 - _`
+(`apps/web/lib/companionAuth.ts` `mintCompanionToken`; the shape is pinned in `src/config.ts` and
+`config.test.ts` checks it against the same `randomBytes(32).toString('base64url')`). A paste of any other
+shape gets one sentence — `That does not look like a token from the admin page (expected 43 characters,
+letters, digits, - and _). Try pasting it again.` — and another go, three in all, then the companion says so
+and exits. A saved `config.json` whose token has the wrong shape is treated as "no token": the prompt runs
+again with `the saved token does not look like one from the admin page`, and `apiBase` is kept. That is what
+fixes the PC that ran 0.1.0: start 0.1.1, paste again.
+
+```
+CustomsNight.exe --show-token                # echo the token as it is typed (console only; never the log)
+set CUSTOMS_NIGHT_SHOW_TOKEN=1 && CustomsNight.exe   # the same, for a shortcut that cannot pass flags
+```
+
+`--show-token` exists for a terminal that cannot paste into a hidden prompt (some remote-desktop and
+older-console setups). It changes only what the console shows while typing; the token is still never written
+to the log, which knows it only as a secret to redact.
+
+### Finding a League that is not in `C:\Riot Games` (M2.19)
+
+Discovery is `@customs/lcu` `createLockfileDiscovery`, and runs in this order: `lockfilePath` from
+`config.json`, then the path it last found through the process list, then the platform default, then — on
+Windows only, and only when none of those exist — the process list: PowerShell `Get-CimInstance Win32_Process`
+for `LeagueClientUx.exe` (`wmic` if PowerShell cannot start), the lockfile beside its `ExecutablePath`, and
+failing that `--app-port=` / `--remoting-auth-token=` off its `CommandLine`. The shell-out runs at most once
+per 15 s and never throws; if it fails, the companion keeps polling the paths. `waiting for the League client`
+prints what was tried plus `If League is installed somewhere else, add lockfilePath to config.json` whenever
+no `lockfilePath` is configured:
+
+```json
+{ "apiBase": "https://kustom-delta.vercel.app", "companionToken": "...", "lockfilePath": "D:\\Games\\Riot Games\\League of Legends\\lockfile" }
+```
+
+The manual path always wins and is the way out if the process list is not available to a non-admin user (a
+client started elevated hides its `ExecutablePath` and `CommandLine`). Status of the fallback is
+`observed on Windows: pending` in `docs/03-lcu-reference.md` until a Windows run with a custom install shows
+`League client found at a non-default install` in the log.
+
 ### Running from source
 
 ```
