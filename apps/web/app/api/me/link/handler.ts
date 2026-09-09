@@ -1,0 +1,49 @@
+import { type SelfLinkRequest, selfLinkRequestSchema, selfLinkResponseSchema } from '@customs/db';
+import type { NextResponse } from 'next/server';
+import type { MeContext, MeRouteOptions } from '@/lib/me/route';
+import { withViewerAuth } from '@/lib/me/route';
+import { linkSelf, type SelfLinkStore, supabaseSelfLinkStore } from '@/lib/me/selfLink';
+import { nightTimeZone } from '@/lib/tonight/night';
+
+/**
+ * `POST /api/me/link` (M3.6, "Picking yourself, once"): a signed-in visitor claims one of
+ * tonight's lobby members as themselves, once, with no admin involved.
+ *
+ * It writes `players.discord_id` and nothing else. Which rows may be claimed is decided here
+ * from tonight's lobby, never from the body, and a row that is already linked is refused with
+ * product's sentence.
+ */
+
+export interface SelfLinkRouteOptions extends MeRouteOptions {
+  /** Injection point for tests. Defaults to the Supabase-backed store. */
+  store?: (context: MeContext) => SelfLinkStore;
+}
+
+export function selfLinkRoute(options: SelfLinkRouteOptions = {}) {
+  return withViewerAuth(selfLinkRequestSchema, (input, context) => handle(input, context, options), {
+    redirectTo: '/',
+    getClient: options.getClient,
+    authorize: options.authorize,
+  });
+}
+
+async function handle(
+  input: SelfLinkRequest,
+  context: MeContext,
+  options: SelfLinkRouteOptions,
+): Promise<NextResponse> {
+  const store = options.store
+    ? options.store(context)
+    : supabaseSelfLinkStore(context.client, { timeZone: nightTimeZone() });
+
+  const result = await linkSelf(store, context.me, input.puuid);
+  if (!result.ok) return context.fail(result.status, result.error);
+
+  return context.respond(
+    selfLinkResponseSchema,
+    { ok: true, puuid: result.value.puuid },
+    // The no-JavaScript path's sentence. With JavaScript the page simply knows the reader from
+    // the next render on, which is the receipt.
+    'that is you from now on',
+  );
+}

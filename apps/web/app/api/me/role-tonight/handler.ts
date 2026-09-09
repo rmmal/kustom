@@ -1,0 +1,71 @@
+import { type RoleTonightRequest, roleTonightRequestSchema, roleTonightResponseSchema } from '@customs/db';
+import type { NextResponse } from 'next/server';
+import {
+  type RoleTonightStore,
+  savedForNextGame,
+  setRoleTonight,
+  supabaseRoleTonightStore,
+} from '@/lib/me/roleTonight';
+import type { MeContext, MeRouteOptions } from '@/lib/me/route';
+import { withViewerAuth } from '@/lib/me/route';
+
+/**
+ * `POST /api/me/role-tonight` (M3.6). Separate from `route.ts` because a Next route file may
+ * only export HTTP verbs, and the tests need the handler with a fake session and a fake store
+ * around it — there is no way to drive a real Discord OAuth flow from vitest.
+ *
+ * The caller is the session. The body carries the lobby, the role, and — for an admin only —
+ * whose row to write. Nothing rebalances and nothing is posted to Discord: a tap on a lobby
+ * whose teams are up is stored and answered with `savedForNextGame`, which is the sentence the
+ * control prints.
+ */
+
+/** No linked player: the page shows the `That's me` list instead, so this is a refusal. */
+export const ROLE_TAP_NOT_LINKED = 'Pick yourself out of the lobby first, then you can set a role.';
+
+export interface RoleTonightRouteOptions extends MeRouteOptions {
+  /** Injection point for tests. Defaults to the Supabase-backed store. */
+  store?: (context: MeContext) => RoleTonightStore;
+}
+
+export function roleTonightRoute(options: RoleTonightRouteOptions = {}) {
+  return withViewerAuth(roleTonightRequestSchema, (input, context) => handle(input, context, options), {
+    redirectTo: '/',
+    getClient: options.getClient,
+    authorize: options.authorize,
+  });
+}
+
+async function handle(
+  input: RoleTonightRequest,
+  context: MeContext,
+  options: RoleTonightRouteOptions,
+): Promise<NextResponse> {
+  const actor = context.me.player;
+  if (actor === null) return context.fail(403, ROLE_TAP_NOT_LINKED);
+
+  const store = options.store ? options.store(context) : supabaseRoleTonightStore(context.client);
+  const result = await setRoleTonight(store, actor, {
+    lobbyId: input.lobbyId,
+    role: input.role,
+    puuid: input.puuid,
+  });
+  if (!result.ok) return context.fail(result.status, result.error);
+
+  const { puuid, role, status } = result.value;
+
+  return context.respond(
+    roleTonightResponseSchema,
+    {
+      ok: true,
+      puuid,
+      lobbyId: input.lobbyId,
+      role,
+      status,
+      savedForNextGame: savedForNextGame(status),
+    },
+    // The no-JavaScript path's sentence, in the query string of the 303 back to the page. With
+    // JavaScript the role word turning `brand` is the whole receipt: no toast, no flash.
+    role === null ? 'role cleared' : `role for tonight: ${role}`,
+  );
+}

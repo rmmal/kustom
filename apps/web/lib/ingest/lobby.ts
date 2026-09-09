@@ -21,6 +21,7 @@ import type { ServiceClient } from '../supabase';
 import { type BalanceOutcome, balanceLobby, hasChosenSplit } from './balance';
 import { emitLobbyBalanced } from './hooks';
 import { ensurePlayers } from './players';
+import { carryRoleOverrides } from './roleCarry';
 import { SelectionError } from './selection';
 
 /**
@@ -230,6 +231,14 @@ export async function ingestLobby(
   // it) and a Riot ID that changed has to land in `players` (M1.7). Neither touches
   // `lobbies`, so neither restarts the clock — only the write below does that.
   const memberCount = await replaceMembers(client, lobby.id, payload);
+
+  // A role for tonight lasts the night, not the lobby row (M3.6): the cycle this post just
+  // opened inherits the party's previous cycle's overrides, when that cycle started inside the
+  // same night. Only for a row we created — a re-post must never re-apply an old value over a
+  // tap that has landed since — and after the members exist, because these are updates.
+  if (created) {
+    await carryRoleOverrides(client, { lobbyId: lobby.id, partyId: payload.partyId, now, timeZone });
+  }
 
   let row = lobby;
   if (rosterChanged && !created) {
