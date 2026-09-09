@@ -12,8 +12,15 @@ import {
   workedResult,
   workedTeams,
 } from '@/lib/testing/tonightFixtures';
-import { ALL_FLEXIBLE_HINT, IDLE_SENTENCE, NAMELESS_HINT } from '@/lib/tonight/copy';
-import type { TonightSnapshot } from '@/lib/tonight/types';
+import {
+  ALL_FLEXIBLE_HINT,
+  HEAD_SEPARATOR,
+  IDLE_SENTENCE,
+  NAMELESS_HINT,
+  OFF_ROLE_LEGEND,
+  OFF_ROLE_LEGEND_SUFFIX,
+} from '@/lib/tonight/copy';
+import type { SeatView, TonightSnapshot } from '@/lib/tonight/types';
 import { TonightView } from './TonightView';
 
 /**
@@ -303,9 +310,117 @@ describe('teams: balanced and in_game are the same block', () => {
     );
 
     expect(container.querySelectorAll('.cn-off')).toHaveLength(marked.length);
-    expect(screen.getAllByText('off-role')).toHaveLength(marked.length);
+    // The per-seat hidden word, one per marked seat. Counted through the seats rather than
+    // through `getAllByText`: Testing Library matches an element on its **direct** text nodes,
+    // so the header legend — whose own text node is `off-role`, with the rest in a `cn-sr`
+    // suffix — matches that query too (the designer, 2026-09-10). Both are asserted, neither
+    // is a coincidence.
+    const seatWords = [...container.querySelectorAll('.cn-seat .cn-sr')].filter(
+      (node) => node.textContent?.trim() === 'off-role',
+    );
+    expect(seatWords).toHaveLength(marked.length);
+    expect(screen.getAllByText('off-role')).toHaveLength(marked.length + 2);
+    expect(container.querySelectorAll('.cn-off-legend')).toHaveLength(2);
     // The clause is the stored string's, rendered verbatim: `N off-role: Name at role, ...`.
     expect(container.querySelector('.cn-explain-text')?.textContent).toContain(`${marked.length} off-role:`);
+  });
+});
+
+/**
+ * The `· off-role` legend in a team card's header, and the amber threshold (the designer,
+ * 2026-09-10; `05-design.md`, "Teams").
+ *
+ * Both rules are **per card**: a card with a marked seat carries the legend, a card without one
+ * does not — including when the other card has some — and each card counts its own five before
+ * deciding whether the mark keeps its colour.
+ */
+describe('the off-role legend and the amber threshold', () => {
+  /** The fixture's split, with each side's marked seats forced to a chosen count. */
+  function withMarked(blue: number, red: number) {
+    const base = offRoleFixture();
+    const mark = (seats: readonly SeatView[], count: number): SeatView[] =>
+      seats.map((seat, index) => ({ ...seat, offRole: index < count }));
+    return {
+      ...base,
+      teams: {
+        ...base.teams,
+        blue: mark(base.teams.blue, blue),
+        red: mark(base.teams.red, red),
+      },
+    };
+  }
+
+  function cards(container: HTMLElement): HTMLElement[] {
+    return [...container.querySelectorAll<HTMLElement>('.cn-cards .cn-team')];
+  }
+
+  function drawTeams(blue: number, red: number) {
+    const fixture = withMarked(blue, red);
+    return draw(snapshot(lobbyView({ status: 'balanced', members: fixture.members, teams: fixture.teams })));
+  }
+
+  it('carries the legend on the card that has a marked seat, and not on the one that has none', () => {
+    const { container } = drawTeams(2, 0);
+
+    const [blue, red] = cards(container);
+    expect(blue?.querySelectorAll('.cn-off-legend')).toHaveLength(1);
+    expect(red?.querySelectorAll('.cn-off-legend')).toHaveLength(0);
+  });
+
+  it('reads `off-role seats in this card`, with the dot and the middot hidden', () => {
+    const { container } = drawTeams(1, 0);
+
+    const legend = container.querySelector('.cn-off-legend');
+    expect(legend?.textContent).toBe(`${OFF_ROLE_LEGEND}${OFF_ROLE_LEGEND_SUFFIX}`);
+    expect(legend?.querySelector('.cn-off-dot')).toHaveAttribute('aria-hidden', 'true');
+    // The separator is punctuation in its own hidden span, never a CSS `::before`.
+    expect(container.querySelector('.cn-head-sep')).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelector('.cn-head-sep')?.textContent).toBe(HEAD_SEPARATOR);
+  });
+
+  it('leaves the sum the header last child, legend or no legend', () => {
+    const { container } = drawTeams(2, 0);
+
+    for (const card of cards(container)) {
+      const head = card.querySelector('.cn-team-head');
+      expect(head?.children).toHaveLength(2);
+      expect(head?.lastElementChild).toHaveClass('cn-sum');
+      expect(head?.firstElementChild).toHaveClass('cn-team-heading');
+    }
+  });
+
+  it('never puts the legend on a result card', () => {
+    const { container } = draw(snapshot(lobbyView({ status: 'finished', result: workedResult() })));
+
+    expect(container.querySelectorAll('.cn-off-legend')).toHaveLength(0);
+  });
+
+  /**
+   * Three of five is the majority: below it the marked seats are the minority and colour is
+   * the fastest way to find them; at or above it the colour is a wash. The class is a **colour
+   * override, not a removal** — every marked seat keeps its `.cn-off`, its underline, its dot
+   * and its hidden word on both cards.
+   */
+  it('drops the amber at three marked seats in a card, and only in that card', () => {
+    const { container } = drawTeams(3, 1);
+
+    const [blue, red] = cards(container);
+    expect(blue).toHaveClass('cn-team-many-off');
+    expect(red).not.toHaveClass('cn-team-many-off');
+    expect(blue?.querySelectorAll('.cn-off')).toHaveLength(3);
+    expect(red?.querySelectorAll('.cn-off')).toHaveLength(1);
+    // Both cards still carry the legend: the key survives the threshold.
+    expect(container.querySelectorAll('.cn-off-legend')).toHaveLength(2);
+  });
+
+  it('keeps the amber at two, and needs no threshold at none', () => {
+    const { container: two } = drawTeams(2, 2);
+    for (const card of cards(two)) expect(card).not.toHaveClass('cn-team-many-off');
+
+    const { container: none } = drawTeams(0, 0);
+    expect(none.querySelectorAll('.cn-off-legend')).toHaveLength(0);
+    expect(none.querySelectorAll('.cn-off')).toHaveLength(0);
+    for (const card of cards(none)) expect(card).not.toHaveClass('cn-team-many-off');
   });
 });
 

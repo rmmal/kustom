@@ -5,8 +5,11 @@ import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embed
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import { NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
+  HEAD_SEPARATOR,
   joinWebNames,
   NAMELESS_HINT,
+  OFF_ROLE_LEGEND,
+  OFF_ROLE_LEGEND_SUFFIX,
   renderWebName,
   SIT_OUT_VIEWER,
   sitOutGeneral,
@@ -43,6 +46,13 @@ import { SeatRack } from './SeatRack';
  * The rail is the ≥1080px second column. It never carries state — three static cards — and it
  * is `display: none` below that, where the same two cards are in the footer.
  */
+
+/**
+ * Marked seats in **one** card at which the off-role icon and word go back to `dim`
+ * (`05-design.md`, "The amber threshold"). Three of five is the majority; the mark keeps its
+ * shape — underline, dot, hidden word, header legend — and gives up only its colour.
+ */
+const OFF_ROLE_COLOUR_LIMIT = 3;
 
 export interface TonightViewProps {
   snapshot: TonightSnapshot;
@@ -256,11 +266,43 @@ function TeamCard({
   viewerPuuid: string | null;
 }) {
   const sum = seats.reduce((total, seat) => total + seat.rating, 0);
+  /**
+   * **The amber threshold, per card** (the designer, 2026-09-10). Three of five is the
+   * majority: below it the marked seats are the minority and colour is the fastest way to find
+   * them, at or above it colour is spread over most of the card and points at nothing — and a
+   * card with four amber role words stops reading as *blue* or *red* and starts reading as *the
+   * amber one*, which puts the marker above the identity of the thing it marks.
+   *
+   * Only the icon-and-word pair gives up its colour. The dotted underline, the dot before the
+   * name, the hidden `off-role` and this header's legend all stay: an underline is a shape and
+   * not a hue, and the explanation line under the cards names every marked seat in a sentence.
+   * Each card counts its own five — a red seat may not change colour because of blue.
+   */
+  const marked = seats.filter((seat) => seat.offRole).length;
+  const many = marked >= OFF_ROLE_COLOUR_LIMIT;
 
   return (
-    <section className={`cn-card cn-team cn-team-${side}`}>
+    <section className={`cn-card cn-team cn-team-${side}${many ? ' cn-team-many-off' : ''}`}>
       <header className="cn-card-head cn-team-head">
-        <h2 className="cn-display cn-side">{side === 'blue' ? 'BLUE' : 'RED'}</h2>
+        {/* The leading group. The sum stays the header's second and last flex child, so adding
+            the legend cannot move it: blue with no legend and red with one keep their sums on
+            their own card's right edge. */}
+        <div className="cn-team-heading">
+          <h2 className="cn-display cn-side">{side === 'blue' ? 'BLUE' : 'RED'}</h2>
+          {marked === 0 ? null : (
+            <>
+              <span className="cn-num cn-head-sep" aria-hidden="true">
+                {HEAD_SEPARATOR}
+              </span>
+              {/* The key to the amber dot on the rows below, and the header's only amber. */}
+              <p className="cn-num cn-off-legend">
+                <span className="cn-off-dot" aria-hidden="true" />
+                {OFF_ROLE_LEGEND}
+                <span className="cn-sr">{OFF_ROLE_LEGEND_SUFFIX}</span>
+              </p>
+            </>
+          )}
+        </div>
         <p className="cn-num cn-sum">
           {sum}
           <span className="cn-sr"> sum of the five ratings</span>

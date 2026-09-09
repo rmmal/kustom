@@ -472,9 +472,45 @@
   padding: var(--cn-sp-2) var(--cn-sp-3);
 }
 
+/*
+ * The header's leading group: the side name, and — when this card has a marked seat — the
+ * middot and the `off-role` legend beside it (the designer, 2026-09-10).
+ *
+ * The legend lives **in this group** rather than as a third child of the header, so the sum
+ * stays the header's second and last flex child and `space-between` keeps it on the card's
+ * right edge whether or not the legend is there. Blue without a legend and red with one line
+ * their sums up on the same pixel of their own cards.
+ */
+.cn-team-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cn-sp-2);
+  min-width: 0;
+}
+
 .cn-side {
   margin: 0;
   font-size: var(--cn-t-lg);
+}
+
+/* The same separator the rack header's `SEATS · 9 of 10` uses. One mark for one job. */
+.cn-head-sep {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+}
+
+/*
+ * The legend, dressed exactly like `rating`, `SEATS`, `live` and `open` — and **never `brand`
+ * itself**: the one amber in a 32px header bar is the dot, which is the mark this line is a key
+ * for. It sits on the side name's baseline, hanging off the display cut, and it never wraps.
+ */
+.cn-off-legend {
+  margin: 0;
+  font-size: var(--cn-t-xs);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--cn-dim);
+  white-space: nowrap;
 }
 
 .cn-team-blue .cn-side {
@@ -486,6 +522,7 @@
 }
 
 .cn-sum {
+  flex: 0 0 auto;
   margin: 0;
   font-size: var(--cn-t-md);
   color: var(--cn-dim);
@@ -499,6 +536,21 @@
   color: var(--cn-brand);
   text-decoration: underline dotted;
   text-underline-offset: 3px;
+}
+
+/*
+ * **Three or more marked seats in one card: the mark keeps its shape and gives up its colour**
+ * (the designer, 2026-09-10). Four amber role words are more lit area than the card's own 4px
+ * side rule and its side name together, so the card reads as *the amber one* rather than as
+ * blue or red — and side is the first question this page answers.
+ *
+ * Nothing is removed: the dotted underline survives the override because an underline is a
+ * shape and not a hue, the dot before the name stays, the hidden `off-role` stays, and so does
+ * the header legend. `RoleIcon` draws in `currentColor`, so the icon follows the word with no
+ * second rule. Per card, never per page.
+ */
+.cn-team-many-off .cn-off {
+  color: var(--cn-dim);
 }
 
 /*
@@ -519,6 +571,15 @@
   border-radius: 50%;
   background: var(--cn-brand);
   vertical-align: middle;
+}
+
+/*
+ * The header legend is a key to that same mark, so it is literally the same dot — with the
+ * row's reserved-slot margin cancelled, because the legend has no column of names to line up
+ * with (the designer, 2026-09-10).
+ */
+.cn-off-legend .cn-off-dot {
+  margin-left: 0;
 }
 
 /* ---------------------------------------------------------------------------
