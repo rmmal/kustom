@@ -3,12 +3,13 @@ import { getActiveSeason, listSeasons } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { getServiceClient } from '@/lib/supabase';
+import { AdminForm } from '../../_components/AdminForm';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Seasons — Customs Night admin',
+  title: 'Seasons — Kustom admin',
   robots: { index: false, follow: false },
 };
 
@@ -47,7 +48,7 @@ export default async function AdminSeasonsPage({ searchParams }: { searchParams:
           away.
         </p>
       ) : null}
-      <form method="post" action="/api/admin/seasons" className="admin-stacked">
+      <AdminForm action="/api/admin/seasons" kind="seasons" className="admin-stacked">
         <label className="admin-field">
           <span>Name of the new season</span>
           <input type="text" name="name" required placeholder="Season 2" size={24} />
@@ -71,7 +72,7 @@ export default async function AdminSeasonsPage({ searchParams }: { searchParams:
         )}
 
         <button type="submit">Start</button>
-      </form>
+      </AdminForm>
 
       <h2>All seasons</h2>
       {seasons.length === 0 ? (

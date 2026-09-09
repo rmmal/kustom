@@ -2,12 +2,13 @@ import type { Metadata } from 'next';
 import { listDiscordConfigs, maskSecret } from '@/lib/admin/discordConfig';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
+import { AdminForm } from '../../_components/AdminForm';
 import { Notices, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Discord — Customs Night admin',
+  title: 'Discord — Kustom admin',
   robots: { index: false, follow: false },
 };
 
@@ -51,7 +52,7 @@ export default async function AdminDiscordPage({ searchParams }: { searchParams:
         <p className="admin-muted">Last saved {config.updatedAt.slice(0, 19).replace('T', ' ')} UTC.</p>
       )}
 
-      <form method="post" action="/api/admin/discord-config" className="admin-stacked">
+      <AdminForm action="/api/admin/discord-config" kind="discord" className="admin-stacked">
         <label className="admin-field">
           <span>Guild id</span>
           <input
@@ -130,7 +131,7 @@ export default async function AdminDiscordPage({ searchParams }: { searchParams:
         </label>
 
         <button type="submit">Save</button>
-      </form>
+      </AdminForm>
     </main>
   );
 }

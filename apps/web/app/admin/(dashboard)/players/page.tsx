@@ -5,12 +5,13 @@ import { type AdminPlayerRow, listAdminPlayers } from '@/lib/admin/players';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
+import { AdminForm } from '../../_components/AdminForm';
 import { Empty, formatDay, Notices, RoleSelect, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Players — Customs Night admin',
+  title: 'Players — Kustom admin',
   robots: { index: false, follow: false },
 };
 
@@ -94,7 +95,7 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
             the group currently reads before deciding to change it, and on a row that is still on
             automatic the field is empty while this line already says a name. */}
         <div>{label}</div>
-        <form method="post" action="/api/admin/players">
+        <AdminForm action="/api/admin/players" kind="players">
           <input type="hidden" name="action" value="set-name" />
           <input type="hidden" name="playerId" value={player.id} />
           <input
@@ -107,23 +108,23 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
             aria-label={`Name for ${label}`}
           />
           <button type="submit">Save</button>
-        </form>
+        </AdminForm>
       </td>
       <td>{player.gameName === null ? '—' : `${player.gameName}#${player.tagLine ?? '???'}`}</td>
       <td>{formatRank(player)}</td>
       <td>{formatRating(player)}</td>
       <td>
         {/* Both roles are posted together, so "none" clears rather than meaning "unchanged". */}
-        <form method="post" action="/api/admin/players">
+        <AdminForm action="/api/admin/players" kind="players">
           <input type="hidden" name="action" value="set-roles" />
           <input type="hidden" name="playerId" value={player.id} />
           <RoleSelect name="mainRole" value={player.mainRole} label="main" />
           <RoleSelect name="secondaryRole" value={player.secondaryRole} label="second" />
           <button type="submit">Save</button>
-        </form>
+        </AdminForm>
       </td>
       <td>
-        <form method="post" action="/api/admin/players">
+        <AdminForm action="/api/admin/players" kind="players">
           <input type="hidden" name="action" value="set-discord" />
           <input type="hidden" name="playerId" value={player.id} />
           <input
@@ -136,10 +137,10 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
             aria-label={`Discord id for ${label}`}
           />
           <button type="submit">Save</button>
-        </form>
+        </AdminForm>
       </td>
       <td>
-        <form method="post" action="/api/admin/players">
+        <AdminForm action="/api/admin/players" kind="players">
           <input type="hidden" name="action" value="set-admin" />
           <input type="hidden" name="playerId" value={player.id} />
           <input type="hidden" name="isAdmin" value={player.isAdmin ? 'false' : 'true'} />
@@ -148,13 +149,13 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
           <button type="submit" disabled={isSelf && player.isAdmin}>
             {player.isAdmin ? 'Remove' : 'Make admin'}
           </button>
-        </form>
+        </AdminForm>
       </td>
       <td>
         {/* Three states in one cell, then the one control (M5.1). `asked` is the companion
             having knocked at `/api/companion/backfill/scan` and been told no — the marker is
             there so an admin knows somebody is waiting rather than having to be asked. */}
-        <form method="post" action="/api/admin/players">
+        <AdminForm action="/api/admin/players" kind="players">
           <input type="hidden" name="action" value="set-backfill" />
           <input type="hidden" name="playerId" value={player.id} />
           <input
@@ -164,7 +165,7 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
           />
           <span>{formatBackfill(player)}</span>{' '}
           <button type="submit">{player.backfillApprovedAt === null ? 'Allow' : 'Revoke'}</button>
-        </form>
+        </AdminForm>
       </td>
     </tr>
   );

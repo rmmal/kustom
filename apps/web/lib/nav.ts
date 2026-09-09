@@ -9,7 +9,7 @@ import type { Route } from 'next';
  * the list here is what stops a second page hand-writing a fifth answer.
  *
  * The wordmark and every label are product's, from the final copy table (2026-09-09). The
- * product is called **Kustom**; `Customs Night` is the repo's codename and appears on no
+ * product is called **Kustom**; the repo's codename appears on no
  * friend-facing surface.
  */
 

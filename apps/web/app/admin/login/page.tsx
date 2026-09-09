@@ -6,7 +6,7 @@ import { readParam, type SearchParams } from '../_components/ui';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Sign in — Customs Night admin',
+  title: 'Sign in — Kustom admin',
   robots: { index: false, follow: false },
 };
 
@@ -31,7 +31,7 @@ export default async function AdminLoginPage({ searchParams }: { searchParams: P
 
   return (
     <main>
-      <h1>Customs Night admin</h1>
+      <h1>Kustom admin</h1>
 
       {error === null ? null : (
         <p className="admin-error" role="alert">

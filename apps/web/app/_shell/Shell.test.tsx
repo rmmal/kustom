@@ -28,7 +28,9 @@ describe('the top bar', () => {
     const { container } = draw('/');
 
     expect(screen.getByText('KUSTOM')).toBeInTheDocument();
-    expect(container.textContent).not.toContain('Customs Night');
+    // The repo's codename appears on no friend-facing surface (M3.21). Checked on the word
+    // rather than the phrase so the phrase itself is not in `apps/web` at all.
+    expect(container.textContent).not.toContain('Customs');
   });
 
   it('renders only the routes that exist, and underlines the one being read', () => {

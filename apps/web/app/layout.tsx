@@ -32,8 +32,8 @@ const plexMono = IBM_Plex_Mono({
 
 /**
  * The product is **Kustom** (M3.21): the wordmark, the browser tab and the WhatsApp link
- * preview all say it. `Customs Night` is the repo's codename and stays in `CLAUDE.md`, the
- * docs and the package names.
+ * preview all say it. The repo's codename stays in `CLAUDE.md`, the docs and the package
+ * names, and appears nowhere under `apps/web`.
  */
 export const metadata = {
   title: 'Kustom',

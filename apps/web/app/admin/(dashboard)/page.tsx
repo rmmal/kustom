@@ -5,12 +5,13 @@ import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { getServiceClient } from '@/lib/supabase';
+import { AdminForm } from '../_components/AdminForm';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Admin — Customs Night',
+  title: 'Admin — Kustom',
   robots: { index: false, follow: false },
 };
 
@@ -122,10 +123,10 @@ function Reroll({ lobby }: { lobby: RerollableLobby | null }) {
       {lobby.splits
         .filter((split) => !split.isChosen && (split.rank === 1 || !exhausted))
         .map((split) => (
-          <form
+          <AdminForm
             key={split.id}
-            method="post"
             action={`/api/admin/lobbies/${lobby.id}/reroll`}
+            kind="reroll"
             className="admin-stacked"
           >
             <input type="hidden" name="splitId" value={split.id} />
@@ -137,7 +138,7 @@ function Reroll({ lobby }: { lobby: RerollableLobby | null }) {
                 ? 'Put split 1 back'
                 : `Promote split ${split.rank} · reroll ${split.rank - 1} of ${rerolls}`}
             </button>
-          </form>
+          </AdminForm>
         ))}
     </>
   );

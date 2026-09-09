@@ -18,7 +18,7 @@ import '../../board.css';
  */
 export const dynamic = 'force-dynamic';
 
-export const metadata = { title: `Customs Night · ${LEADERBOARD_LABEL}` };
+export const metadata = { title: `Kustom · ${LEADERBOARD_LABEL}` };
 
 export default async function LeaderboardPage() {
   const [board, viewer] = await Promise.all([loadBoard(createPublicClient()), currentViewer()]);

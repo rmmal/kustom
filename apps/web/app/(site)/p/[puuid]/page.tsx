@@ -33,7 +33,7 @@ const loadPlayer = cache(async (puuid: string) => loadPlayerBoard(createPublicCl
 export async function generateMetadata({ params }: PlayerPageProps) {
   const { puuid } = await params;
   const player = await loadPlayer(puuid);
-  return { title: player === null ? 'Customs Night' : `${renderWebName(player.name)} · Customs Night` };
+  return { title: player === null ? 'Kustom' : `${renderWebName(player.name)} · Kustom` };
 }
 
 export default async function PlayerPage({ params }: PlayerPageProps) {

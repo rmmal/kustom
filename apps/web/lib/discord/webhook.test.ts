@@ -18,7 +18,7 @@ const PAYLOAD: WebhookPayload = {
       color: 1,
       title: 'Teams are set',
       fields: [],
-      footer: { text: 'Customs Night · more on the tonight page' },
+      footer: { text: 'Kustom · more on the tonight page' },
       timestamp: '2026-09-08T20:15:00.000Z',
     },
   ],
