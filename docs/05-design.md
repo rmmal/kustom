@@ -619,6 +619,58 @@ task, not a reason to stop:
 6. **The sparkline stays hand-drawn.** One inline `<svg>`, one `<path>`, 1.5px `brand`, no fill, no points, no
    grid, no charting library. 140px on phone, 180px in the rail if it ever appears there.
 
+#### Copy — the board pages, final (product 2026-09-09)
+
+Every word `/leaderboard` and `/p/[puuid]` say, in one table, the same way the tonight page's strings are
+settled above. They live as one constant each in `apps/web/lib/board/copy.ts` — that file is the code half of
+this table and the two may not drift. `(shipped)` marks a string that already existed and is quoted unchanged;
+the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc, reviewed by product and kept.
+
+| Where | String | Status |
+|---|---|---|
+| primary number, label | `Proven` — `round(ordinal * 60)`, the sort key | *(shipped, M3.5)* kept |
+| secondary number, label | `Rating` — `round(mu * 60)`, the number the embeds print | *(shipped, M3.5)* kept |
+| legend over the two numbers | `Proven · Rating` | *(shipped)* kept |
+| board heading | the season's name, with `standings` under it in `dim` | *(shipped)* kept |
+| nightly embed title | `Season 1 · standings` | *(shipped)* kept |
+| back link on `/p/[puuid]` | `standings` | *(shipped)* kept |
+| still-settling chip | `settling` | *(shipped, M3.8)* kept |
+| still-settling sentence, once per page | `The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.` | *(shipped, M3.8)* kept — canonical entry is "Still-settling marker (M3.8)" below |
+| still-settling sentence, embed footer | `Proven stays below a new player's rating until the board has seen about 30 games.` | *(shipped, M3.8)* kept |
+| season active, no games yet — and a player with none, where the chart would be | `No games this season yet.` | **new**, product 2026-09-09 — kept as written |
+| no season is active, on both pages | `No season is active, so there is no board yet. An admin can start one.` | **new**, product 2026-09-09 — kept as written |
+| a recent game's result, on `/p/[puuid]` | `Won` / `Lost` | **new**, product 2026-09-09 — kept as written |
+| game count | `1 game` · `28 games` | *(shipped)* kept |
+| win–loss record | `13W 15L` | *(shipped)* kept |
+| rating chart, title | `Rating` | *(shipped)* kept |
+| rating chart, reference line | `seed` | *(shipped)* kept |
+| player page sections | `By role` · `Recent games` | *(shipped)* kept |
+| a player with no name | `Someone` | *(shipped, M3.10)* kept |
+| nameless hint, once per page while any row reads `Someone` | `Names fill in after someone's first game.` | *(shipped, M3.10)* kept |
+| nightly embed, field name | `Top ten` | *(shipped)* kept |
+
+**Why the three new ones stand.**
+
+- **`No games this season yet.`** is the same shape as the tonight page's `Nobody in the lobby yet.` — the
+  fact, in five words, with nothing to tap. It is true in both of the places it renders: under the heading of
+  a season nobody has played yet, above the rank-seeded rows that all read `0 games`; and on a player page
+  where the chart would be, about that player. One sentence for both is deliberate — a second, longer one
+  ("You have not played yet this season") would be a third empty-state voice on a product that has two.
+- **`No season is active, so there is no board yet. An admin can start one.`** is built like M3.17's tonight
+  sentence — the fact, then who can fix it, nothing to tap — because the two pages are read by the same
+  twenty people from the same WhatsApp link. It is a third constant, not a reuse: `NO_ACTIVE_SEASON_MESSAGE`
+  ends by naming a page nineteen of them cannot open, and the tonight sentence is about tonight's games not
+  being saved, which is not what an empty board is about. Same fact, three readers, three sentences, and none
+  of the three may be edited into another.
+- **`Won` / `Lost`** is this player's own result, because the page is about them: `Red wins` beside their own
+  delta makes a reader work out which side they were on before they can read their own row. Past tense, not
+  the `13W 15L` letters, because the line is one game that happened, not a tally.
+
+The board's numbers keep the names `00-product.md` gives them ("The numbers on the screen") and no surface
+invents a third. `Won` and `Lost` are the only strings in this table that do not live in
+`apps/web/lib/board/copy.ts` today — they are two module constants in `app/_board/PlayerView.tsx`, and the
+next engineer to touch that file moves them, so this table has one code half and not two.
+
 ### `tokens.css`, v2 — the file to write
 
 ```css
