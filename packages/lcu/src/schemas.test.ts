@@ -838,9 +838,9 @@ describe('fixture guard', () => {
   // Keys the client uses for credentials. The regex accepts both `"key": "value"` and the `\"key\":\"value\"`
   // form inside a JSON string; a value that is empty or `[redacted]` is fine, anything else fails the build.
   const SECRET_KEY_VALUE =
-    /(encryptionKey|spectatorKey|observerEncryptionKey|mucJwtDto|multiUserChatPassword|Token)\\?"\s*:\s*\\?"([^"\\]*)/g;
+    /(encryptionKey|spectatorKey|observerEncryptionKey|mucJwtDto|multiUserChatPassword|[Pp]assword|Token)\\?"\s*:\s*\\?"([^"\\]*)/g;
   const SECRET_KEY_OBJECT =
-    /(encryptionKey|spectatorKey|observerEncryptionKey|mucJwtDto|multiUserChatPassword)\\?"\s*:\s*[{[]/;
+    /(encryptionKey|spectatorKey|observerEncryptionKey|mucJwtDto|multiUserChatPassword|[Pp]assword)\\?"\s*:\s*[{[]/;
 
   function listFiles(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

@@ -50,10 +50,13 @@ Each `<endpoint-id>.json` wraps the raw body so a 404 or a non-JSON reply is rec
 Schemas in M0.3 parse `envelope.body`, not the envelope.
 
 Write fixtures (M4.1) come from `pnpm --filter companion verify-commands`, never from `smoke`: `method` is
-`POST`, `request` holds the scrubbed request body (absent for switch-teams, which sends none), `note` says
-which probe, and `contentType` is null (the write helpers do not keep it). Ids: `create-lobby`,
-`create-lobby--draft`, `lobby-invitations`, `lobby-invitations--by-puuid`, `switch-teams-v1`,
-`switch-teams-v2`, `switch-teams--full-side`. None exist yet; the first live run on a patch adds them.
+`POST`, `request` holds the scrubbed request body (absent for the side switch, which sends none), `note` says
+which probe, and `contentType` is null (the write helpers do not keep it). Ids: `create-lobby--<candidate>` for
+every create attempt (`ui-live-<id>`, `ui-3100-19`, `ui-3100-3100`, `dto-full-3100-19`, `legacy-queue-3100`),
+`create-lobby` for the accepted one, `create-lobby--draft`, `lobby-invitations`, `lobby-invitations--by-puuid`,
+`lobby-team`, `lobby-team--full-side`. The same run also writes two GET envelopes, `custom-game-queues` and
+`game-queues` (`note: "--verify-commands"`), which `smoke` captures too. The 2026-09-09 run's files are kept
+under state suffixes (see Captures); the accepted-shape ids do not exist yet.
 
 ## Captures
 
@@ -89,6 +92,15 @@ which probe, and `contentType` is null (the write helpers do not keep it). Ids: 
   `members[]` with `isSpectator: true` and in `customSpectators[]`; the M2.13 fixture) and
   `ranked-stats-by-puuid--ws-cached.json` (a `/lol-ranked/v1/cached-ranked-stats/{puuid}` `Update` for the
   friend, same shape as the GET). Re-scrub on ingest changed nothing.
+- `16.17`, first `verify-commands` run (2026-09-09 21:05-21:06 UTC, **Windows**, `Kustom.exe --verify-commands`
+  0.1.3, the user's run, client 16.17.8104348). The community create body was refused twice with
+  `500 INVALID_LOBBY` and the invite POSTs answered `404 LOBBY_NOT_FOUND` with no lobby open. The four
+  envelopes were ingested by script (`scrubValue` again: changed nothing; `lobbyPassword` already
+  `[redacted]`) with their ids renamed to a state suffix so the base names stay free for an accepted answer:
+  `create-lobby--legacy-blind.json` (was `create-lobby`, `mutators.id` 1), `create-lobby--legacy-draft.json`
+  (was `create-lobby--draft`, `mutators.id` 2), `lobby-invitations--no-lobby.json` (was `lobby-invitations`,
+  `[{ toSummonerId }]`) and `lobby-invitations--by-puuid--no-lobby.json` (was `lobby-invitations--by-puuid`).
+  Bodies and `request`s are exactly as captured. No switch fixture: that probe was skipped for want of a lobby.
 - HTTP bodies are scrubbed like events (`scrubValue`): `mucJwtDto`, `multiUserChatPassword`, `password`,
   `spectatorKey`, `encryptionKey` and any other credential-looking key read `[redacted]`, including inside
   JSON carried as a string. The smoke table notes which endpoints had something redacted. Files captured by

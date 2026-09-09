@@ -1,0 +1,22 @@
+{
+  "id": "lobby-invitations--by-puuid--no-lobby",
+  "method": "POST",
+  "path": "/lol-lobby/v2/lobby/invitations",
+  "status": 404,
+  "capturedAt": "2026-09-09T21:06:35.469Z",
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "contentType": null,
+  "body": {
+    "errorCode": "RPC_ERROR",
+    "httpStatus": 404,
+    "implementationDetails": {},
+    "message": "LOBBY_NOT_FOUND"
+  },
+  "request": [
+    {
+      "toPuuid": "b3b781b3-9a77-5061-8054-817d2355b2e6"
+    }
+  ],
+  "note": "[{ toPuuid }] after a 4xx; --verify-commands"
+}

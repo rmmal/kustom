@@ -1,0 +1,34 @@
+{
+  "id": "create-lobby--legacy-draft",
+  "method": "POST",
+  "path": "/lol-lobby/v2/lobby",
+  "status": 500,
+  "capturedAt": "2026-09-09T21:06:03.592Z",
+  "patch": "16.17",
+  "clientVersion": "16.17.8104348+branch.releases-16-17.code.public.content.release.anticheat.vanguard",
+  "contentType": null,
+  "body": {
+    "errorCode": "RPC_ERROR",
+    "httpStatus": 500,
+    "implementationDetails": {},
+    "message": "INVALID_LOBBY"
+  },
+  "request": {
+    "customGameLobby": {
+      "configuration": {
+        "gameMode": "CLASSIC",
+        "mapId": 11,
+        "mutators": {
+          "id": 2
+        },
+        "spectatorPolicy": "AllAllowed",
+        "teamSize": 5,
+        "gameServerRegion": ""
+      },
+      "lobbyName": "customs-verify",
+      "lobbyPassword": "[redacted]"
+    },
+    "isCustom": true
+  },
+  "note": "mutators.id 2; --verify-commands"
+}

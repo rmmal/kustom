@@ -97,13 +97,18 @@ Kustom.exe --verify-commands            # packaged: fixtures land in %APPDATA%\c
 set CUSTOMS_NIGHT_VERIFY_COMMANDS=1 && Kustom.exe   # the same, for a shortcut that cannot pass flags
 ```
 
-The three lobby writes (create, invite, switch side) are community-documented and `unverified` in
-`docs/03-lcu-reference.md`, so the command runner refuses each kind (`endpoint_unverified`) until a person has
-run this mode against a live client and pasted the report back. It needs the client in `None` or `Lobby`, one
-friend online, no token and no API. It asks before every probe, runs one POST per kind by default (the draft
-and full-side repeats are opt-in), prints request, status and body shape, and writes
-`%APPDATA%\customs-night\verify-commands-<patch>-<date>.txt` plus one fixture per POST. Paste the report and the
-fixtures back; the engineer writes the reference rows and flips `LOBBY_WRITE_VERIFICATION` in
+The three lobby writes (create, invite, switch side) are `unverified` in `docs/03-lcu-reference.md`, so the
+command runner refuses each kind (`endpoint_unverified`) until a person has run this mode against a live client
+and pasted the report back. It needs the client in `None` or `Lobby`, one friend online, no token and no API.
+The first run (16.17, 2026-09-09) showed the community create body is refused (`500 INVALID_LOBBY`), so the
+second edition sends what the client's own lobby UI sends: it reads the Create Custom dialog data
+(`/lol-game-queues/v1/custom`, `/queues`), prints the Summoner's Rift entries and asks which id to use (Enter
+takes the default), then POSTs a ranked list of create bodies in order, stopping at the first the client
+accepts; then one invite POST, then one `POST /lol-lobby/v2/lobby/team/TEAM1|TEAM2` for the side you are not
+on (the draft and full-side repeats are opt-in). It asks before every write step, prints request, status and
+body shape, and writes `%APPDATA%\customs-night\verify-commands-<patch>-<date>.txt` plus one fixture per
+attempt and per dialog read. It never closes the lobby it makes: close it from the client afterwards. Paste the
+report and the fixtures back; the engineer writes the reference rows and flips `LOBBY_WRITE_VERIFICATION` in
 `packages/lcu/src/writes.ts`. Nothing in this mode flips anything itself.
 
 ### Finding a League that is not in `C:\Riot Games` (M2.19)
