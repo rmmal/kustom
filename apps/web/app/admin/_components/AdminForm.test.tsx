@@ -203,6 +203,36 @@ describe('a control that removes itself by succeeding', () => {
   });
 });
 
+describe('pressing a refused control twice', () => {
+  it('clears the group sentence on the second press and announces it again', async () => {
+    answer({ ok: false, error: 'that lobby is not balanced' }, false);
+    render(
+      <AdminAnswerGroup>
+        <AdminForm action="/api/admin/lobbies/lobby-1/reroll" kind="reroll">
+          <input type="hidden" name="splitId" value="split-2" />
+          <button type="submit">Promote split 2</button>
+        </AdminForm>
+      </AdminAnswerGroup>,
+    );
+
+    const form = screen.getByRole('button', { name: 'Promote split 2' }).closest('form') as Node;
+    fireEvent.submit(form);
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const first = screen.getByRole('alert');
+    expect(first).toHaveTextContent('that lobby is not balanced');
+
+    // The second press clears the old sentence before it asks again: without that, a screen
+    // reader is handed the same node with the same words and says nothing.
+    fireEvent.submit(form);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    const second = screen.getByRole('alert');
+    expect(second).toHaveTextContent('that lobby is not balanced');
+    expect(second).not.toBe(first);
+  });
+});
+
 describe('minting a token', () => {
   it('shows the raw token, because with JavaScript on there is no one-time page', async () => {
     answer({ ok: true, action: 'mint', token: 'cnt_live_secret' });

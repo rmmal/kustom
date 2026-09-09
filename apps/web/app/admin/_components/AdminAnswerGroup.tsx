@@ -31,20 +31,28 @@ export interface GroupAnswer {
   token: string | null;
 }
 
-const AnswerContext = createContext<((answer: GroupAnswer) => void) | null>(null);
+/**
+ * `null` on the way **in** clears the sentence — a form does that at the top of every submit,
+ * so pressing a refused control twice removes the old answer and announces the new one instead
+ * of leaving the same node on screen saying the same thing.
+ */
+type AnswerSink = (answer: GroupAnswer | null) => void;
+
+const AnswerContext = createContext<AnswerSink | null>(null);
 
 /** Used by `AdminForm`: `null` means "no group above me, draw the sentence yourself". */
-export function useAnswerSink(): ((answer: GroupAnswer) => void) | null {
+export function useAnswerSink(): AnswerSink | null {
   return useContext(AnswerContext);
 }
 
 export function AdminAnswerGroup({ children, className }: { children: ReactNode; className?: string }) {
   const [answer, setAnswer] = useState<GroupAnswer | null>(null);
   const sentence = useRef<HTMLParagraphElement | null>(null);
-  /** Whatever had the focus when the press was made — usually the button itself. */
+  /** Whatever had the focus when the answer arrived — the control that was pressed. */
   const pressed = useRef<Element | null>(null);
-  const report = useCallback((next: GroupAnswer) => {
-    pressed.current = document.activeElement;
+  const report = useCallback((next: GroupAnswer | null) => {
+    // A press starts by clearing: nothing to point at, and nothing to move the focus for.
+    pressed.current = next === null ? null : document.activeElement;
     setAnswer(next);
   }, []);
 

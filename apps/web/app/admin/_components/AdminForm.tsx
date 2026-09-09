@@ -49,11 +49,11 @@ export function AdminForm({ action, kind, children, className, fallbackError }: 
   // A group above me outlives this form, so it holds the answer; without one, I do.
   const answer = sink === null ? inlineAnswer : null;
   const setAnswer = (next: Answer | null): void => {
-    if (sink === null) {
-      setInlineAnswer(next);
-    } else if (next !== null) {
-      sink(next);
-    }
+    // `null` travels too: it is how the sentence from the **last** press is cleared, so
+    // pressing a refused control twice re-announces the refusal instead of leaving the same
+    // node saying the same thing (reviewer, 2026-09-10).
+    if (sink === null) setInlineAnswer(next);
+    else sink(next);
   };
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {

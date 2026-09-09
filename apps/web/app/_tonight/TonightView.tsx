@@ -156,7 +156,9 @@ function LivePill() {
 /**
  * No lobby tonight. The strip has said `NOBODY IN YET` and the shipped sentence; this is an
  * empty rack — the shape the page will have in an hour — and the two cards the desktop rail
- * carries, inline at every width, because there is nothing else to read.
+ * carries, inline below 1080px, because on a phone there is nothing else to read. Where the
+ * rail is on screen they are in it, and `tonight.css` hides the inline pair rather than saying
+ * the same two things twice.
  */
 function Idle() {
   return (
@@ -201,8 +203,9 @@ function TeamsBlock({ lobby, teams, viewer }: { lobby: LobbyView; teams: TeamsVi
 
 /**
  * Above the cards, never below: if you are sitting out, everything under it is not about you,
- * and you should learn that before you scan for your name. v2 gives it a `raise` header bar so
- * it reads as a card and not as a loose paragraph; the sentences are unchanged.
+ * and you should learn that before you scan for your name. The card is its 3px brand rule and
+ * the sentence — no header bar over it, which was the same words twice; the sentences
+ * themselves are unchanged.
  */
 function SitOutNotice({
   sitters,

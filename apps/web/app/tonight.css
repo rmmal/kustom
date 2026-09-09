@@ -163,13 +163,7 @@
   overflow: hidden;
 }
 
-.cn-rack-head,
-.cn-card-label {
-  font-size: var(--cn-t-xs);
-  letter-spacing: 0.08em;
-  color: var(--cn-dim);
-}
-
+/* `SEATS · 9 of 10` left, the `rating` legend right. Both mono micro-labels. */
 .cn-rack-head {
   display: flex;
   align-items: center;
@@ -177,6 +171,9 @@
   gap: var(--cn-sp-3);
   min-height: 32px;
   padding: 0 var(--cn-sp-3);
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  color: var(--cn-dim);
 }
 
 .cn-rack-list,
@@ -504,10 +501,20 @@
   text-underline-offset: 3px;
 }
 
+/*
+ * The dot's slot is reserved on **every** seat and the dot is drawn back into it, so a marked
+ * name starts on the same pixel as an unmarked one. Without this the five names in a mixed
+ * card sat at two different left edges (the designer, 2026-09-10).
+ */
+.cn-seat-name {
+  padding-left: calc(6px + var(--cn-sp-2));
+}
+
 .cn-off-dot {
   display: inline-block;
   width: 6px;
   height: 6px;
+  margin-left: calc(-6px - var(--cn-sp-2));
   margin-right: var(--cn-sp-2);
   border-radius: 50%;
   background: var(--cn-brand);
@@ -526,13 +533,6 @@
 
 .cn-sitout-text {
   padding: var(--cn-sp-3);
-}
-
-.cn-card-label {
-  display: flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 var(--cn-sp-3);
 }
 
 .cn-explain {

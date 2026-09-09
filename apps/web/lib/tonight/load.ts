@@ -303,8 +303,15 @@ async function loadTeams(
     // split after it. In the no-chosen-row window above they are the same thing anyway.
     .map((row) => ({ id: row.id, rank: row.rank, isChosen: row.id === chosen.id }));
 
+  /**
+   * **Lane order is enforced here, not trusted.** `splits.blue` is jsonb in whatever order the
+   * balancer wrote it, and the page's promise is that "my row" is in the same place in the
+   * teams card, the result card and both embeds (`lib/laneOrder.ts`). The embeds already sort;
+   * this is the page saying the same thing rather than reading a stored array's order and
+   * hoping (the designer, 2026-09-10).
+   */
   const seats = (side: unknown): SeatView[] =>
-    readAssignments(side).map((assignment) => toSeat(assignment, byPuuid));
+    inLaneOrder(readAssignments(side)).map((assignment) => toSeat(assignment, byPuuid));
   const blue = seats(chosen.blue);
   const red = seats(chosen.red);
   const playing = new Set([...blue, ...red].map((seat) => seat.puuid));
