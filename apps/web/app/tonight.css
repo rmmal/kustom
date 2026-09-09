@@ -339,11 +339,9 @@
   color: var(--cn-dim);
 }
 
+/* The card recipe itself comes from `.cn-card` in `tokens.css`; this only clips its rows. */
 .cn-rack-around {
-  border: 1px solid var(--cn-line);
-  border-radius: var(--cn-radius);
-  background: var(--cn-surface);
-  box-shadow: var(--cn-lit);
+  overflow: hidden;
 }
 
 /* The idle page carries the rail's two cards inline, at every width. */

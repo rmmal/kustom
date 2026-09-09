@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { type FormEvent, type ReactNode, useState, useTransition } from 'react';
 import { type AdminFormKind, adminError, adminNotice, mintedToken } from '@/lib/admin/notices';
+import { type GroupAnswer, MintedToken, useAnswerSink } from './AdminAnswerGroup';
 
 /**
  * Every write on `/admin`, in place (M3.20). The user, 2026-09-09: *"experience sucks, page
@@ -35,18 +36,25 @@ export interface AdminFormProps {
   fallbackError?: string;
 }
 
-interface Answer {
-  ok: boolean;
-  text: string;
-  /** Only ever the freshly minted companion token, which is in that one response and nowhere else. */
-  token: string | null;
-}
+/** The same shape the group holds, so a form can hand its answer up unchanged. */
+type Answer = GroupAnswer;
 
 export function AdminForm({ action, kind, children, className, fallbackError }: AdminFormProps) {
   const router = useRouter();
-  const [answer, setAnswer] = useState<Answer | null>(null);
+  const sink = useAnswerSink();
+  const [inlineAnswer, setInlineAnswer] = useState<Answer | null>(null);
   const [pending, setPending] = useState(false);
   const [, startTransition] = useTransition();
+
+  // A group above me outlives this form, so it holds the answer; without one, I do.
+  const answer = sink === null ? inlineAnswer : null;
+  const setAnswer = (next: Answer | null): void => {
+    if (sink === null) {
+      setInlineAnswer(next);
+    } else if (next !== null) {
+      sink(next);
+    }
+  };
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -90,20 +98,15 @@ export function AdminForm({ action, kind, children, className, fallbackError }: 
   return (
     <form method="post" action={action} onSubmit={submit} className={className}>
       {children}
+      {/* With a group above, the sentence is the group's: this form may not survive its own
+          success (`AdminAnswerGroup`). Without one, the control is still here afterwards and
+          the sentence belongs beside it. */}
       {answer === null ? null : (
         <p className={answer.ok ? 'admin-notice' : 'admin-error'} role={answer.ok ? 'status' : 'alert'}>
           {answer.text}
         </p>
       )}
-      {answer?.token == null ? null : (
-        <span className="admin-mono">
-          {/* Product's words for the friend who has to paste it, from the one-time page
-              (M1.9). It is shown here because with JavaScript on there is no one-time page:
-              this response is the only place the token exists. */}
-          <strong>Copy it now.</strong> This is the only time it is shown — we only keep a scrambled copy, so
-          we cannot show it to you again. Lost it? Mint another and revoke this one. {answer.token}
-        </span>
-      )}
+      {answer?.token == null ? null : <MintedToken token={answer.token} />}
     </form>
   );
 }

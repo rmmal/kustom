@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_NIGHT_TIME_ZONE, isValidTimeZone, nightStart } from './night';
+import { DEFAULT_NIGHT_TIME_ZONE, formatNightLabel, isValidTimeZone, nightStart } from './night';
 
 /**
  * "Tonight" runs 06:00 to 06:00 in `CUSTOMS_NIGHT_TZ` (M2.5). Every case here is a wall clock
@@ -65,6 +65,29 @@ describe('nightStart', () => {
   it('defaults to where the group is', () => {
     expect(DEFAULT_NIGHT_TIME_ZONE).toBe('Africa/Cairo');
     expect(nightStart(new Date('2026-09-08T18:00:00Z')).toISOString()).toBe('2026-09-08T03:00:00.000Z');
+  });
+});
+
+describe('formatNightLabel', () => {
+  /** 06:00 in Africa/Cairo on Tuesday 8 September 2026, which is 03:00 UTC. */
+  const nightOf8Sep = new Date('2026-09-08T03:00:00.000Z');
+
+  it('is the night that started, in one fixed locale', () => {
+    expect(formatNightLabel(nightOf8Sep)).toBe('Tuesday 8 September');
+    expect(formatNightLabel(nightOf8Sep, CAIRO)).toBe('Tuesday 8 September');
+  });
+
+  it('reads the instant in the zone it is given, never the runner’s', () => {
+    // 03:00 UTC is still the 7th in New York, which is why the slug is formatted on the server
+    // with the configured zone and carried through every re-read (M3.18).
+    expect(formatNightLabel(nightOf8Sep, 'America/New_York')).toBe('Monday 7 September');
+    expect(formatNightLabel(nightOf8Sep, 'UTC')).toBe('Tuesday 8 September');
+  });
+
+  it('says the night, not the clock: a 01:00 game still reads the day it started', () => {
+    // 01:00 on Thursday in Cairo belongs to the night that started 06:00 on Wednesday.
+    const late = new Date('2026-09-09T22:00:00.000Z');
+    expect(formatNightLabel(nightStart(late, CAIRO), CAIRO)).toBe('Wednesday 9 September');
   });
 });
 

@@ -51,6 +51,12 @@ export function TonightLive({ initial, viewerPuuid, isAdmin }: TonightLiveProps)
   const [snapshot, setSnapshot] = useState(initial);
   const refresh = useRef<() => void>(() => {});
   const nightStart = initial.nightStart;
+  /**
+   * The slug the **server** formatted, carried through every re-read. The browser has no
+   * `CUSTOMS_NIGHT_TZ`, so formatting it here would quietly use the default zone and could
+   * change the weekday under the reader a second after the first paint (M3.18, reviewer).
+   */
+  const nightLabel = initial.nightLabel;
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +82,7 @@ export function TonightLive({ initial, viewerPuuid, isAdmin }: TonightLiveProps)
       }
       inFlight = true;
       try {
-        const next = await loadTonight(client, { nightStart: new Date(nightStart) });
+        const next = await loadTonight(client, { nightStart: new Date(nightStart), nightLabel });
         if (!cancelled) setSnapshot(next);
       } catch (error) {
         // The last snapshot stays on the screen. A failed read is not something to announce.
@@ -106,7 +112,7 @@ export function TonightLive({ initial, viewerPuuid, isAdmin }: TonightLiveProps)
       if (timer !== null) clearTimeout(timer);
       void client.removeChannel(channel);
     };
-  }, [nightStart]);
+  }, [nightStart, nightLabel]);
 
   const nameless = hasNamelessRow(tonightState(snapshot));
 

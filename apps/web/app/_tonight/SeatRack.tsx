@@ -79,7 +79,9 @@ export function SeatRack({ members, viewerPuuid }: SeatRackProps) {
               name and the row is a different height from the ten above it. */}
           <ul
             className={
-              showRoles ? 'cn-rack-list cn-rack-around cn-rack-roled' : 'cn-rack-list cn-rack-around'
+              showRoles
+                ? 'cn-card cn-rack-list cn-rack-around cn-rack-roled'
+                : 'cn-card cn-rack-list cn-rack-around'
             }
           >
             {around.map((member) => (

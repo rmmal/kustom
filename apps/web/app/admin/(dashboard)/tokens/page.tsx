@@ -5,6 +5,7 @@ import { listAdminTokens } from '@/lib/admin/tokens';
 import { requireAdmin } from '@/lib/adminPage';
 import { RELEASE_EXE_SHA256_URL, RELEASE_EXE_URL } from '@/lib/nav';
 import { getServiceClient } from '@/lib/supabase';
+import { AdminAnswerGroup } from '../../_components/AdminAnswerGroup';
 import { AdminForm } from '../../_components/AdminForm';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../../_components/ui';
 
@@ -105,15 +106,20 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
                   <td>{formatTimestamp(token.lastSeenAt)}</td>
                   <td>{token.revokedAt === null ? 'active' : formatTimestamp(token.revokedAt)}</td>
                   <td>
-                    {token.revokedAt === null ? (
-                      <AdminForm action="/api/admin/tokens" kind="tokens">
-                        <input type="hidden" name="action" value="revoke" />
-                        <input type="hidden" name="tokenId" value={token.id} />
-                        <button type="submit">Revoke</button>
-                      </AdminForm>
-                    ) : (
-                      <span className="admin-muted">revoked</span>
-                    )}
+                    {/* The group is outside the branch on purpose: revoking replaces the form
+                        with the word `revoked`, and the sentence has to outlive the control
+                        that produced it (M3.20). */}
+                    <AdminAnswerGroup>
+                      {token.revokedAt === null ? (
+                        <AdminForm action="/api/admin/tokens" kind="tokens">
+                          <input type="hidden" name="action" value="revoke" />
+                          <input type="hidden" name="tokenId" value={token.id} />
+                          <button type="submit">Revoke</button>
+                        </AdminForm>
+                      ) : (
+                        <span className="admin-muted">revoked</span>
+                      )}
+                    </AdminAnswerGroup>
                   </td>
                 </tr>
               ))}

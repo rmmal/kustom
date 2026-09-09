@@ -1,5 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AdminAnswerGroup } from './AdminAnswerGroup';
 import { AdminForm } from './AdminForm';
 
 /**
@@ -124,6 +126,80 @@ describe('a refusal', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe('a control that removes itself by succeeding', () => {
+  /**
+   * `Revoke` and `Promote split N` are gone from the next render: the row becomes the word
+   * `revoked`, the promoted split leaves the list. This harness is that re-render — the mocked
+   * `router.refresh` swaps the form out, exactly as the server's would.
+   */
+  function Revokable() {
+    const [revoked, setRevoked] = useState(false);
+    refresh.mockImplementation(() => {
+      act(() => setRevoked(true));
+    });
+
+    return (
+      <AdminAnswerGroup>
+        {revoked ? (
+          <span>revoked</span>
+        ) : (
+          <AdminForm action="/api/admin/tokens" kind="tokens">
+            <input type="hidden" name="action" value="revoke" />
+            <input type="hidden" name="tokenId" value="token-1" />
+            <button type="submit">Revoke</button>
+          </AdminForm>
+        )}
+      </AdminAnswerGroup>
+    );
+  }
+
+  it('keeps its sentence after the re-render that takes the control away', async () => {
+    answer({ ok: true, action: 'revoke', tokenId: 'token-1' });
+    render(<Revokable />);
+
+    const button = screen.getByRole('button', { name: 'Revoke' });
+    button.focus();
+    fireEvent.submit(button.closest('form') as Node);
+
+    // The row has been swapped for the word, and the sentence is still on screen beside it.
+    await waitFor(() => expect(screen.getByText('revoked')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
+    expect(screen.getByText('token revoked')).toBeInTheDocument();
+  });
+
+  it('moves focus to the sentence, because the control that had it is gone', async () => {
+    answer({ ok: true, action: 'revoke', tokenId: 'token-1' });
+    render(<Revokable />);
+
+    const button = screen.getByRole('button', { name: 'Revoke' });
+    button.focus();
+    fireEvent.submit(button.closest('form') as Node);
+
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText('token revoked')));
+  });
+
+  it('leaves the focus alone when the control is still there', async () => {
+    answer({ ok: true, action: 'set-name', playerId: 'player-1' });
+    render(
+      <AdminAnswerGroup>
+        <AdminForm action="/api/admin/players" kind="players">
+          <input type="hidden" name="action" value="set-name" />
+          <input type="hidden" name="playerId" value="player-1" />
+          <input type="text" name="displayName" defaultValue="Hana" aria-label="Name" />
+          <button type="submit">Save</button>
+        </AdminForm>
+      </AdminAnswerGroup>,
+    );
+
+    const button = screen.getByRole('button', { name: 'Save' });
+    button.focus();
+    fireEvent.submit(button.closest('form') as Node);
+
+    await waitFor(() => expect(screen.getByText('name saved: Hana')).toBeInTheDocument());
+    expect(document.activeElement).toBe(button);
   });
 });
 

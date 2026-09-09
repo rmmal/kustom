@@ -39,11 +39,19 @@ export interface LoadTonightOptions {
    */
   nightStart: Date;
   /**
-   * The zone the slug line is written in. The page passes `nightTimeZone()`; the browser's
-   * re-read has no environment and falls back to the group's own zone, which is the same
-   * answer on every deployment that has not overridden `CUSTOMS_NIGHT_TZ`.
+   * The zone the slug line is written in. **Server only**: the page passes `nightTimeZone()`,
+   * and the browser passes {@link nightLabel} instead of a zone.
    */
   timeZone?: string;
+  /**
+   * The label the server already formatted, for the browser's re-read to carry through.
+   *
+   * The slug is formatted **once, on the server**, and every later snapshot repeats it
+   * verbatim: the browser has no environment, so re-deriving it there would silently use the
+   * default zone and could flip the weekday under the reader seconds after the first paint on
+   * any deployment that overrides `CUSTOMS_NIGHT_TZ` (05-design.md, "The status strip").
+   */
+  nightLabel?: string;
 }
 
 export async function loadTonight(
@@ -56,7 +64,7 @@ export async function loadTonight(
 
   return {
     nightStart,
-    nightLabel: formatNightLabel(options.nightStart, options.timeZone),
+    nightLabel: options.nightLabel ?? formatNightLabel(options.nightStart, options.timeZone),
     seasonActive: seasonId !== null,
     seasonName: season?.name ?? null,
     lobby: lobbyRow === null ? null : await loadLobby(client, lobbyRow, seasonId),
