@@ -229,6 +229,7 @@ export {
   type InviteTarget,
   inviteBody,
   inviteWithFallback,
+  isAcceptedWrite,
   isLobbyWritePath,
   isLobbyWriteVerified,
   KNOWN_CUSTOM_LOBBY_IDS,

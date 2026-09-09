@@ -439,13 +439,23 @@ export interface CreateLobbyAttempt {
 }
 
 /**
- * The probe's create: every candidate in order until one answers 2xx. A dead client (no HTTP answer) stops
- * the loop too: that is not "wrong body". `accepted` is the attempt that answered 2xx, if any.
+ * A 2xx of any body shape. `LcuClient` files a 2xx whose body is not JSON under `reason: 'malformed'`, and
+ * the answer body of a write is never depended on, so that is still an accepted write: the lobby exists.
+ */
+export function isAcceptedWrite(response: LcuResponse<unknown>): boolean {
+  return response.ok || (response.reason === 'malformed' && response.status >= 200 && response.status < 300);
+}
+
+/**
+ * The probe's create: every candidate in order until one answers 2xx (`isAcceptedWrite`), or until
+ * `onAttempt` returns `'stop'` (the probe reads the lobby after each POST and stops when one exists,
+ * whatever the answer said). A dead client (no HTTP answer) stops the loop too: that is not "wrong body".
+ * `accepted` is the attempt the loop stopped on for either reason, else null.
  */
 export async function postCreateLobbyCandidates(
   client: LcuClient,
   candidates: readonly CreateLobbyCandidate[],
-  onAttempt?: (attempt: CreateLobbyAttempt) => void | Promise<void>,
+  onAttempt?: (attempt: CreateLobbyAttempt) => 'stop' | undefined | Promise<'stop' | undefined>,
 ): Promise<{
   readonly accepted: CreateLobbyAttempt | null;
   readonly attempts: readonly CreateLobbyAttempt[];
@@ -461,11 +471,11 @@ export async function postCreateLobbyCandidates(
     };
     const attempt: CreateLobbyAttempt = { candidate, write };
     attempts.push(attempt);
-    await onAttempt?.(attempt);
-    if (write.response.ok) {
+    const signal = await onAttempt?.(attempt);
+    if (isAcceptedWrite(write.response) || signal === 'stop') {
       return { accepted: attempt, attempts };
     }
-    if (write.response.reason === 'network') {
+    if (!write.response.ok && write.response.reason === 'network') {
       return { accepted: null, attempts };
     }
   }

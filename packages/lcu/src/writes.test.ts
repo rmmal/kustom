@@ -13,7 +13,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LcuClient } from './client.js';
+import { LcuClient, type LcuResponse } from './client.js';
 import { LIVE_CLIENT_DATA, WRITE_ENDPOINTS } from './endpoints.js';
 import { readFixture } from './fixtures.js';
 import { type CustomGameQueues, CustomGameQueuesSchema, LcuErrorSchema } from './schemas.js';
@@ -34,6 +34,7 @@ import {
   describeWriteResponse,
   inviteBody,
   inviteWithFallback,
+  isAcceptedWrite,
   isLobbyWritePath,
   isLobbyWriteVerified,
   KNOWN_CUSTOM_LOBBY_IDS,
@@ -467,6 +468,7 @@ describe('writes against the fake client (answers are assumptions, not captures)
       createLobbyCandidates({ lobbyName: 'n', lobbyPassword: 'p', live: { queueId: 7, mutatorId: 7 } }),
       (attempt) => {
         seen.push(`${attempt.candidate.id}:${describeWriteResponse(attempt.write.response)}`);
+        return undefined;
       },
     );
     expect(seen).toEqual(['ui-live-7:500 INVALID_LOBBY', 'ui-3100-19:500 INVALID_LOBBY', 'ui-3100-3100:200']);
@@ -490,6 +492,46 @@ describe('writes against the fake client (answers are assumptions, not captures)
     );
     expect(gone.accepted).toBeNull();
     expect(gone.attempts).toHaveLength(1);
+  });
+
+  it('postCreateLobbyCandidates accepts a 2xx whose body is not JSON: the lobby exists, so no later candidate may replace it', async () => {
+    const { client, posts } = await setup((request) =>
+      request.method === 'POST' && request.path === '/lol-lobby/v2/lobby'
+        ? { status: 200, body: 'OK', contentType: 'text/plain' }
+        : undefined,
+    );
+    const result = await postCreateLobbyCandidates(
+      client,
+      createLobbyCandidates({ lobbyName: 'n', lobbyPassword: 'p', live: null }),
+    );
+    expect(posts()).toHaveLength(1);
+    expect(result.accepted?.candidate.id).toBe('ui-3100-19');
+    const response = result.accepted?.write.response;
+    expect(response && !response.ok && response.reason === 'malformed' && response.text).toBe('OK');
+    expect(isAcceptedWrite(response as LcuResponse<unknown>)).toBe(true);
+    expect(isAcceptedWrite({ ok: false, reason: 'malformed', status: 500, text: 'x' })).toBe(false);
+    expect(isAcceptedWrite({ ok: false, reason: 'http', status: 200, json: {} })).toBe(false);
+  });
+
+  it('postCreateLobbyCandidates stops when the hook says so (a lobby exists after a refused-looking answer)', async () => {
+    const refusal: CannedRoute = {
+      status: 500,
+      body: { errorCode: 'RPC_ERROR', httpStatus: 500, implementationDetails: {}, message: 'INVALID_LOBBY' },
+    };
+    const { client, posts } = await setup(() => refusal);
+    const seen: string[] = [];
+    const result = await postCreateLobbyCandidates(
+      client,
+      createLobbyCandidates({ lobbyName: 'n', lobbyPassword: 'p', live: null }),
+      (attempt) => {
+        seen.push(attempt.candidate.id);
+        return seen.length === 2 ? 'stop' : undefined;
+      },
+    );
+    expect(seen).toEqual(['ui-3100-19', 'ui-3100-3100']);
+    expect(posts()).toHaveLength(2);
+    expect(result.accepted?.candidate.id).toBe('ui-3100-3100');
+    expect(result.attempts).toHaveLength(2);
   });
 
   it('inviteWithFallback POSTs [{ toSummonerId }] once when the client accepts it (assumed: 2xx)', async () => {

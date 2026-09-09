@@ -31,7 +31,6 @@ import { join } from 'node:path';
 import {
   AliasLookupSchema,
   type CreateLobbyAttempt,
-  type CustomGameQueues,
   CustomGameQueuesSchema,
   type CustomGameSubcategory,
   type CustomLobbyIds,
@@ -47,6 +46,7 @@ import {
   GameflowPhaseSchema,
   GameQueuesSchema,
   GameVersionSchema,
+  isAcceptedWrite,
   LcuClient,
   type Lobby,
   LobbySchema,
@@ -331,7 +331,7 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
       dialog.json.subcategories.forEach((entry, index) => {
         report.say(describeSubcategory(index, entry));
       });
-      rift = summonersRiftSubcategory(dialog.json as CustomGameQueues);
+      rift = summonersRiftSubcategory(dialog.json);
       report.say(
         rift === null
           ? "  no Summoner's Rift CLASSIC subcategory in the dialog data"
@@ -386,6 +386,8 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
           `  POST ${WRITE_ENDPOINTS.createLobby.path} with them in order, stopping at the first 2xx (name ${VERIFY_LOBBY_NAME}, password ${VERIFY_LOBBY_PASSWORD})?`,
         )
       ) {
+        // The loop stops on any 2xx, or when a lobby exists after the POST whatever the answer said, so a
+        // later candidate can never replace a lobby the client just made.
         const result = await postCreateLobbyCandidates(client, candidates, async (attempt) => {
           describe(`create (${attempt.candidate.id})`, attempt.write);
           save(
@@ -393,7 +395,12 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
             attempt.write,
             `${attempt.candidate.evidence}; --verify-commands`,
           );
-          await readLobby();
+          const lobby = await readLobby();
+          if (lobby !== null && !isAcceptedWrite(attempt.write.response)) {
+            report.say('  a lobby exists after that answer: stopping here, no more candidates');
+            return 'stop';
+          }
+          return undefined;
         });
         acceptedAttempt = result.accepted;
         if (acceptedAttempt !== null) {
