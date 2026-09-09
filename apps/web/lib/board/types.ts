@@ -24,8 +24,17 @@ export interface BoardRow {
   puuid: string;
   /** `null` for a player the database has no name for yet: rendered `Someone` (M3.10). */
   name: PlayerName;
-  /** `round(ordinal * 60)`. The primary number and the sort key. */
+  /** `round(ordinal * 60)`, floored at zero. The primary number a reader sees. */
   proven: number;
+  /**
+   * The raw `ordinal` (`mu - 2σ`) this row is ordered by. **Never printed.**
+   *
+   * `proven` is floored at zero, so everybody the board has not seen play yet displays `0`;
+   * ordering on the displayed number would drop those rows onto the name tie-break and shuffle
+   * them. The floor is monotonic, so ordering on this keeps the displayed column
+   * non-increasing anyway.
+   */
+  sortKey: number;
   /** `round(mu * 60)`. The number the embeds print beside a name. */
   rating: number;
   games: number;
@@ -74,10 +83,29 @@ export interface RoleRecord {
   losses: number;
 }
 
-export interface PlayerBoardView {
+/**
+ * `/p/[puuid]` has **two shapes, not one shape with zeros in it** (M3.5 review, 2026-09-09).
+ *
+ * Ratings are per season. With no active season there is no rating, no Proven, no history and
+ * no games — not `0` of any of them — and the first cut of this type said `rating: number` and
+ * filled it with zeros, so the page printed `Rating 0 · Proven 0 · settling` above a sentence
+ * saying there was no board. Zero is a number the model never produced.
+ *
+ * So the shape is a discriminated union and the numbers live only on the arm that has a season.
+ * The view cannot print a rating for a player who has none, because there is no field to print.
+ */
+export type PlayerBoardView = PlayerSeasonView | PlayerNoSeasonView;
+
+/** Who the page is about. Both arms carry it, and it is all the no-season arm carries. */
+interface PlayerIdentity {
   puuid: string;
   name: PlayerName;
-  season: SeasonView | null;
+}
+
+/** A season is active: the two numbers, the `Rating` history, the record, the last few games. */
+export interface PlayerSeasonView extends PlayerIdentity {
+  kind: 'season';
+  season: SeasonView;
   /** `round(mu * 60)`, the number the chart plots and line 2 of the board names. */
   rating: number;
   /** `round(ordinal * 60)`, beside it, under the same label the board uses. */
@@ -93,4 +121,12 @@ export interface PlayerBoardView {
   /** Lane order, and only roles the scoreboard actually gave them. */
   roles: RoleRecord[];
   recent: RecentGame[];
+}
+
+/**
+ * No season is active. The page is the player's name and one sentence, and nothing else
+ * (product, 2026-09-09): no numbers, no chip, no chart, no record, no games.
+ */
+export interface PlayerNoSeasonView extends PlayerIdentity {
+  kind: 'no-season';
 }

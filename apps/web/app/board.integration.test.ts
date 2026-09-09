@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { PlayerBoardView, PlayerSeasonView } from '@/lib/board/types';
 import { resolveLocalStack } from '@/lib/testing/localStack';
 
 /**
@@ -68,6 +69,16 @@ if (stack === null) {
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&amp;/g, '&');
+  }
+
+  /**
+   * `loadPlayerBoard` answers a discriminated union, and every test below is about the arm
+   * with a season on it. Asserting the tag first means a regression that returned the
+   * no-season shape fails here rather than through a pile of `undefined`s.
+   */
+  function seasonPlayer(player: PlayerBoardView | null): PlayerSeasonView {
+    expect(player?.kind).toBe('season');
+    return player as PlayerSeasonView;
   }
 
   let seasonId = '';
@@ -203,35 +214,33 @@ if (stack === null) {
 
   describe('the player page with the anon key', () => {
     it('is the two numbers, the history in started_at order, and the role record', async () => {
-      const player = await loadPlayerBoard(anon, puuid.zoe);
+      const player = seasonPlayer(await loadPlayerBoard(anon, puuid.zoe));
 
       expect(player).toMatchObject({ name: 'Zoe', rating: 1_512, proven: 912, games: 2, wins: 1 });
       // The rating carried into the first game, then out of each one: oldest first.
-      expect(player?.history).toEqual([1_500, 1_536, 1_512]);
+      expect(player.history).toEqual([1_500, 1_536, 1_512]);
       // Lane order, from `lib/laneOrder.ts`, and only roles the scoreboard gave.
-      expect(player?.roles.map((record) => record.role)).toEqual(['top', 'mid']);
-      expect(player?.roles.map((record) => record.wins)).toEqual([1, 0]);
+      expect(player.roles.map((record) => record.role)).toEqual(['top', 'mid']);
+      expect(player.roles.map((record) => record.wins)).toEqual([1, 0]);
       // `seedFromRank('GOLD', 'IV')` is mu 23, so the reference line is 1380 — in the series'
       // own units, never the seed's ordinal.
-      expect(player?.seed).toBe(1_380);
+      expect(player.seed).toBe(1_380);
     });
 
     it('lists the recent games newest first, with the five of their own side', async () => {
-      const player = await loadPlayerBoard(anon, puuid.zoe);
+      const player = seasonPlayer(await loadPlayerBoard(anon, puuid.zoe));
 
-      expect(player?.recent).toHaveLength(2);
-      expect(player?.recent[0]?.won).toBe(false);
-      expect(player?.recent[1]?.won).toBe(true);
+      expect(player.recent).toHaveLength(2);
+      expect(player.recent[0]?.won).toBe(false);
+      expect(player.recent[1]?.won).toBe(true);
       // Zoe's side only, in lane order, names read from `players_public` by these ids.
-      expect(player?.recent[0]?.team.map((seat) => seat.role)).toEqual(['jungle', 'mid']);
-      expect(player?.recent[0]?.team.map((seat) => seat.name)).toEqual([null, 'Zoe']);
+      expect(player.recent[0]?.team.map((seat) => seat.role)).toEqual(['jungle', 'mid']);
+      expect(player.recent[0]?.team.map((seat) => seat.name)).toEqual([null, 'Zoe']);
     });
 
     it('renders a nameless teammate as `Someone` and never a puuid', async () => {
-      const player = await loadPlayerBoard(anon, puuid.zoe);
-      const html = renderToStaticMarkup(
-        createElement(PlayerView, { player: player as NonNullable<typeof player>, viewerPuuid: null }),
-      );
+      const player = seasonPlayer(await loadPlayerBoard(anon, puuid.zoe));
+      const html = renderToStaticMarkup(createElement(PlayerView, { player, viewerPuuid: null }));
 
       const text = textOf(html);
       expect(text).toContain('Someone');

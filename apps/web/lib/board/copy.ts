@@ -21,8 +21,17 @@ export const RATING_LABEL = 'Rating';
  */
 export const BOARD_LEGEND = `${PROVEN_LABEL} · ${RATING_LABEL}`;
 
-/** The board's own word, the same one the nightly embed's title uses (`Season 1 · standings`). */
-export const STANDINGS_LABEL = 'standings';
+/**
+ * The board's own word (designer, 2026-09-09). `Leaderboard` and not `standings`: it is what
+ * `docs/01-architecture.md` and the milestones have called this page since M0, it is the word
+ * the group uses, and a second name for a page is exactly the drift the two number names are
+ * already policed against.
+ *
+ * Capitalised as a label — the page heading, the back link, the `<title>` — and lower case
+ * inside the embed's title, where it follows the season name in a sentence-shaped line
+ * (`Season 1 · leaderboard`), the same rule `Proven` and `Rating` follow.
+ */
+export const LEADERBOARD_LABEL = 'Leaderboard';
 
 /**
  * When the marker switches off. Product's round number for M1.3's finding that a mis-seeded

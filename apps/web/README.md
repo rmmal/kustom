@@ -164,11 +164,15 @@ lib/ingest/discord.ts    registers the hooks at module load. The companion route
 `players_public`; the base `players` table is service-role only. None of them writes anything. Only the tonight
 page has a client component, and only for the Realtime subscription.
 
-- **Two numbers, two names, everywhere.** **Proven** is `round(ordinal * 60)` — the primary number on a board
-  row and **the sort key** — and **Rating** is `round(mu * 60)`, the number the embeds print beside a name.
-  Both come from `lib/ratingDisplay.ts` (`provenRating`, `displayRating`); no page multiplies anything by
-  sixty. `ratings.ordinal` is a generated column and the index the season is stored under, but the integer on
-  the page comes through core, so SQL and core cannot disagree about where a row sits.
+- **Two numbers, two names, everywhere.** **Proven** is `round(ordinal * 60)` **floored at zero** — the
+  primary number on a board row — and **Rating** is `round(mu * 60)`, the number the embeds print beside a
+  name. Both come from `lib/ratingDisplay.ts` (`provenRating`, `displayRating`); no page multiplies anything
+  by sixty. `ratings.ordinal` is a generated column and the index the season is stored under, but the integer
+  on the page comes through core, so SQL and core cannot disagree about where a row sits.
+- **The board sorts on `sortKey`, not on the printed Proven.** `ordinal` is negative for anybody whose sigma
+  outweighs half their mu — an Iron IV seed is `-160` — so the printed number is floored and the raw ordinal
+  (`provenSortKey`) rides along unprinted to keep rows that all display `0` in their true order. The floor is
+  monotonic, so the printed column still never goes up as you read down it.
 - **The `settling` chip (M3.8)** is on a player with fewer than `SETTLING_GAMES` (30) recorded games, and its
   sentence appears **once per page**, never per row. Both live in `lib/board/copy.ts`, and the 30 in the
   sentence is interpolated from the same constant the chip switches off at.

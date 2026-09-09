@@ -29,6 +29,7 @@ function row(overrides: Partial<BoardRow>): BoardRow {
     games: 40,
     wins: 20,
     losses: 20,
+    sortKey: 15,
     streak: null,
     settling: false,
     ...overrides,
@@ -128,11 +129,47 @@ describe('the board is ordered by Proven, descending', () => {
   });
 
   it('puts a seeded player with no games at the bottom rather than filtering them out', () => {
-    const seeded = row({ puuid: 'puuid-new', name: 'New', proven: 0, rating: 1_200, games: 0 });
+    // An unranked seed is `mu 20, sigma 10`: ordinal 0, so Proven 0 and Rating 1200.
+    const seeded = row({
+      puuid: 'puuid-new',
+      name: 'New',
+      proven: 0,
+      sortKey: 0,
+      rating: 1_200,
+      games: 0,
+    });
     const rows = sortBoardRows([seeded, ...workedBoardRows()]);
 
     expect(rows.at(-1)?.name).toBe('New');
     expect(rows).toHaveLength(11);
+  });
+
+  it('keeps two rows below zero in their true order, both printing zero', () => {
+    // Both display `0` — an Iron IV seed is `-160` unfloored — so the tie-break that decides
+    // the page is the raw ordinal and not the name.
+    const rows = sortBoardRows([
+      row({ puuid: 'puuid-iron', name: 'Ali', proven: 0, sortKey: -2.66, rating: 840 }),
+      row({ puuid: 'puuid-unranked', name: 'Zoe', proven: 0, sortKey: 0, rating: 1_200 }),
+    ]);
+
+    expect(rows.map((entry) => entry.name)).toEqual(['Zoe', 'Ali']);
+    expect(rows.map((entry) => entry.proven)).toEqual([0, 0]);
+    // Alphabetical order would have put Ali first: the sort is not reading the printed number.
+    expect(rows[0]?.sortKey).toBeGreaterThan(rows[1]?.sortKey as number);
+  });
+
+  it('still never lets the printed column go up, with the floor in place', () => {
+    const rows = sortBoardRows([
+      row({ puuid: 'puuid-a', proven: 0, sortKey: -6 }),
+      row({ puuid: 'puuid-b', proven: 300, sortKey: 5 }),
+      row({ puuid: 'puuid-c', proven: 0, sortKey: -1 }),
+    ]);
+
+    const printed = rows.map((entry) => entry.proven);
+    expect(printed).toEqual([300, 0, 0]);
+    for (const [index, value] of printed.entries()) {
+      expect(value).toBeLessThanOrEqual(printed[index - 1] ?? value);
+    }
   });
 
   it('agrees with `provenRating`, which is the one place the number is computed', () => {

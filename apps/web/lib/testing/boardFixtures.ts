@@ -1,8 +1,8 @@
 import { displayRating, seedFromRank } from '@customs/core';
 import { SETTLING_GAMES } from '../board/copy';
 import { sortBoardRows } from '../board/order';
-import type { BoardRow, BoardView, PlayerBoardView, RecentGame } from '../board/types';
-import { provenRating } from '../ratingDisplay';
+import type { BoardRow, BoardView, PlayerSeasonView, RecentGame } from '../board/types';
+import { provenRating, provenSortKey } from '../ratingDisplay';
 import { WORKED_ROSTER, workedPuuid } from './workedExample';
 
 /**
@@ -44,6 +44,7 @@ export function workedBoardRows(): BoardRow[] {
         puuid: workedPuuid(player.name),
         name: player.name,
         proven: provenRating({ mu: player.mu, sigma: player.sigma }),
+        sortKey: provenSortKey({ mu: player.mu, sigma: player.sigma }),
         rating: displayRating(player.mu),
         games,
         wins,
@@ -60,7 +61,7 @@ export function workedBoard(overrides: Partial<BoardView> = {}): BoardView {
 }
 
 /** One player's page, built from the same roster. `Hana` by default: 37 games, no chip. */
-export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> = {}): PlayerBoardView {
+export function workedPlayer(name = 'Hana', overrides: Partial<PlayerSeasonView> = {}): PlayerSeasonView {
   const player = WORKED_ROSTER.find((entry) => entry.name === name);
   if (player === undefined) throw new Error(`no worked player called ${name}`);
 
@@ -70,6 +71,7 @@ export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> 
   const seed = displayRating(seedFromRank('SILVER', 'II').mu);
 
   return {
+    kind: 'season',
     puuid: workedPuuid(name),
     name,
     season: { id: 'season-1', name: 'Season 1' },

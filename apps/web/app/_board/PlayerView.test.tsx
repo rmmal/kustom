@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   NO_GAMES_YET,
   NO_SEASON_BOARD,
+  PROVEN_LABEL,
+  RATING_LABEL,
   SEED_LABEL,
   SETTLING_CHIP,
   SETTLING_SENTENCE,
@@ -36,7 +38,26 @@ describe('the two numbers', () => {
   it('invents no third name for either number', () => {
     draw();
 
-    expect(document.body.textContent).not.toMatch(/\bBoard\b|\bMMR\b|\bScore\b/);
+    expect(document.body.textContent).not.toMatch(/\bMMR\b|\bScore\b/);
+  });
+
+  it('prints the record directly under them, the way a board row does', () => {
+    const { container } = draw();
+
+    // Hana: 37 games in the fixture, half of them won.
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('37 games · 19W 18L');
+    // Directly under: the two are one block, not two blocks a gap apart.
+    const summary = container.querySelector('.cn-summary');
+    expect([...(summary?.children ?? [])].map((child) => child.className)).toEqual([
+      'cn-numbers',
+      'cn-row-meta',
+    ]);
+  });
+
+  it('says `1 game` for somebody with one, never `1 games`', () => {
+    const { container } = draw(workedPlayer('Hana', { games: 1, wins: 1, losses: 0 }));
+
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('1 game · 1W 0L');
   });
 });
 
@@ -78,6 +99,20 @@ describe('the rating history chart', () => {
     expect(screen.getByText(NO_GAMES_YET)).toBeInTheDocument();
     expect(container.querySelector('svg')).not.toBeInTheDocument();
   });
+
+  /**
+   * The line is about the **season**, not about the chart. It used to be gated on
+   * `history.length === 0`, which is also true for a player whose games the season read did not
+   * reach — so somebody with thirty-seven games could be told the season had none.
+   */
+  it('does not claim a season is empty for a player who has played it', () => {
+    const { container } = draw(workedPlayer('Hana', { history: [] }));
+
+    expect(screen.queryByText(NO_GAMES_YET)).not.toBeInTheDocument();
+    // Nothing to plot, so nothing is plotted — and nothing is claimed either.
+    expect(container.querySelector('svg')).not.toBeInTheDocument();
+    expect(container.querySelector('.cn-row-meta')?.textContent).toContain('37 games');
+  });
 });
 
 describe('the still-settling marker (M3.8)', () => {
@@ -115,6 +150,35 @@ describe('the recent games', () => {
     expect(container.querySelector('.cn-game-rating')?.textContent).toBe('1392 (−42)');
     // A loss is `dim` at 400 and never coloured by sign.
     expect(container.querySelector('.cn-delta')).not.toHaveClass('cn-delta-up');
+  });
+
+  it('dates each game, in the configured timezone and a fixed locale', () => {
+    const { container } = draw(
+      workedPlayer('Hana', {
+        recent: [workedRecentGame({ startedAt: '2026-09-09T20:12:00.000Z' })],
+      }),
+    );
+
+    const head = container.querySelector('.cn-game-head');
+    // `9 Sep`, not `Sept` and not the reader's own locale: the string is decided on the server.
+    expect(head?.textContent).toContain('9 Sep');
+    expect(head?.textContent).not.toContain('Sept');
+    // Beside the duration, both mono and dim.
+    expect([...(head?.querySelectorAll('.cn-duration') ?? [])].map((node) => node.textContent)).toEqual([
+      '9 Sep',
+      '34:12',
+    ]);
+  });
+
+  it('dates a game by the night the group played it, not by UTC', () => {
+    // 23:30 UTC is 01:30 the next morning in Africa/Cairo, which is the group's timezone.
+    const { container } = draw(
+      workedPlayer('Hana', {
+        recent: [workedRecentGame({ startedAt: '2026-09-09T23:30:00.000Z' })],
+      }),
+    );
+
+    expect(container.querySelector('.cn-game-head')?.textContent).toContain('10 Sep');
   });
 
   it('lists the five the player was on, in lane order, with their own row marked', () => {
@@ -179,31 +243,68 @@ describe('a player with no name (M3.10)', () => {
 });
 
 describe('no season', () => {
-  it('says so, and the page still draws the player', () => {
-    draw(
-      workedPlayer('Hana', {
-        season: null,
-        rating: 0,
-        proven: 0,
-        games: 0,
-        wins: 0,
-        losses: 0,
-        history: [],
-        roles: [],
-        recent: [],
-      }),
-    );
+  /**
+   * **The name, the sentence, and nothing else** (product, 2026-09-09, after the M3.5 review).
+   *
+   * Ratings are per season. The first cut of this page filled the numbers with zeros for this
+   * case and printed `Rating 0 · Proven 0 · settling` directly above the sentence saying there
+   * was no board — zero being a number the model never produced. The loader now returns a shape
+   * with no numbers on it, so what this asserts is that the page prints exactly two things.
+   */
+  const noSeason: PlayerBoardView = { kind: 'no-season', puuid: workedPuuid('Hana'), name: 'Hana' };
 
-    expect(screen.getByText(NO_SEASON_BOARD)).toBeInTheDocument();
+  it('is the name and the sentence', () => {
+    draw(noSeason);
+
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Hana');
+    expect(screen.getByText(NO_SEASON_BOARD)).toBeInTheDocument();
+    // Never the admin sentence: it names a page most of the group cannot open.
     expect(document.body.textContent).not.toContain('Start a season on the Seasons page.');
+  });
+
+  it('prints no number at all — not a zero, not a label, not a chip', () => {
+    const { container } = draw(noSeason);
+
+    expect(container.querySelector('.cn-numbers')).not.toBeInTheDocument();
+    expect(screen.queryByText(RATING_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByText(PROVEN_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByText(SETTLING_CHIP)).not.toBeInTheDocument();
+    expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
+    // The one number a reader could be shown here would be a zero, and there is none.
+    expect(container.textContent).not.toMatch(/\d/);
+  });
+
+  it('draws no chart, no record, no games and no empty-season line', () => {
+    const { container } = draw(noSeason);
+
+    expect(container.querySelector('svg')).not.toBeInTheDocument();
+    expect(screen.queryByText(SEED_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByText(NO_GAMES_YET)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.cn-game')).toHaveLength(0);
+    expect(container.querySelectorAll('.cn-record')).toHaveLength(0);
+  });
+
+  it('is the header, the sentence, and no other block', () => {
+    const { container } = draw(noSeason);
+
+    const page = container.querySelector('.cn-page');
+    expect([...(page?.children ?? [])].map((child) => child.className)).toEqual(['cn-strip', 'cn-notice']);
+  });
+
+  it('says `Someone` for a nameless player without explaining a page that says nothing else', () => {
+    draw({ kind: 'no-season', puuid: 'puuid-x', name: null });
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Someone');
+    // The hint belongs under a block of rows, and this state has none.
+    expect(screen.queryByText(NAMELESS_HINT)).not.toBeInTheDocument();
   });
 });
 
 describe('getting back to the board', () => {
-  it('links to the standings from the header', () => {
+  it('links to the leaderboard from the header', () => {
     draw();
 
-    expect(screen.getByRole('link', { name: 'standings' })).toHaveAttribute('href', '/leaderboard');
+    expect(screen.getByRole('link', { name: '← Leaderboard' })).toHaveAttribute('href', '/leaderboard');
   });
 });

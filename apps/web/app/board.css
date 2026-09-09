@@ -214,8 +214,16 @@
   color: var(--cn-dim);
 }
 
+/*
+ * Line 2's left group on a board row, and the record under the two numbers on `/p/[puuid]`.
+ * It carries its own size and colour because the second of those is not inside a
+ * `.cn-row-bottom` to inherit them from.
+ */
 .cn-row-meta {
   min-width: 0;
+  margin: 0;
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
 }
 
 /* Directly under the Proven number, right-aligned to the same edge: one vertical pair. */
@@ -241,6 +249,16 @@
 /* ---------------------------------------------------------------------------
  * The player page: the two numbers, the chart, the record, the last few games.
  * ------------------------------------------------------------------------- */
+
+/*
+ * The two numbers and the record read as one block: the page's answer to "where am I", with
+ * the block's own `sp-4` gap saved for what comes after it.
+ */
+.cn-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-1);
+}
 
 .cn-numbers {
   display: flex;

@@ -21,10 +21,15 @@ import type { BoardRow } from './types';
  * when even the names are equal — two players the database has no name for both render
  * `Someone`, which `localeCompare` cannot separate, and a board that reshuffles them between
  * two page loads is a board people stop trusting.
+ *
+ * **On `sortKey`, not on `proven`.** The printed Proven is floored at zero (the designer's
+ * review, 2026-09-09), so on a young season several rows display `0` and sorting on that
+ * number would order them by name. The raw ordinal separates them, and because the floor is
+ * monotonic the printed column still never goes up as you read down it.
  */
 export function compareBoardRows(a: BoardRow, b: BoardRow): number {
   return (
-    b.proven - a.proven ||
+    b.sortKey - a.sortKey ||
     b.rating - a.rating ||
     renderWebName(a.name).localeCompare(renderWebName(b.name)) ||
     (a.puuid < b.puuid ? -1 : a.puuid > b.puuid ? 1 : 0)

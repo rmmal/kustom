@@ -182,12 +182,18 @@ describe('the empty states', () => {
     expect(document.body.textContent).not.toContain('Start a season on the Seasons page.');
   });
 
-  it('has a heading in every state', () => {
-    const { unmount } = draw();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Season 1 standings');
+  it('has a heading in every state, and the word is `Leaderboard`', () => {
+    const { unmount, container } = draw();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Season 1 Leaderboard');
+    // Beside a season name the noun is the dim sub-word.
+    expect(container.querySelector('.cn-strip-sub')?.textContent).toBe('Leaderboard');
     unmount();
 
-    draw({ season: null, rows: [] });
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('standings');
+    const { container: bare } = draw({ season: null, rows: [] });
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(heading).toHaveTextContent('Leaderboard');
+    // With nothing beside it, it is the heading itself and not a grey afterthought.
+    expect(bare.querySelector('.cn-strip-sub')).not.toBeInTheDocument();
+    expect(heading.textContent).toBe('Leaderboard');
   });
 });

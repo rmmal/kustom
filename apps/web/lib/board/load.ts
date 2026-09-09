@@ -2,7 +2,7 @@ import { displayRating, type Rating, seedFromRank } from '@customs/core';
 import type { RoleValue, SideValue } from '@customs/db';
 import { inLaneOrder, LANE_ORDER } from '../laneOrder';
 import type { PublicClient } from '../publicClient';
-import { provenRating } from '../ratingDisplay';
+import { provenRating, provenSortKey } from '../ratingDisplay';
 import type { PlayerName } from '../tonight/types';
 import { SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
@@ -103,6 +103,7 @@ export async function loadBoard(client: PublicClient): Promise<BoardView> {
       puuid: player.puuid,
       name: player.name,
       proven: provenRating(rating),
+      sortKey: provenSortKey(rating),
       rating: displayRating(rating.mu),
       games,
       wins,
@@ -124,29 +125,17 @@ export async function loadPlayerBoard(client: PublicClient, puuid: string): Prom
   if (player === null) return null;
 
   const season = await selectSeason(client);
+  // **Not zeros.** Ratings are per season, so with no active season this player has no rating,
+  // no Proven and no history — and a `0` in those fields is a number the model never produced.
+  // The no-season arm carries the name and nothing else, and the page has nothing to print.
+  if (season === null) return { kind: 'no-season', puuid: player.puuid, name: player.name };
+
   const seed = displayRating(seedFromRank(player.rankTier, player.rankDivision).mu);
-  if (season === null) {
-    return {
-      puuid: player.puuid,
-      name: player.name,
-      season: null,
-      rating: 0,
-      proven: 0,
-      games: 0,
-      wins: 0,
-      losses: 0,
-      settling: true,
-      seed,
-      history: [],
-      roles: [],
-      recent: [],
-    };
-  }
 
   const [ratings, games, rows] = await Promise.all([
     loadRatings(client, season.id, [player.id]),
-    loadSeasonGames(client, season.id, { ascending: true, limit: SEASON_GAME_LIMIT }),
-    loadPlayerGameRows(client, player.id),
+    loadSeasonGames(client, season.id, { limit: SEASON_GAME_LIMIT }),
+    loadPlayerGameRows(client, player.id, season.id),
   ]);
 
   const byGame = new Map(games.map((game) => [game.id, game]));
@@ -165,6 +154,7 @@ export async function loadPlayerBoard(client: PublicClient, puuid: string): Prom
   const recent = await loadRecentGames(client, played.slice(-RECENT_GAMES).reverse());
 
   return {
+    kind: 'season',
     puuid: player.puuid,
     name: player.name,
     season,
@@ -354,16 +344,26 @@ async function loadRatings(
   );
 }
 
+/**
+ * A season's games, **newest first**, capped at `limit`.
+ *
+ * The direction is not a preference (the designer's review, 2026-09-09). This read used to take
+ * the *oldest* `SEASON_GAME_LIMIT` games for the player page while `loadPlayerGameRows` took
+ * that player's newest — so once a season passed the cap the two sets stopped overlapping at
+ * the recent end, and a player's latest games silently vanished from their chart, their record
+ * and their recent-games list. Both reads now start at the same end. Callers that want the
+ * oldest first sort in memory, which they were doing anyway.
+ */
 async function loadSeasonGames(
   client: PublicClient,
   seasonId: string,
-  options: { ascending: boolean; limit: number },
+  options: { limit: number },
 ): Promise<SeasonGame[]> {
   const { data, error } = await client
     .from('games')
     .select('id, started_at, duration_s, winning_side')
     .eq('season_id', seasonId)
-    .order('started_at', { ascending: options.ascending })
+    .order('started_at', { ascending: false })
     .limit(options.limit);
   if (error) throw new Error(`board: game lookup failed: ${error.message}`);
 
@@ -390,11 +390,34 @@ interface PlayerGameRow {
   muAfter: number | null;
 }
 
-async function loadPlayerGameRows(client: PublicClient, playerId: string): Promise<PlayerGameRow[]> {
+/**
+ * One player's scoreboard rows for a season, newest first.
+ *
+ * Filtered through the embedded `games` rather than an `in` list of ids — the same shape
+ * `lib/ingest/rebuild.ts` uses — so the season is the database's filter and not a pass over
+ * everything the player has ever played. Ordered and limited for the same reason: without
+ * them the query leans on PostgREST's row cap and gets an arbitrary thousand once somebody
+ * has played more games than that across every season.
+ *
+ * **The order has to be spelled `games(started_at)`.** `started_at` is not a column of
+ * `game_players`, so a top-level order on it is a 400 (`column game_players.started_at does not
+ * exist`), and supabase-js's `referencedTable: 'games'` sorts *within* the embedded resource —
+ * which for a to-one embed is one row and therefore a no-op. Checked against the local stack on
+ * 2026-09-09 with three games: `referencedTable` returned them in insertion order and this
+ * spelling returned them newest first.
+ */
+async function loadPlayerGameRows(
+  client: PublicClient,
+  playerId: string,
+  seasonId: string,
+): Promise<PlayerGameRow[]> {
   const { data, error } = await client
     .from('game_players')
-    .select('game_id, player_id, side, role, mu_before, mu_after')
-    .eq('player_id', playerId);
+    .select('game_id, player_id, side, role, mu_before, mu_after, games!inner(started_at, season_id)')
+    .eq('player_id', playerId)
+    .eq('games.season_id', seasonId)
+    .order('games(started_at)', { ascending: false })
+    .limit(SEASON_GAME_LIMIT);
   if (error) throw new Error(`board: game player lookup failed: ${error.message}`);
   return (data ?? []).map(toGameRow);
 }
@@ -440,10 +463,7 @@ function toGameRow(row: RawGamePlayerRow): PlayerGameRow {
  * and `ratings.wins` were folded from and `13W 15L · L2` adds up.
  */
 async function loadRecentResults(client: PublicClient, seasonId: string): Promise<Map<string, boolean[]>> {
-  const games = await loadSeasonGames(client, seasonId, {
-    ascending: false,
-    limit: STREAK_GAME_WINDOW,
-  });
+  const games = await loadSeasonGames(client, seasonId, { limit: STREAK_GAME_WINDOW });
   if (games.length === 0) return new Map();
 
   const rows = await loadGameRows(

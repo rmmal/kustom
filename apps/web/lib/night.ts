@@ -24,6 +24,44 @@ interface CivilTime {
   second: number;
 }
 
+/**
+ * The locale every date on a public page is formatted in, whatever the reader's browser says.
+ *
+ * Fixed on purpose (`05-design.md`, the status strip's slug): a date formatted in the visitor's
+ * locale is formatted differently by the server than by the browser that re-renders it, and the
+ * line changes under the reader. One locale, one timezone, one string, decided on the server.
+ */
+export const DISPLAY_LOCALE = 'en-GB';
+
+const dayMonthFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * `9 Sep`: the short date a page puts beside a game (M3.5, `/p/[puuid]`'s recent games).
+ *
+ * The same locale and the same configured timezone the night's slug line uses, and the same
+ * reason for both — `CUSTOMS_NIGHT_TZ` is where the group is, so a game that started at 01:00
+ * their time is dated the day they played it and not the day UTC had.
+ *
+ * Built from parts rather than from `format()` because `en-GB`'s short month is **`Sept`** on
+ * current ICU and three letters everywhere else, so a column of dates would have one four-letter
+ * entry a year. Cutting to three gives `Sep` and leaves the other eleven untouched, and it is
+ * stable across the ICU versions that disagree about September.
+ *
+ * This is the only date formatter in the app. Anything else that needs one takes different
+ * `Intl` options from here rather than building a second `DateTimeFormat` somewhere else.
+ */
+export function formatDayMonth(instant: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): string {
+  const cached = dayMonthFormatters.get(timeZone);
+  const formatter =
+    cached ?? new Intl.DateTimeFormat(DISPLAY_LOCALE, { timeZone, day: 'numeric', month: 'short' });
+  if (cached === undefined) dayMonthFormatters.set(timeZone, formatter);
+
+  const parts = formatter.formatToParts(instant);
+  const read = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${read('day')} ${read('month').slice(0, 3)}`;
+}
+
 /** Is this a timezone `Intl` knows? Used to validate `CUSTOMS_NIGHT_TZ` at the boundary. */
 export function isValidTimeZone(timeZone: string): boolean {
   try {

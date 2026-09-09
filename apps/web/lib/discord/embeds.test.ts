@@ -507,7 +507,7 @@ describe('leaderboardEmbed, the worked example', () => {
     const embed = leaderboardEmbed(workedLeaderboardInput()).embeds[0];
 
     expect(embed?.color).toBe(ACCENT_COLOR);
-    expect(embed?.title).toBe('Season 1 · standings');
+    expect(embed?.title).toBe('Season 1 · leaderboard');
     expect(embed?.url).toBe(`${SITE_URL}/leaderboard`);
     expect(embed?.description).toBeUndefined();
   });

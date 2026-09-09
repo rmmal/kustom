@@ -2,11 +2,11 @@ import Link from 'next/link';
 import {
   BOARD_LEGEND,
   gamesLabel,
+  LEADERBOARD_LABEL,
   NO_GAMES_YET,
   NO_SEASON_BOARD,
   PROVEN_LABEL,
   RATING_LABEL,
-  STANDINGS_LABEL,
   winLossLabel,
 } from '@/lib/board/copy';
 import { formatStreak } from '@/lib/board/streak';
@@ -38,12 +38,18 @@ export function BoardView({ board, viewerPuuid }: BoardViewProps) {
   return (
     <main className="cn-page">
       <header className="cn-strip">
+        {/*
+         * `Season 1 Leaderboard`, and `Leaderboard` alone when no season is active — at full
+         * weight, not as the dim sub-word (the designer's review, 2026-09-09). `cn-strip-sub`
+         * demotes the noun beside the season name it belongs to; with nothing beside it the
+         * page's only heading was a grey afterthought.
+         */}
         <h1 className="cn-strip-title">
           {board.season === null ? (
-            <span className="cn-strip-sub">{STANDINGS_LABEL}</span>
+            LEADERBOARD_LABEL
           ) : (
             <>
-              {board.season.name} <span className="cn-strip-sub">{STANDINGS_LABEL}</span>
+              {board.season.name} <span className="cn-strip-sub">{LEADERBOARD_LABEL}</span>
             </>
           )}
         </h1>

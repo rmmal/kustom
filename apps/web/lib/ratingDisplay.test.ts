@@ -1,6 +1,6 @@
 import { displayRating } from '@customs/core';
 import { describe, expect, it } from 'vitest';
-import { displayDelta } from './ratingDisplay';
+import { displayDelta, provenRating, provenSortKey } from './ratingDisplay';
 
 /**
  * The one delta rule (M3.3), which every surface that prints a rating change depends on.
@@ -37,5 +37,38 @@ describe('displayDelta', () => {
   it('leaves a real change alone', () => {
     expect(Object.is(displayDelta(25.0, 24.0), -0)).toBe(false);
     expect(displayDelta(25.0, 24.0)).toBe(-60);
+  });
+});
+
+/**
+ * Proven, and the floor under it (the designer's review, 2026-09-09).
+ *
+ * `ordinal = mu - 2σ` goes negative whenever uncertainty outweighs half the skill estimate,
+ * which is the ordinary state of a new player rather than an edge case.
+ */
+describe('provenRating', () => {
+  it('is `round(ordinal * 60)` for anybody the board has seen play', () => {
+    // The worked example's Lena: `34.80 - 2 × 4.50 = 25.80`, `× 60 = 1548`.
+    expect(provenRating({ mu: 34.8, sigma: 4.5 })).toBe(1_548);
+    expect(provenRating({ mu: 24.49, sigma: 4.6 })).toBe(917);
+  });
+
+  it('floors at zero rather than printing a negative rating', () => {
+    // An Iron IV seed: `14 - 2 × 8.33 = -2.66`, which is `-160` unfloored. A minus sign on a
+    // scoreboard reads as a penalty somebody has been given.
+    expect(provenRating({ mu: 14, sigma: 8.33 })).toBe(0);
+    // An unranked seed, and a low seed after a couple of losses.
+    expect(provenRating({ mu: 20, sigma: 10 })).toBe(0);
+    expect(provenRating({ mu: 18, sigma: 9.6 })).toBe(0);
+  });
+
+  it('keeps the true order underneath, for rows that all display zero', () => {
+    const worse = { mu: 14, sigma: 8.33 };
+    const better = { mu: 18, sigma: 9.6 };
+
+    expect(provenRating(worse)).toBe(provenRating(better));
+    expect(provenSortKey(worse)).toBeLessThan(provenSortKey(better));
+    // The sort key is core's `ordinal`, unrounded and unfloored.
+    expect(provenSortKey({ mu: 14, sigma: 8.33 })).toBeCloseTo(-2.66, 10);
   });
 });

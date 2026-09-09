@@ -1,4 +1,4 @@
-import { STANDINGS_LABEL } from '@/lib/board/copy';
+import { LEADERBOARD_LABEL } from '@/lib/board/copy';
 import { loadBoard } from '@/lib/board/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { currentViewer } from '@/lib/viewer';
@@ -18,7 +18,7 @@ import '../board.css';
  */
 export const dynamic = 'force-dynamic';
 
-export const metadata = { title: `Customs Night · ${STANDINGS_LABEL}` };
+export const metadata = { title: `Customs Night · ${LEADERBOARD_LABEL}` };
 
 export default async function LeaderboardPage() {
   const [board, viewer] = await Promise.all([loadBoard(createPublicClient()), currentViewer()]);

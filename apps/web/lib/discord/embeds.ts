@@ -1,5 +1,5 @@
 import type { Role, Side } from '@customs/core';
-import { gamesLabel, SETTLING_SENTENCE_SHORT, STANDINGS_LABEL } from '../board/copy';
+import { gamesLabel, LEADERBOARD_LABEL, SETTLING_SENTENCE_SHORT } from '../board/copy';
 import { inLaneOrder } from '../laneOrder';
 
 /**
@@ -274,7 +274,7 @@ export function leaderboardEmbed(input: LeaderboardEmbedInput): WebhookPayload {
     embeds: [
       {
         color: ACCENT_COLOR,
-        title: `${input.seasonName} · ${STANDINGS_LABEL}`,
+        title: `${input.seasonName} · ${LEADERBOARD_LABEL.toLowerCase()}`,
         ...(input.url === undefined ? {} : { url: input.url }),
         fields: [{ name: 'Top ten', value: entries.map(leaderboardLine).join('\n') }],
         footer: { text: SETTLING_SENTENCE_SHORT },
