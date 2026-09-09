@@ -53,6 +53,7 @@ src/connection.ts    the state machine: disconnected -> connected -> watching, r
 src/lobbyWatcher.ts  POST /api/companion/lobby on every roster change (M2.2)
 src/gameWatcher.ts   end-of-game capture, disk queue, POST /api/companion/game (M2.3)
 src/rankSync.ts      own rank every 6 h, other ranks when the server asks (M2.4)
+src/backfill.ts      past customs from match history, 60 s after connect then every 6 h, via the queue (M5.1)
 src/log.ts           daily JSON log file (debug) plus the console (info)
 build/               the release build (M2.6): bundle, exe, publish
 ```

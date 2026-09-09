@@ -11,7 +11,7 @@
  * machine. `--show-token` makes the first-run token prompt echo what is typed (M2.19).
  *
  * Environment:
- *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json, logs/ and queue/).
+ *  - `CUSTOMS_NIGHT_CONFIG_DIR` overrides the config directory (config.json, logs/, queue/ and backfill.json).
  *  - `CUSTOMS_NIGHT_LOG_LEVEL` sets the console level (`debug`, `info`, `warn`, `error`; default `info`).
  *    The file always gets `debug`.
  *  - `CUSTOMS_NIGHT_SHOW_TOKEN=1` is `--show-token` for a shortcut that cannot pass flags.
@@ -19,6 +19,7 @@
  */
 
 import { ApiClient, healthCheck } from './api.js';
+import { Backfill } from './backfill.js';
 import {
   type CompanionConfig,
   configDir,
@@ -53,7 +54,7 @@ export function usage(): string {
     '                  cannot paste into a hidden prompt); it is still never written to the log',
     '',
     'Environment:',
-    '  CUSTOMS_NIGHT_CONFIG_DIR   config directory (config.json, logs/, queue/)',
+    '  CUSTOMS_NIGHT_CONFIG_DIR   config directory (config.json, logs/, queue/, backfill.json)',
     '  CUSTOMS_NIGHT_LOG_LEVEL    console level: debug | info | warn | error (default info)',
     '  CUSTOMS_NIGHT_SHOW_TOKEN   1 is the same as --show-token',
     '',
@@ -163,6 +164,9 @@ async function main(): Promise<number> {
     onResponse: (response) => rankSync.needed(response.ranksNeeded),
   });
   const rankSync = new RankSync({ api, logger, names: lobbyWatcher.knownNames });
+  // Past customs from match history (M5.1): 60 s after the first connect, then every 6 h, only while the
+  // client is idle. Its games go through the game watcher's queue like any end-of-game block.
+  const backfill = new Backfill({ api, logger, configDir: dir, sink: gameWatcher });
   const machine = new ConnectionMachine({
     logger,
     hooks: composeHooks(
@@ -171,6 +175,7 @@ async function main(): Promise<number> {
       lobbyWatcher.hooks(),
       gameWatcher.hooks(),
       rankSync.hooks(),
+      backfill.hooks(),
     ),
     lockfile: config.lockfilePath ? { overridePath: config.lockfilePath } : {},
   });
@@ -197,6 +202,7 @@ async function main(): Promise<number> {
   await machine.run();
   lobbyWatcher.stop();
   rankSync.stop();
+  backfill.stop();
   gameWatcher.stop();
   logger.info('stopped');
   return 0;

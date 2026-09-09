@@ -196,6 +196,10 @@ describe('companionGamePayloadSchema', () => {
     expect(parsed.phase).toBe('eog');
     if (parsed.phase !== 'eog') throw new Error('unreachable');
     expect(parsed.source).toBe('eog');
+    // M5.1: a backfilled match-history detail is the same body with `source: 'backfill'`.
+    const backfilled = companionGamePayloadSchema.parse({ ...eog, source: 'backfill' });
+    expect(backfilled.phase === 'eog' && backfilled.source).toBe('backfill');
+    expect(companionGamePayloadSchema.safeParse({ ...eog, source: 'manual' }).success).toBe(false);
     expect(parsed.winningSide).toBe(100);
     expect(parsed.raw).toEqual({ gameId: 7412345678, teams: [] });
     expect(parsed.participants[0]?.cs).toBe(214);

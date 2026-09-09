@@ -157,6 +157,24 @@ export const WRITE_ENDPOINTS = {
   ],
 } as const;
 
+/**
+ * The match history list, one page (M5.1 backfill). `begIndex`/`endIndex` are positions in the player's
+ * history, newest first; on 16.17 `begIndex=0&endIndex=20` answered 21 games, so the window is inclusive and
+ * two consecutive pages built with `(puuid, 0, 20)` / `(puuid, 20, 40)` overlap by one game. Callers dedupe
+ * on `gameId`. The same endpoint as the `match-history` row above, with the query filled in.
+ */
+export const MATCH_HISTORY_PAGE_TEMPLATE =
+  '/lol-match-history/v1/products/lol/{puuid}/matches?begIndex={begIndex}&endIndex={endIndex}';
+
+export function matchHistoryPagePath(puuid: string, begIndex: number, endIndex: number): string {
+  if (!Number.isInteger(begIndex) || begIndex < 0 || !Number.isInteger(endIndex) || endIndex < begIndex) {
+    throw new Error(`invalid match history window: begIndex=${begIndex} endIndex=${endIndex}`);
+  }
+  return MATCH_HISTORY_PAGE_TEMPLATE.replace('{puuid}', encodeURIComponent(puuid))
+    .replace('{begIndex}', String(begIndex))
+    .replace('{endIndex}', String(endIndex));
+}
+
 /** The catalogue row for an endpoint id. Throws for an id that is not in `READ_ENDPOINTS`: that is a typo, not a runtime condition. */
 export function readEndpoint(id: string): ReadEndpoint {
   const endpoint = READ_ENDPOINTS.find((entry) => entry.id === id);

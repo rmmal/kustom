@@ -24,6 +24,7 @@
  */
 
 import {
+  type CompanionGameEogPayloadInput,
   type CompanionGameInProgressPayloadInput,
   type CompanionGameResponse,
   companionGameResponseSchema,
@@ -85,7 +86,18 @@ interface HeldStart {
 
 type PostOutcome = 'settled' | 'retry';
 
-export class GameWatcher {
+/** What `enqueue` says about a payload handed to the queue. */
+export type EnqueueOutcome = 'queued' | 'duplicate' | 'refused';
+
+/**
+ * The queue as backfill (M5.1) sees it: hand over a payload, get told whether it was written. A backfilled
+ * game is a queue file like any other, and the dedupe on `gameId` runs across both sources.
+ */
+export interface GameSink {
+  enqueue(payload: CompanionGameEogPayloadInput, origin: string): EnqueueOutcome;
+}
+
+export class GameWatcher implements GameSink {
   readonly queue: GameQueue;
   private readonly api: ApiClient;
   private readonly logger: CompanionLogger;
@@ -374,12 +386,28 @@ export class GameWatcher {
       winningSide: payload.winningSide,
       participants: payload.participants.length,
     });
+    this.enqueue(payload, source);
+  }
+
+  /**
+   * Writes a payload to the queue and starts a drain. The dedupe is the one `capture` uses — posted in this
+   * process, holding a queue file, or a file on disk — so an end-of-game block and a backfilled detail for the
+   * same `gameId` (M5.1) can never both cost a post. Never throws; a refused write is one log line from the
+   * queue.
+   */
+  enqueue(payload: CompanionGameEogPayloadInput, origin: string): EnqueueOutcome {
+    const gameId = String(payload.gameId);
+    if (this.settledGames.has(gameId) || this.queuedGames.has(gameId) || this.queue.has(gameId)) {
+      this.logger.debug('game already handled; not queued again', { gameId, origin });
+      return 'duplicate';
+    }
     const entry = this.queue.write(payload, new Date(this.now()).toISOString());
     if (entry === null) {
-      return;
+      return 'refused';
     }
     this.queuedGames.add(gameId);
     void this.drain();
+    return 'queued';
   }
 
   // --- the queue ---------------------------------------------------------------------------------------
@@ -455,8 +483,11 @@ export class GameWatcher {
       return 'settled';
     }
     if (result.reason === 'http' && PERMANENT_REFUSALS.includes(result.status)) {
+      const backfilled = entry.payload.phase === 'eog' && entry.payload.source === 'backfill';
       this.logger.warn(
-        'api refused the game for good; deleting the queued copy (the game is left to backfill)',
+        backfilled
+          ? 'api refused the backfilled game for good; deleting the queued copy (it is not fetched again unless backfill.json is deleted)'
+          : 'api refused the game for good; deleting the queued copy (the game is left to backfill)',
         {
           gameId,
           ...failureFields(result),

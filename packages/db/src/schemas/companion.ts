@@ -232,6 +232,13 @@ const eogPayloadSchema = z
     gameId: lcuGameIdSchema,
     /** `lobby.partyId` the companion held for this game; null when it never saw the lobby. */
     partyId: z.string().trim().min(1).nullish(),
+    /**
+     * Where the game came from. `'eog'` (the default) is the end-of-game block captured live;
+     * `'backfill'` is a match-history detail the companion walked later (M5.1), mapped into
+     * this same body with `partyId` absent and `role: null` on every participant. The route
+     * reads it: a backfill post is stored and not rated inline, and its participant check has
+     * no lobby fallback (`04-decisions.md`, 2026-09-09).
+     */
     source: gameSourceSchema.default('eog'),
     /** The block's own `gameType`. The API drops anything that is not `CUSTOM_GAME` (M2.5). */
     gameType: z.string().nullish(),
