@@ -609,7 +609,7 @@ task, not a reason to stop:
 1. **The shell.** `/leaderboard` and `/p/[puuid]` mount the same top bar and footer. This is the biggest single
    change and it is free if the shell lands as a layout.
 2. **Tokens.** `accent` → `brand`, and the new `raise` and `line` tokens. Rows sit on `surface` inside a card
-   with a `raise` header bar carrying the `Proven · Rating` legend, instead of a bare list on the page.
+   with a `raise` header bar carrying the `Proven` legend, instead of a bare list on the page.
 3. **Type.** `Proven` on line 1 becomes mono `t-md` 600 (unchanged in kind); the player page's current
    `Proven` number becomes `t-display`. Rank 1 keeps `brand` on the rank number only — no medals.
 4. **Role icons** wherever a role is named on `/p/[puuid]`.
@@ -630,10 +630,10 @@ the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc,
 |---|---|---|
 | primary number, label | `Proven` — `round(ordinal * 60)`, the sort key | *(shipped, M3.5)* kept |
 | secondary number, label | `Rating` — `round(mu * 60)`, the number the embeds print | *(shipped, M3.5)* kept |
-| legend over the two numbers | `Proven · Rating` | *(shipped)* kept |
-| board heading | the season's name, with `standings` under it in `dim` | *(shipped)* kept |
-| nightly embed title | `Season 1 · standings` | *(shipped)* kept |
-| back link on `/p/[puuid]` | `standings` | *(shipped)* kept |
+| legend over the one unlabelled number | `Proven` | **amended, designer 2026-09-09** — was `Proven · Rating`; see "Leaderboard row". The code change lands with M3.18 |
+| board heading | the season's name, with `Leaderboard` beside it in `dim` | **amended, designer 2026-09-09** — was `standings`; one name for one destination, `04-decisions.md` |
+| nightly embed title | `Season 1 · leaderboard` | **amended, designer 2026-09-09** — same row |
+| back link on `/p/[puuid]` | `← Leaderboard`, and deleted when the shell lands | **amended, designer 2026-09-09** — same row |
 | still-settling chip | `settling` | *(shipped, M3.8)* kept |
 | still-settling sentence, once per page | `The board sorts on Proven, which stays below your rating until it has seen about 30 games. New players start low on purpose and climb as they play.` | *(shipped, M3.8)* kept — canonical entry is "Still-settling marker (M3.8)" below |
 | still-settling sentence, embed footer | `Proven stays below a new player's rating until the board has seen about 30 games.` | *(shipped, M3.8)* kept |
@@ -665,6 +665,14 @@ the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc,
 - **`Won` / `Lost`** is this player's own result, because the page is about them: `Red wins` beside their own
   delta makes a reader work out which side they were on before they can read their own row. Past tense, not
   the `13W 15L` letters, because the line is one game that happened, not a tally.
+
+**And why `standings` became `Leaderboard`** (designer, 2026-09-09, from the rendered pages). One destination
+had three names on it: the route and the Floodlit nav tab said `Leaderboard`, the page heading and the back
+link said `standings`, and the embed title said `standings` again. `Leaderboard` wins all three, because it is
+already product-approved friend-facing copy — it is the nav tab in the table above this one, and it is the
+noun inside a shipped sentence this redesign may not rewrite (`Ratings are updated. The leaderboard has the
+rest.`). `standings` was invented by this document's own embed section and is in no other surface's
+vocabulary. This is the same rule that turned `Get the app` into `Companion ↗`: one thing, one name.
 
 The board's numbers keep the names `00-product.md` gives them ("The numbers on the screen") and no surface
 invents a third. `Won` and `Lost` are the only strings in this table that do not live in
@@ -1080,12 +1088,15 @@ and the group say them in lower case).
   than as two competing columns. Everything after it (games, W/L, streak, the `settling` chip) is left-aligned
   under the name. So line 2 is two groups pinned to opposite edges, the same as line 1.
 - **The words print per row, not as column headers.** `Rating` prints inline on every line 2, `Proven` prints
-  nowhere on the row at all — it is the unlabelled primary number, named once in a `t-xs` `dim` header line
-  above the list (`Proven · Rating`, right-aligned over the two numbers). Reasons: the list is a stacked card
-  list on a phone, not a table, so a header row scrolls away after four rows and every row below it is then
-  two unexplained numbers; and `Rating` is the number people arrive knowing, so it is the one that needs its
-  name attached where it appears. The header line is a legend, not a header row: it does not stick, does not
-  sort, and is not tappable.
+  nowhere on the row at all — it is the unlabelled primary number, named once in a `t-xs` `dim` legend above
+  the list. Reasons: the list is a stacked card list on a phone, not a table, so a header row scrolls away
+  after four rows and every row below it is then two unexplained numbers; and `Rating` is the number people
+  arrive knowing, so it is the one that needs its name attached where it appears. The legend is not a header
+  row: it does not stick, does not sort, and is not tappable.
+- **The legend is the single word `Proven`, right-aligned over that number, and not `Proven · Rating`**
+  (amended 2026-09-09, from the rendered page). Right-aligned, the two-word legend puts `Rating` directly
+  above the *Proven* column and `Proven` above nothing, which reads as two side-by-side columns when the two
+  numbers are stacked. `Rating` needs no legend because it names itself on every row.
 - `Proven` is never abbreviated and the two numbers are never merged into one cell (`1266 / 654`). They are
   different quantities on different lines.
 - Rank 1 gets `accent` on the **rank number only**. No medals, no trophies, no emoji, no highlight row.
@@ -1099,6 +1110,13 @@ and the group say them in lower case).
   `dim`, mono `t-sm`, on line 2). Then the sort matches the primary column exactly, and the still-settling
   sentence is what explains why a new player's two numbers differ. Accepted by the lead; the names `Proven`
   and `Rating` are fixed by product (M3.5 brief, `02-milestones.md`) and no surface invents a third name.
+- **Proven never prints below zero.** `ordinal = mu − 2σ` is negative for an unranked seed's first weeks and
+  for any low tier — Iron IV seeds at `-160`, unranked at exactly `0`, and a Bronze player who loses their
+  first two goes under — and a primary column with `-83` in it reads as a broken page before anybody reads the
+  legend. `provenRating` floors at `0` on every surface, web and Discord. Sorting is unchanged: rows tied at
+  `0` fall through to `Rating`, so the column is still non-increasing top to bottom. `0` is also the honest
+  reading — the board has not credited you with anything yet — and the still-settling sentence is what
+  explains it.
 
 ### Still-settling marker (M3.8)
 
@@ -1112,6 +1130,34 @@ and the group say them in lower case).
   Short form, for the one-line Discord footer where two sentences will not fit:
   `Proven stays below a new player's rating until the board has seen about 30 games.`
 - Disappears at 30 games with no ceremony.
+
+### The player page (`/p/[puuid]`) — settled 2026-09-09
+
+Order down the page, and nothing else in it: name · record · the two numbers · the `Rating` chart · the
+still-settling sentence · `By role` · `Recent games` · the nameless hint.
+
+- **The record is on the page.** `37 games · 20W 17L`, `t-xs` `dim`, directly under the two numbers. The
+  leaderboard row carries it and this page is about one person; a page that shows less about a player than
+  the row that linked to it is a step backwards from the tap that got there.
+- **`No games this season yet.` is about games, not about the chart.** It prints when the player has none. A
+  player with games but nothing plottable gets the section with no chart and no sentence — the page never
+  contradicts the row that linked to it.
+- **`Recent games`, five, newest first.** Per game: the player's own result (`Won` / `Lost`, never the winning
+  side), the duration, **the date** — `9 Sep`, mono `t-sm` `dim`, beside the duration, formatted on the server
+  with the fixed locale and the configured timezone, exactly like the tonight page's slug — and
+  `1392 (−42)` right. A list of results with no dates cannot answer the first question anybody asks of it. The
+  section header carries a right-aligned `rating` legend and the number carries visually-hidden `Rating`, the
+  same rule the board row's bare Proven already follows.
+- **The five are the player's own side, in lane order**, their own row marked with the `brand` inset rule.
+  **Every other name is a link to that player's page**; the viewed player's own row is plain text. This is the
+  one screen in the product that lists other people by name, and hopping between friends is what the board is
+  for.
+- **The back link is `← Leaderboard`** until the shell lands, and is deleted then: the `Leaderboard` tab is
+  the same destination, and a page does not carry two ways to one place.
+- **The player's name outranks the section headings.** In Floodlit the name is the display cut, the two
+  numbers are `t-display` and `t-md`, and `By role` and `Recent games` are mono `t-xs` micro-labels in a
+  `raise` card header. The v1 page set the name and both section headings to the same `t-lg` 600 and put the
+  two numbers below all three, which makes the largest type on the page the words `By role`.
 
 ### Rating history (`/p/[puuid]`)
 
@@ -1464,14 +1510,19 @@ across a row.
 
 ```
 color        accent
-title        Season 1 · standings
+title        Season 1 · leaderboard
 url          https://<leaderboard>
 field 1 name   Top ten
 field 1 value  `1` Lena · 1548 · 41 games
                `2` Bilal · 1137 · 44 games
                ...
+timestamp    the moment the post is made, ISO 8601
 footer       Proven stays below a new player's rating until the board has seen about 30 games.
 ```
+
+The timestamp is what tells a reader scrolling back next week *which* night's board this was; both other
+embeds carry one. This block lists only the fields that carry a design decision — it omits `description` for
+the same reason.
 
 The number after the name is the **Proven** number (`round(ordinal × 60)`), and the list is ordered by it,
 descending. The embed prints Proven only: a one-number list must show the number it is ordered by, and a
@@ -1480,7 +1531,7 @@ second number in a proportional font with no column to sit in is unreadable. `Ra
 Filled in with the worked example's ten (`docs/02-milestones.md` M1.4 table — `ordinal = mu − 2σ`, then
 `× 60`, rounded once). Game counts are illustrative; the docs pin none:
 
-> **Season 1 · standings**
+> **Season 1 · leaderboard**
 >
 > **Top ten**
 > `1` Lena · 1548 · 41 games
