@@ -31,6 +31,8 @@ export interface CannedRoute {
   readonly contentType?: string;
   /** Delay before answering, for timeout tests. */
   readonly delayMs?: number;
+  /** Close the connection without answering: the client sees a network error (a client that just died). */
+  readonly drop?: boolean;
 }
 
 export interface RecordedRequest {
@@ -125,6 +127,10 @@ export async function startFakeLcu(options: FakeLcuOptions = {}): Promise<FakeLc
           res.end(
             JSON.stringify({ errorCode: 'RPC_ERROR', httpStatus: 404, message: 'fake lcu: no such route' }),
           );
+          return;
+        }
+        if (route.drop) {
+          res.socket?.destroy();
           return;
         }
         const send = (): void => {

@@ -69,7 +69,9 @@ export interface LobbyWatcherOptions {
   /**
    * The password this process set when it created the party (the command runner, M4.1/M4.2), or null. A
    * non-null value rides on every lobby post for that party; null leaves `lobbyPassword` null, which the
-   * server never treats as "clear it".
+   * server never treats as "clear it". The lobby `Create` event usually lands before the runner has read the
+   * new party id back, so the first post after a create may carry null and the password rides on the next
+   * roster change.
    */
   readonly passwordFor?: (partyId: string) => string | null;
 }

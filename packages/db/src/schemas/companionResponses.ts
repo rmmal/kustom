@@ -185,10 +185,10 @@ export const COMPANION_COMMAND_TTL_MS = {
  * or `sent`, not past `expires_at`, oldest `created_at` first, at most `COMMANDS_PAGE_SIZE` (10). There is no
  * way to ask for another player's queue. Handing a row out marks it `sent` (`sent_at`, `attempts + 1`); a `sent`
  * row is offered again after 30 s, and the fourth delivery fails it instead (`not acked after 3 deliveries`).
- * `clientConnected=false` answers `{ ok: true, commands: [] }` and **touches nothing** — no status move, no
- * attempt count, no `last_seen_at` — so `last_seen_at` means "at their PC with League open". Every call first
- * sweeps expired rows to `failed` / `expired`. `nextPollInMs` is optional; absent means
- * `COMMANDS_POLL_INTERVAL_MS`.
+ * Every call, whatever `clientConnected` says, first sweeps expired rows to `failed` / `error = 'expired'`.
+ * `clientConnected=false` then answers `{ ok: true, commands: [] }` and **moves nothing else** — no `sent`, no
+ * `attempts`, no `last_seen_at` — so `last_seen_at` means "at their PC with League open". `nextPollInMs` is
+ * optional; absent means `COMMANDS_POLL_INTERVAL_MS`.
  *
  * `payload` per kind (`companionCommandPayloadSchemas`):
  * - `create_lobby`: `{ lobbyName: string(1..30), lobbyPassword: string(4..16) }`
@@ -208,12 +208,17 @@ export const COMPANION_COMMAND_TTL_MS = {
  * nothing changes. 422 when `result` fails the kind's schema; the row is left alone.
  *
  * **POST `/api/companion/commands/{id}/nack`**, body `{ error: string(1..500), retryable: boolean }`
- * (`companionCommandNackRequestSchema`). `error` starts with a `commandFailureReasonSchema` word, then a detail
- * after `: ` (`already_in_lobby: partyId=...`, `client_rejected: 404 LOBBY_NOT_FOUND`, `wrong_phase: ChampSelect`);
- * never a body. Answer `{ ok: true }`: the row is `failed` with `error` stored and `result` null, hooks run.
- * `retryable: true` says nothing was executed and the same row may be offered again inside its TTL (the
- * companion sends it for `not_connected` and for a client that gave no HTTP answer); the server may leave such
- * a row `pending` instead of failing it, and must fail it when `retryable` is false. Same 404 and 409 as ack.
+ * (`companionCommandNackRequestSchema`). `error` is **prose, stored verbatim and not validated beyond length**:
+ * the companion writes a `commandFailureReasonSchema` word first, then a detail after `: `
+ * (`already_in_lobby: partyId=...`, `client_rejected: 404 LOBBY_NOT_FOUND`, `wrong_phase: ChampSelect`), never
+ * a body, and a page that wants the reason takes the text up to the first `:`; the route must not reject a
+ * prefix it does not know (an older exe may be running). Answer `{ ok: true }`.
+ * - `retryable: false`: the row is `failed`, `acked_at = now()`, `error` stored, `result` null, hooks run.
+ * - `retryable: true`: **nothing was executed** — the row goes back to `pending` with `attempts` unchanged and
+ *   `sent_at` cleared, so it is offered again on the next poll inside its TTL and the expiry sweep is what
+ *   gives up on it; `error` is stored for the log, no hook runs. The companion sends it only for
+ *   `not_connected` and for a client that gave no HTTP answer before anything could have happened.
+ * Same 404 and 409 as ack (a 409 on a retryable nack means the sweep already failed the row).
  *
  * The companion treats a 409 on either as "already recorded" (a lost ack re-sent after a restart), a 404 as
  * "nothing more to do", and any other failure as "try the ack again on the next poll" from its local

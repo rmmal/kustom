@@ -35,6 +35,7 @@ import {
   type CommandRunnerOptions,
   commandAckPath,
   commandNackPath,
+  isStale,
 } from './commandRunner.js';
 import type { ConnectedContext } from './connection.js';
 import { ExecutedStore, executedFilePath } from './executed.js';
@@ -86,6 +87,8 @@ interface LobbyWorld {
   /** Whether switch-teams actually moves the local player. Default true. */
   switchMoves: boolean;
   createStatus: number;
+  /** How many lobby GETs after a successful create are dropped (the client dying right after the POST). */
+  dropLobbyReadsAfterCreate: number;
 }
 
 function member(puuid: string, extra: Partial<Lobby['members'][number]> = {}): Lobby['members'][number] {
@@ -110,6 +113,10 @@ function lobbyHandler(world: LobbyWorld): (request: RecordedRequest) => CannedRo
       return { status: 200, body: JSON.stringify(world.phase), contentType: 'application/json' };
     }
     if (request.method === 'GET' && request.path === '/lol-lobby/v2/lobby') {
+      if (world.lobby?.partyId === 'party-created-0001' && world.dropLobbyReadsAfterCreate > 0) {
+        world.dropLobbyReadsAfterCreate -= 1;
+        return { status: 0, body: null, drop: true };
+      }
       return world.lobby ? { status: 200, body: world.lobby } : notFound;
     }
     if (request.method !== 'POST') {
@@ -236,7 +243,7 @@ interface Harness {
   context: ConnectedContext;
   configDir: string;
   scheduled: { ms: number; fire: () => void; cancelled: boolean }[];
-  clock: { now: number };
+  clock: { now: number; step: number };
   lcuPosts(): RecordedRequest[];
   lcuRequests(): RecordedRequest[];
   polls(): string[];
@@ -263,6 +270,7 @@ async function setup(
     inviteBySummonerIdStatus: 200,
     switchMoves: true,
     createStatus: 200,
+    dropLobbyReadsAfterCreate: 0,
     ...options.world,
   };
   const api = await startFakeApi({
@@ -289,7 +297,8 @@ async function setup(
   };
   const logger = createMemoryLogger();
   logger.addSecret(TOKEN);
-  const clock = { now: NOW };
+  // `step` advances the clock on every read, so a test can play time passing between the poll and the execution.
+  const clock = { now: NOW, step: 0 };
   const scheduled: Harness['scheduled'] = [];
   const manual: Scheduler = (fn, ms) => {
     const entry = {
@@ -312,7 +321,11 @@ async function setup(
     api: new ApiClient({ apiBase: api.baseUrl, token: TOKEN, logger, maxAttempts: 1, timeoutMs: 3_000 }),
     logger,
     configDir,
-    now: () => clock.now,
+    now: () => {
+      const value = clock.now;
+      clock.now += clock.step;
+      return value;
+    },
     schedule: manual,
     ackAttempts: 1,
     gate: { create_lobby: true, invite: true, switch_side: true },
@@ -507,6 +520,48 @@ describe('CommandRunner: create_lobby', () => {
     expect(h.world.lobby?.partyId).toBe('e3c69392-a134-43cb-97ae-8add18c72494');
   });
 
+  it('a client that dies right after a 2xx POST: one more read, then a recorded non-retryable client_rejected (never not_connected)', async () => {
+    const h = await setup({
+      world: { dropLobbyReadsAfterCreate: 2 },
+      apiRoutes: {
+        [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [
+          page([createLobby()]),
+          page([createLobby()]),
+          empty,
+        ],
+        [`POST ${commandNackPath(ID_A)}`]: [okAck],
+      },
+    });
+    await h.runner.pollNow();
+    expect(h.lcuRequests().map((request) => `${request.method} ${request.path}`)).toEqual([
+      'GET /lol-lobby/v2/lobby',
+      'POST /lol-lobby/v2/lobby',
+      'GET /lol-lobby/v2/lobby',
+      'GET /lol-lobby/v2/lobby',
+    ]);
+    expectNack(h, ID_A, 'client_rejected: create answered 200 but the lobby could not be read back', false);
+    expect(h.executed().get(ID_A)?.outcome).toBe('failed');
+    expect(h.logger.lines.some((line) => line.message.includes('reading once more'))).toBe(true);
+    // Re-offered anyway (a server that ignores the record): re-nacked from the file, no client call, and the
+    // lobby that exists is not touched.
+    await h.runner.pollNow();
+    expect(h.lcuPosts()).toHaveLength(1);
+    expect(h.acks().filter((ack) => ack.path === commandNackPath(ID_A))).toHaveLength(2);
+    expect(h.world.lobby?.partyId).toBe('party-created-0001');
+
+    // The read-back failing once and answering the second time is a success with the password remembered.
+    const flaky = await setup({
+      world: { dropLobbyReadsAfterCreate: 1 },
+      apiRoutes: {
+        [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([createLobby()]), empty],
+        [`POST ${commandAckPath(ID_A)}`]: [okAck],
+      },
+    });
+    await flaky.runner.pollNow();
+    expectAck(flaky, ID_A, { partyId: 'party-created-0001', lobbyName: 'Customs 09 Sep #1' });
+    expect(flaky.runner.passwordFor('party-created-0001')).toBe(LOBBY_PASSWORD);
+  });
+
   it('nacks client_rejected with the status and message, never a body, when the client refuses (assumed 400)', async () => {
     const h = await setup({
       world: { createStatus: 400 },
@@ -654,19 +709,54 @@ describe('CommandRunner: the gate (check 10)', () => {
 });
 
 describe('CommandRunner: expiry and malformed rows', () => {
-  it('nacks expired for a row past expiresAt without a client call', async () => {
+  it('nacks expired when the command was held longer than its TTL after the poll (the PC slept), with no client call', async () => {
     const h = await setup({
       apiRoutes: {
         [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [
-          page([createLobby(ID_A, { expiresAt: new Date(NOW - 1).toISOString() })]),
+          page([
+            createLobby(ID_A, {
+              createdAt: new Date(NOW - 1000).toISOString(),
+              expiresAt: new Date(NOW + 60_000).toISOString(),
+            }),
+          ]),
           empty,
         ],
         [`POST ${commandNackPath(ID_A)}`]: [okAck],
       },
     });
+    // The poll reads the clock once (receipt); the next read, at execution, is 61 s later than a 61 s TTL.
+    h.clock.step = 61_001;
     await h.runner.pollNow();
     expect(h.lcuRequests()).toEqual([]);
-    expectNack(h, ID_A, 'expired: expiresAt=');
+    expectNack(h, ID_A, 'expired: held for longer than its TTL');
+  });
+
+  it('a PC clock ten minutes ahead of the server never fails a fresh command (expiresAt is not compared locally)', async () => {
+    const h = await setup({
+      apiRoutes: {
+        [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([createLobby()]), empty],
+        [`POST ${commandAckPath(ID_A)}`]: [okAck],
+      },
+    });
+    // The page's expiresAt is NOW + 60 s; this PC thinks it is NOW + 10 min.
+    h.clock.now = NOW + 10 * 60_000;
+    await h.runner.pollNow();
+    expect(h.lcuPosts()).toHaveLength(1);
+    expectAck(h, ID_A, { partyId: 'party-created-0001', lobbyName: 'Customs 09 Sep #1' });
+  });
+
+  it('isStale compares local elapsed time with the server-side TTL and never trusts a bad or missing TTL', () => {
+    const command = {
+      createdAt: '2026-09-09T20:00:00.000Z',
+      expiresAt: '2026-09-09T20:01:00.000Z',
+    };
+    expect(isStale(command, NOW, NOW + 59_000)).toBe(false);
+    expect(isStale(command, NOW, NOW + 60_000)).toBe(false);
+    expect(isStale(command, NOW, NOW + 60_001)).toBe(true);
+    // Skew-free: the receipt instant can be anything.
+    expect(isStale(command, NOW + 3_600_000, NOW + 3_600_000 + 30_000)).toBe(false);
+    expect(isStale({ ...command, expiresAt: command.createdAt }, NOW, NOW + 999_999)).toBe(false);
+    expect(isStale({ ...command, createdAt: 'not a date' }, NOW, NOW + 999_999)).toBe(false);
   });
 
   it('nacks malformed_payload for an unknown kind and for a payload that fails its schema, and goes on to the next row', async () => {

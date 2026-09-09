@@ -7,7 +7,8 @@
  * Rules, in the order they are applied to every command:
  *  1. **Executed once.** An id in `commands-done.json` (`executed.ts`) is re-acked from its record; no client
  *     call. The file is written after the client call and before the ack.
- *  2. **Expired** (`expiresAt` passed): `expired`.
+ *  2. **Stale** (held longer than its own TTL since the poll, e.g. the PC slept in between): `expired`. The
+ *     server owns expiry; `expiresAt` is never compared with the local clock (`isStale`).
  *  3. **Malformed** (a kind the enum does not name, a payload that fails its schema): `malformed_payload`.
  *  4. **Gate.** A kind whose reference row is still `unverified` (`LOBBY_WRITE_VERIFICATION` in `@customs/lcu`)
  *     is `endpoint_unverified` with one log line naming the row; no client call. Tests override it.
@@ -22,7 +23,10 @@
  * (60 s) with `clientConnected=false` while it is not (the answer is empty by contract, so the slower cadence
  * costs nothing). One command at a time, in the order handed out. Nothing here throws; nothing here stops the
  * process. The password of a lobby this companion created is kept in memory (`passwordFor`) so the lobby
- * watcher can send it with every lobby post for that party (M4.2), and it is logged at `debug` only.
+ * watcher can send it with every lobby post for that party (M4.2), and it is logged at `debug` only. The lobby
+ * `Create` event usually beats the post-write read that learns the party id, so the first lobby post after a
+ * create may carry `lobbyPassword: null`; the password rides on the next roster change, and the server's
+ * never-clear-on-null rule is what makes that harmless.
  */
 
 import {
@@ -88,6 +92,11 @@ function failed(reason: CommandFailureReason, detail?: string, retryable = false
 
 function done(result: Record<string, unknown>): CommandOutcome {
   return { outcome: 'done', result };
+}
+
+/** The nack text of a failed outcome, for a log line; a done outcome has none. */
+function outcomeError(outcome: CommandOutcome): string {
+  return outcome.outcome === 'failed' ? outcome.error : 'done';
 }
 
 type LobbyRead =
@@ -232,7 +241,9 @@ export class CommandRunner {
     }
     if (this.pollAgain) {
       this.pollAgain = false;
-      void this.pollNow();
+      if (!this.stopped) {
+        void this.pollNow();
+      }
       return;
     }
     this.scheduleNext();
@@ -289,15 +300,16 @@ export class CommandRunner {
         kinds: result.data.commands.map((command) => command.kind),
       });
     }
+    const receivedAt = this.now();
     for (const command of result.data.commands) {
       if (this.stopped) {
         return;
       }
-      await this.handle(command);
+      await this.handle(command, receivedAt);
     }
   }
 
-  private async handle(command: CompanionCommandEnvelope): Promise<void> {
+  private async handle(command: CompanionCommandEnvelope, receivedAt: number): Promise<void> {
     const log = this.logger.child({ commandId: command.id, kind: command.kind });
     const recorded = this.executed.get(command.id);
     if (recorded !== null) {
@@ -309,7 +321,7 @@ export class CommandRunner {
     }
     let outcome: CommandOutcome;
     try {
-      outcome = await this.execute(command, log);
+      outcome = await this.execute(command, receivedAt, log);
     } catch (error) {
       log.error('command executor threw', errorFields(error));
       outcome = failed('client_rejected', 'executor threw', false);
@@ -336,9 +348,16 @@ export class CommandRunner {
     await this.send(command, outcome, log);
   }
 
-  private async execute(command: CompanionCommandEnvelope, log: CompanionLogger): Promise<CommandOutcome> {
-    if (Date.parse(command.expiresAt) <= this.now()) {
-      return failed('expired', `expiresAt=${command.expiresAt}`);
+  private async execute(
+    command: CompanionCommandEnvelope,
+    receivedAt: number,
+    log: CompanionLogger,
+  ): Promise<CommandOutcome> {
+    if (isStale(command, receivedAt, this.now())) {
+      return failed(
+        'expired',
+        `held for longer than its TTL after the poll (expiresAt=${command.expiresAt})`,
+      );
     }
     if (!isKind(command.kind)) {
       return failed('malformed_payload', `unknown kind "${command.kind}"`);
@@ -434,11 +453,23 @@ export class CommandRunner {
     if (!write.response.ok) {
       return failed('client_rejected', `${write.path} answered ${describeWriteResponse(write.response)}`);
     }
-    const after = await this.readLobby(context.client);
+    // The lobby now exists whatever the read-back says, so nothing from here on may be retryable: a retryable
+    // nack would have the server re-offer the row, the re-run would find the lobby and nack already_in_lobby,
+    // and the password would never be remembered. One more read on a failed one, then a recorded refusal.
+    let after = await this.readLobby(context.client);
+    if (after.kind === 'failed') {
+      log.warn('lobby created but could not be read back; reading once more', {
+        error: outcomeError(after.outcome),
+      });
+      after = await this.readLobby(context.client);
+    }
     if (after.kind !== 'lobby') {
-      return after.kind === 'failed'
-        ? after.outcome
-        : failed('client_rejected', `create answered ${write.response.status} but no lobby followed`);
+      return failed(
+        'client_rejected',
+        after.kind === 'failed'
+          ? `create answered ${write.response.status} but the lobby could not be read back (${outcomeError(after.outcome)})`
+          : `create answered ${write.response.status} but no lobby followed`,
+      );
     }
     if (!after.lobby.gameConfig.isCustom) {
       return failed(
@@ -598,6 +629,24 @@ export class CommandRunner {
     }
     log.warn('ack failed; it is re-sent from the local record on the next poll', failureFields(result));
   }
+}
+
+/**
+ * Whether a command has been held longer than its own TTL since the poll that handed it out. The server owns
+ * expiry (it sweeps before every hand-out), so this only catches the PC that slept between the poll and the
+ * execution — and it compares two local instants against two server instants, so a PC clock that is minutes
+ * off never fails anything. Never `expiresAt` against the local clock.
+ */
+export function isStale(
+  command: Pick<CompanionCommandEnvelope, 'createdAt' | 'expiresAt'>,
+  receivedAt: number,
+  now: number,
+): boolean {
+  const ttlMs = Date.parse(command.expiresAt) - Date.parse(command.createdAt);
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
+    return false;
+  }
+  return now - receivedAt > ttlMs;
 }
 
 /** `toSummonerId` or `toPuuid`: which body an invite attempt used, for a nack line. */

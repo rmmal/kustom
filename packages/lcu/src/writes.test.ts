@@ -143,17 +143,21 @@ describe('the allow-list', () => {
 
   it('is the only way this package POSTs: no other source file calls post/put/delete/raw on the client', () => {
     const files = sourceFiles(SRC_DIR);
+    // Any `.post(` / `.put(` / `.delete(` / `.patch(` at all, whatever the argument, plus the raw/request
+    // spellings. client.ts defines the methods (its `post` forwards to `request('POST', ...)`) and socket.ts
+    // has a `Set.delete`; neither reaches the client with a write. writes.ts is the one caller.
     const callers = Object.entries(files)
+      .filter(([name]) => name !== 'client.ts' && name !== 'socket.ts')
       .filter(([, text]) =>
-        /\b\w+\.(post|put|delete|patch)\(\s*(path|WRITE|'\/)|\.raw\(\s*'(POST|PUT|DELETE|PATCH)'|\.request\(\s*'(POST|PUT|DELETE|PATCH)'/.test(
+        /\.(post|put|delete|patch)\(|\.raw\(\s*['"`](POST|PUT|DELETE|PATCH)|\.request\(\s*['"`](POST|PUT|DELETE|PATCH)/.test(
           text,
         ),
       )
       .map(([name]) => name)
       .sort();
-    // client.ts defines the methods (its `post` forwards to `request('POST', ...)`); writes.ts is the one caller.
-    expect(callers).toEqual(['client.ts', 'writes.ts']);
+    expect(callers).toEqual(['writes.ts']);
     expect(files['client.ts']).toMatch(/post<T>\(path: string, body: unknown/);
+    expect(files['socket.ts']).not.toMatch(/\.(post|put|patch)\(/);
   });
 
   it('names no gameplay path anywhere in the package, and the in-game server only as the documented GET', () => {

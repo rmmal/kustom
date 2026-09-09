@@ -48,6 +48,7 @@ pnpm --filter companion publish:gh  # GitHub release v<version> on suyaser/kusto
 pnpm --filter companion release     # build:win + publish:gh
 pnpm --filter @customs/lcu smoke      # hit every LCU endpoint we use, save fixtures; --diff after a patch. Needs the client.
 pnpm --filter @customs/lcu record-ws  # append every LCU WebSocket event to fixtures/<patch>/ws-events.ndjson until Ctrl-C
+pnpm --filter companion verify-commands  # M4.1: probe the three lobby writes against the live client, one prompt each, report + fixtures to paste back. Needs the client and a friend; no API, no token.
 pnpm db:start                # supabase start: local stack, needs Docker (see packages/db/README.md)
 pnpm db:stop                 # supabase stop
 pnpm db:reset                # supabase db reset: replay every migration locally
