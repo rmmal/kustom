@@ -497,44 +497,103 @@ black screen. v2:
 - The v1 `Last night and the board` link becomes the `Leaderboard` tab in the top bar. One destination, one
   place.
 
-#### Copy — PROPOSED, product owns every line
+#### Copy — final (product 2026-09-09)
 
-Everything in this table is a proposal except the four lines marked *(shipped)*, which are existing
-product-approved strings and are quoted unchanged. All of it lives in `apps/web/lib/tonight/copy.ts`.
+Product has passed every string. `(shipped)` marks a sentence that already exists and is quoted unchanged;
+everything else is final text the engineer types into `apps/web/lib/tonight/copy.ts`, `lib/nav.ts` and the
+shell without asking. **Nine strings changed from the designer's proposal and four differ from what the code
+says today** — the `Status` column names them, so M3.18 knows which are edits and not typos. Layout, order and
+placement are the designer's and are untouched.
 
-| Where | String |
+| Where | String | Status |
+|---|---|---|
+| wordmark | `CUSTOMS NIGHT` (the amber bar is the logo, not a word) | product 2026-09-09 |
+| strip headline, idle | `NOBODY IN YET` | product 2026-09-09 — **changed**, code says `Nothing tonight` |
+| strip headline, filling | `<n> IN THE LOBBY` | product 2026-09-09 |
+| strip headline, balanced | `TEAMS ARE SET` | product 2026-09-09 — code says `Teams set` |
+| strip headline, in game | `IN GAME` | product 2026-09-09 |
+| strip headline, finished | `GAME OVER` | product 2026-09-09 — **changed**, code says `Final` |
+| sentence, idle | *(shipped)* `When ten of you are in a custom lobby with the companion running, the teams show up here.` | shipped, kept |
+| sentence, 0 in | *(shipped)* `Nobody in the lobby yet.` — in the strip, and **not repeated under the rack** | product 2026-09-09 — **changed** |
+| sentence, 1–9 in | `One more to go.` … `Nine more to go.` (word, not digit — the digit is already 44px above it) | product 2026-09-09 |
+| sentence, 10 in | `Teams in a moment.` | product 2026-09-09 — **changed** |
+| sentence, 11+ in | `Ten play, the rest sit out this game.` | product 2026-09-09 |
+| sentence, balanced | `Split by rating and role. Nobody picked the teams.` | product 2026-09-09 — **changed** |
+| sentence, in game | `Ratings move when it ends.` | product 2026-09-09 — **changed** |
+| sentence, finished rated | `Ratings are updated. The leaderboard has the rest.` | product 2026-09-09 — **changed** |
+| sentence, finished unrated | *(none — the slot keeps its height and stays empty; no apology, per v1)* | product 2026-09-09 |
+| rack header | `SEATS` · `<n> of 10` · `rating` | product 2026-09-09 |
+| empty seat | `open` | product 2026-09-09 |
+| all-flexible hint | `Nobody has set a role tonight, so the bot can put anyone anywhere.` | product 2026-09-09 — **changed** |
+| all-flexible hint, admin only, appended | `Set roles` (link to `/admin`) — **rendered only once M3.6 ships the control it points at** | product 2026-09-09 |
+| empty lobby | *(shipped)* `Nobody in the lobby yet.` — one place only, see `sentence, 0 in` | shipped, kept |
+| past the ten | *(shipped)* `Around` | shipped, kept |
+| nameless hint | *(shipped)* `Names fill in after someone's first game.` | shipped, kept |
+| no season | *(shipped, M3.17)* `No season is active, so tonight's games are not being saved. An admin can start one.` | shipped, kept |
+| nav | `Tonight` · `Leaderboard` · `Stats` · `Companion ↗` | product 2026-09-09 — **changed** from `Get the app` |
+| footer | `How this works` · `Get the companion` · `Your games` | product 2026-09-09 |
+| how this works, line 1 | `Nobody checks in. The companion app on somebody's PC reads the League lobby and sends who is in it.` | product 2026-09-09 |
+| how this works, line 2 | `The bot makes three splits and posts the fairest, with the win chance and the rating gap. An admin can step to the next one. Nothing is picked at random.` | product 2026-09-09 — **changed** |
+| how this works, line 3 | `Results come off the end-of-game screen. Nobody reports a score.` | product 2026-09-09 |
+| how this works, line 4 | `Your rating starts from your rank and moves with every result. Proven is the board's careful version of it and catches up after about 30 games.` | product 2026-09-09 — **changed** |
+| companion card, title | `Run the companion` | product 2026-09-09 |
+| companion card, body | `Windows only. Install it once, paste in the token an admin gives you, and leave it running while you play.` | product 2026-09-09 — **changed** |
+| companion card, link | `Get the companion` → `https://github.com/suyaser/kustom-releases/releases/latest` | product 2026-09-09 |
+
+**Why the nine changed.** Each one is a rule, not a preference, so the next string is decided the same way.
+
+- **`NOTHING TONIGHT` → `NOBODY IN YET`.** This is the screen a friend hits at 19:00 from a WhatsApp link, and
+  "nothing tonight" reads as *the night is off* to a group that plays every night. It is also false in the
+  other idle case, an abandoned lobby. `NOBODY IN YET` is true in both and invites the reader to be first.
+- **`FINAL` → `GAME OVER`.** The tone line in this document says *never a broadcast lower-third*, and `FINAL`
+  is the lower-third word. `GAME OVER` is the group's own vocabulary and just as short. The winner stays named
+  once, on the result card headline at `t-display` — product does **not** take M3.16's offer to move it up
+  into the strip.
+- **The sentence never repeats the headline.** `Ten in. Teams in a moment.` under a 44px `10 IN THE LOBBY`,
+  and `They are in.` under `IN GAME`, spend the page's one live line saying what the biggest type already
+  said. Both drop their first clause.
+- **`Same ten, split by rating and role.` → `Split by rating and role. Nobody picked the teams.`** With eleven
+  around it is not the same ten, so the old line is wrong on exactly the nights the sit-out strip appears. The
+  new second half is the product's promise (principle 1, "the bot is the referee") in four words, and it is the
+  sentence that ends the argument the whole thing exists to end.
+- **0 in the lobby says it once.** The proposal had `Nobody has joined yet.` in the strip and the shipped
+  `Nobody in the lobby yet.` under the rack — the same fact twice, 40px apart. The settled string wins and it
+  goes in the strip, because the strip's sentence slot is mounted in every state and has to hold its two lines
+  anyway. Nothing is rendered under the rack at count 0; a rack of ten `open` seats is the picture.
+- **`the balancer` → `the bot`.** Product calls it the bot on every other surface. "Balancer" is the name of a
+  module in `packages/core`; nobody in the voice channel says it.
+- **`Get the app` → `Companion ↗`.** One thing needs one name, and the name is already fixed by a shipped
+  sentence this redesign may not rewrite ("…with the companion running"). With `Get the companion` in the
+  footer and `Run the companion` on the card, `Get the app` was the only place on the page inventing a second
+  word for the same download. A destination noun also matches the three tabs beside it.
+- **`how this works` line 2 gains the reroll.** Four lines are the whole explanation of the system, and the one
+  human control in it was missing. Admin-only and never random are both said, because "the bot is rigged" is
+  the argument this paragraph exists to pre-empt.
+- **`how this works` line 3/4 swap and line 4 is rewritten.** The order is now the order of a night: lobby,
+  teams, result, rating. The old rating line named `Rating` and `Proven` without saying where a rating comes
+  from or when it can be trusted, which is the actual question a new player asks.
+
+**The four lines are true of the shipped system, claim by claim.**
+
+| Claim | True because |
 |---|---|
-| strip headline, idle | `NOTHING TONIGHT` |
-| strip headline, filling | `<n> IN THE LOBBY` |
-| strip headline, balanced | `TEAMS ARE SET` |
-| strip headline, in game | `IN GAME` |
-| strip headline, finished | `FINAL` |
-| sentence, idle | *(shipped)* `When ten of you are in a custom lobby with the companion running, the teams show up here.` |
-| sentence, 0 in | `Nobody has joined yet.` |
-| sentence, 1–9 in | `One more to go.` … `Nine more to go.` (word, not digit — the digit is already 44px above it) |
-| sentence, 10 in | `Ten in. Teams in a moment.` |
-| sentence, 11+ in | `Ten play, the rest sit out this game.` |
-| sentence, balanced | `Same ten, split by rating and role.` |
-| sentence, in game | `They are in. Ratings move when it ends.` |
-| sentence, finished rated | `Ratings are updated. The board has the rest.` |
-| sentence, finished unrated | *(none — the slot keeps its height and stays empty; no apology, per v1)* |
-| rack header | `SEATS` · `<n> of 10` · `rating` |
-| empty seat | `open` |
-| all-flexible hint | `Nobody has a role set, so the balancer treats everyone as flexible.` |
-| all-flexible hint, admin only, appended | `Set roles` (link to `/admin`) |
-| empty lobby | *(shipped)* `Nobody in the lobby yet.` |
-| past the ten | *(shipped)* `Around` |
-| nameless hint | *(shipped)* `Names fill in after someone's first game.` |
-| nav | `Tonight` · `Leaderboard` · `Stats` · `Get the app` |
-| footer | `How this works` · `Get the companion` · `Your games` |
-| how this works, line 1 | `Nobody checks in. A companion app on somebody's PC reads the League lobby and sends who is in it.` |
-| how this works, line 2 | `The bot makes three splits and posts the fairest, with the win chance and the rating gap.` |
-| how this works, line 3 | `Rating is what the bot thinks you are. Proven is the board's cautious version of it.` |
-| how this works, line 4 | `Results come off the end-of-game screen. Nobody reports a score.` |
-| companion card | `Windows only. Download it, paste the token once, leave it running.` |
+| Nobody checks in; a companion on somebody's PC reads the lobby | M2.3's lobby watcher; `00-product.md`, "Zero input" |
+| Three splits, fairest posted, with win chance and rating gap | M1.4 returns three ranked splits; `splits.explanation` prints both numbers |
+| An admin can step to the next one, nothing is random | M3.2: reroll is admin-only, promotes rank 2 then rank 3, never picks at random, and stops |
+| Results come off the end-of-game screen | M2.5's eog capture; no manual reporting anywhere in the product |
+| Rating starts from your rank | `seedFromRank`, seeded from the rank the client reads (M1.3, M2.2) |
+| Rating moves with every result | the fold on every rated game (M2.5, M5.2) |
+| Proven catches up after about 30 games | `ordinal = mu − 2σ`; `00-product.md`, "a new player sits below their Rating until the board has watched about 30 games" |
+
+Nothing in the four lines mentions "ten games" for Rating: the page has room for one number, and the number
+worth printing is the one that governs the board people argue about.
 
 The sit-out strip, the explanation line, the no-season sentence, the `No more splits.` note and every embed
 string are **unchanged**. v2 is a visual redesign; it does not get to rewrite settled sentences.
+
+**One shipped string retires with the shell:** `IDLE_LINK_LABEL` (`Last night and the board`) has no home once
+`Leaderboard` is a tab, as this section's "Idle" already says. Delete the constant with M3.18 rather than
+leaving a dead export in `copy.ts`.
 
 ### What changes on the leaderboard and the player page (M3.5)
 

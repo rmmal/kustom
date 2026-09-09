@@ -2262,6 +2262,104 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
 
 - [x] **M3.17** The tonight page's own no-season sentence. With no active season the page says `No season is active, so tonight's games are not being saved. An admin can start one.` — a second exported constant beside `NO_ACTIVE_SEASON_MESSAGE` in `apps/web/lib/season.ts` (M2.18), rendered at the top of `main` directly under the header strip, in every state, and absent whenever a season is active. Found in the M3.4 design round (designer, 2026-09-09): M2.18's sentence ends "Start a season on the Seasons page.", and the tonight page is the link pasted in WhatsApp, so it would send twenty friends to a page one of them can open. Copy, placement and the reasoning are in `05-design.md` beside the idle copy; decision row 2026-09-09. Owner: `web-engineer`, with M3.4 or straight after it. **Acceptance:** with no active season, `/` renders the tonight sentence and nowhere renders the string `Start a season on the Seasons page.`; `/admin`, the seasons page and `POST /api/companion/game` still render `NO_ACTIVE_SEASON_MESSAGE` word for word and `lib/season.test.ts` passes unchanged; with a season active `/` renders no season sentence in any of the four states; the sentence is one exported constant with a test pinning its wording, not an inline string, and the tonight page does not import the admin constant.
 
+- [ ] **M3.18** Floodlit: the app shell and the tonight page v2, exactly the designer's implementation list (items 1 to 10) in `05-design.md`, with the copy as finalised in "Copy — final (product 2026-09-09)". Owner: `web-engineer`, after M3.5 lands (the shell's `Leaderboard` tab and the rail's `Top of the board` are M3.5's route and M3.5's row component; building the shell first means writing the nav condition twice).
+
+    > **Brief (product, 2026-09-09)**
+    >
+    > **The scene.** Ten friends in Discord voice. Someone opens a lobby, someone pastes the link in WhatsApp, a
+    > phone comes out of a pocket in a dark room. Today that phone shows a black page with no title, one
+    > unexplained number per row, the word `flexible` nine times and 449px of nothing. After this task it shows a
+    > product: a wordmark, tonight's date and season, a lit count, ten seats filling up, and four lines that
+    > explain the whole system to somebody who joined the group last week. **No new step enters the scene.**
+    > Nothing here asks anybody to type, tap, sign in or confirm; every control that exists today exists
+    > afterwards, in the same place, doing the same thing.
+    >
+    > **What is being built.** Items 1 to 10 of "Implementation list — ranked by what a first-time visitor
+    > notices", built in the designer's build order (4 first, then 1, 2, 3, 5, 6, 7, 8, 9, 10): tokens and type,
+    > the shell (top bar, nav, footer, `How this works`), the status strip, the seat rack, the card recipe, role
+    > icons, the result card, the desktop grid and rail, safe areas, and the releases-page link. `05-design.md`
+    > is the specification for every pixel; this brief only settles behaviour and words.
+    >
+    > **Copy.** Every string comes from the final copy table. Four of them differ from what the code says today
+    > and are deliberate edits, not typos: the idle headline becomes `NOBODY IN YET`, the finished headline
+    > becomes `GAME OVER`, the balanced and in-game sentences lose the clause that repeated the headline, and the
+    > nav's fourth tab is `Companion ↗`, not `Get the app`. `tonightHeader` in `lib/tonight/state.ts` returns
+    > those labels and its tests pin them, so the test updates land in the same commit. `IDLE_LINK_LABEL` is
+    > deleted with the rest of the idle link. No other settled sentence moves: the sit-out copy, the explanation
+    > verbatim rule, M3.17's no-season sentence, `No more splits. …`, the idle sentence, `Around`, `Nobody in the
+    > lobby yet.` and the nameless hint are quoted, not rewritten.
+    >
+    > **Edge cases, and what the page does.**
+    >
+    > - **Fewer than ten.** The rack is ten rows at every count; the unfilled ones are `open` on `bg`. Six around
+    >   is six names and four `open` seats, never four blank rows and never a shorter card.
+    > - **Nobody yet.** Filling at 0: the strip sentence is `Nobody in the lobby yet.` and nothing is rendered
+    >   under the rack — the fact is said once, not twice on one screen. Idle: headline `NOBODY IN YET`, the
+    >   shipped idle sentence, an empty rack headed `SEATS · 0 of 10`, then the `How this works` and
+    >   `Run the companion` cards inline at every width.
+    > - **More than ten.** The eleventh and later names sit under the rack beneath the `Around` divider, in the
+    >   same row shape, with nothing reserved for them; the strip sentence is `Ten play, the rest sit out this
+    >   game.`; at `balanced` the sit-out strip appears above the team cards with its shipped sentence.
+    > - **Someone leaves mid-lobby.** A name becoming `open` again must move nothing: same ten rows, same order
+    >   rule, and the count in the headline and the rack header change together. A leave that drops 10 → 9 while
+    >   the lobby is still `open` returns the page to the filling sentence; a leave after teams are posted does
+    >   not touch the team cards, because the split is stored.
+    > - **Companion disconnects.** The page has no idea and must not pretend to: there is no "offline" state, no
+    >   toast, no greying. The live pill keeps its meaning — the lobby is open, not the socket is up — and the
+    >   last snapshot stays on screen until something changes it. Nothing added by this task polls, retries or
+    >   renders an error.
+    > - **Unknown player.** `Someone` (M3.10) in the rack, in both team cards, in the result card, and inside the
+    >   stored explanation (M3.15); the nameless hint sits under the block, once, while any row reads it. The
+    >   name-polling condition in `TonightLive` is untouched.
+    > - **No season.** M3.17's sentence stays directly under the strip in every state, and the slug line is the
+    >   date alone.
+    > - **Unrated finish.** `GAME OVER`, the teams they played, the explanation, no deltas, no result card, and
+    >   the sentence slot empty at its reserved height. No apology line (M3.4).
+    > - **Light mode, reduced motion, no JavaScript.** The light palette is the same nine tokens;
+    >   `prefers-reduced-motion: reduce` kills the pulse and every transition; with JavaScript off the page still renders
+    >   server-side and the reroll form still posts (row 2026-09-09 in `04-decisions.md`).
+    >
+    > **Acceptance.**
+    >
+    > 1. All ten items of the designer's list are in, each identifiable in the diff: `tokens.css` is the v2 file
+    >    verbatim, `app/_shell/` has `TopBar`, `Footer`, `HowThisWorks` and `lib/nav.ts`, `app/_tonight/SeatRack.tsx`
+    >    exists, `app/_icons/RoleIcon.tsx` has five paths, the shell's grid has the three widths and the rail.
+    > 2. Every string on the page matches the final copy table character for character, including the four
+    >    changed headlines and sentences, and a test pins the strip's label for each of the five states.
+    > 3. `rowHeight.test.ts` asserts ten `<li>` in the rack at counts 0, 6, 9, 10 and 12, and keeps its 44px
+    >    arithmetic.
+    > 4. The role column is absent and the one hint line present when no member on screen has a role; present on
+    >    every row, with `flexible` on the ones without, as soon as one member has one. The word `flexible` never
+    >    appears nine times in a column.
+    > 5. `grep -r "cn-accent" apps/web` returns nothing outside `admin.css`, and `admin.css` is byte-identical to
+    >    its state before this task.
+    > 6. The nav renders only routes that exist; with M3.5 merged that is four tabs, and no tab 404s. The
+    >    footer's `Get the companion` and the nav's `Companion ↗` both point at
+    >    `https://github.com/suyaser/kustom-releases/releases/latest`; the string `latest/download/CustomsNight.exe`
+    >    appears nowhere under `apps/web/app` outside `/admin`.
+    > 7. `Your games` renders only for a signed-in viewer with a player row, and points at `/p/<their puuid>`.
+    >    The `Set roles` link inside the all-flexible hint is not rendered until M3.6 ships the control.
+    > 8. One primary block per state, no layout shift inside a state: a join, a leave, a name arriving and a
+    >    reroll each move nothing above the fold on a 390px viewport.
+    > 9. Exactly one gradient and one glow exist in `apps/web`: the shell radial and the live pill. `grep` for
+    >    `gradient(` and `box-shadow` in the web CSS returns those two plus `--cn-lit` and nothing else.
+    > 10. `pnpm -r typecheck`, `pnpm -r test` and `pnpm --filter web build` pass; `TonightView.test.tsx` is
+    >     updated in the same commit as the heading change, not after it.
+    > 11. **Screenshots at 390px and 1280px of all five states** (idle, filling at 6, filling at 11, balanced,
+    >     result) are reviewed by the `designer` against `05-design.md` and **shown to the user before the lead
+    >     ticks this task.** A tick without those two rounds is not a tick.
+    >
+    > **Out of scope.** Any change to `lib/tonight/load.ts` beyond the two new fields (`seasonName`,
+    > `nightLabel`); `tonightState`'s state machine; `TonightLive` and the Realtime path; `RerollControl`'s
+    > behaviour, refusal sentences or no-JS fallback; the delta, rating, duration, damage and name helpers; the
+    > Discord embeds (Discord has no CSS and nothing in Floodlit reaches it); `/admin` and `admin.css`; the
+    > leaderboard and player page, which are **M3.19**; the role tap (M3.6); any new route, table, column or API
+    > field; and any new feature at all — this task adds no step to the nightly loop.
+
+- [ ] **M3.19** Floodlit follow-up on `/leaderboard` and `/p/[puuid]`, once M3.5 has landed against v1. The six changes in `05-design.md`, "What changes on the leaderboard and the player page (M3.5)": mount the shell, adopt the nine tokens (`accent` → `brand`, rows inside a card with a `raise` header carrying the `Proven · Rating` legend), the type changes, role icons wherever a role is named, the board row extracted as `app/_leaderboard/BoardRow.tsx` with `loadTopPlayers(client, { limit })` so the tonight page's rail can reuse it, and the sparkline kept hand-drawn. Owner: `web-engineer`, straight after M3.18. **No content decision moves**: `Proven` stays the primary number and the sort key, `Rating` stays on line 2, the two names stay fixed, the legend stays a legend and not a sticky header row, the `settling` chip stays a chip, and the history chart still plots `Rating` only, with the seed line in the same units. **Acceptance:** both pages render inside the shell with the correct tab underlined; no `--cn-accent` reference survives; the board row is one component used by both `/leaderboard` and the tonight page's rail, and the rail's `Top of the board` shows the same five rows as the top of the board; every number, label and sort order is byte-identical to M3.5's shipped output; screenshots at 390px and 1280px reviewed by the `designer`.
+
+- [ ] **M3.20** Interactions without full-page reloads. The user, 2026-09-09: *"experience sucks, page refreshes on any button I press."* Cause: `/admin`'s forms post and 303-redirect back with `?notice=`/`?error=` (decision rows 2026-09-08), and the tonight page's no-JS path does the same. Every action on `/admin` — main and secondary role, display name, Discord link and unlink, admin flag, mint token, revoke token, Discord config, season start, backfill approval — and on the tonight page — reroll, and later M3.6's role tap and self-link — submits **in place** via React form actions (`useActionState`/`useTransition`, or `fetch` to the existing route), shows its notice or error inline next to the control it belongs to, updates that row optimistically or re-fetches that row only, and never navigates. The existing route handlers stay the API and keep their tests unchanged; the plain form post stays as the degraded no-JS path. Owner: `web-engineer`, with or right after M3.18. **Acceptance:** pressing any button on `/admin` or the tonight page changes no URL and triggers no document load — asserted by a component test on the action and checked in a browser where the page's `load` event count stays 1 across a full round of controls; a refused write renders its sentence inline beside the control, not as a banner at the top of the page and not in the query string; keyboard focus stays on the control that was pressed; with JavaScript disabled every form still posts and still works through the 303 path; `pnpm -r test` passes with the route tests untouched. **Note:** the tonight page's reroll already posts with `fetch` and never navigates (decision row 2026-09-09), so it is a check here, not a rewrite — the work is `/admin`.
+
 Acceptance: a full night with real players, teams posted within 15 seconds of the tenth join, results within 60 seconds of end of game, no human action beyond joining the lobby.
 
 ## M4 Lobby automation, voice split, presence (3 to 4 days, needs M3)
