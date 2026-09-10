@@ -615,6 +615,33 @@ export type Database = {
           },
         ]
       }
+      window_posts: {
+        Row: {
+          attempts: number
+          claimed_at: string
+          kind: string
+          posted_at: string | null
+          reason: string | null
+          window_start: string
+        }
+        Insert: {
+          attempts?: number
+          claimed_at?: string
+          kind: string
+          posted_at?: string | null
+          reason?: string | null
+          window_start: string
+        }
+        Update: {
+          attempts?: number
+          claimed_at?: string
+          kind?: string
+          posted_at?: string | null
+          reason?: string | null
+          window_start?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       players_public: {
@@ -688,6 +715,8 @@ export type Database = {
           rank_lp: number | null
           rank_tier: string | null
           rank_updated_at: string | null
+          role_tonight: Database["public"]["Enums"]["player_role"] | null
+          role_tonight_until: string | null
           roles_counted: number
           roles_inferred_at: string | null
           secondary_role: Database["public"]["Enums"]["player_role"] | null
