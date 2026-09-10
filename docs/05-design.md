@@ -993,6 +993,7 @@ words below are fixed.
 | legend over the one unlabelled number | `Proven` | **amended, designer 2026-09-09** — was `Proven · Rating`; see "Leaderboard row". The code change lands with M3.18 |
 | board heading | the **window's** name (`This week`), with `Leaderboard` beside it in `dim` | **amended, product 2026-09-10 (M5.12)** — was the season's name; seasons are gone (`04-decisions.md`) and the season row's name is never printed to a friend again. `standings` → `Leaderboard` (designer 2026-09-09) is unchanged |
 | nightly embed title | `This week · leaderboard` | **amended, product 2026-09-10 (M5.12)** — the nightly post prints the week's board and links to `?window=this-week` |
+| result embed, footer | `Kustom · game 47` — `Kustom` alone when the count is missing | **amended, product 2026-09-10 (M5.12)** — was `Season 1 · game 47`; the count is unchanged and is the **all-time** game number (every game stored up to this one), never tonight's. See "Result embed" |
 | back link on `/p/[puuid]` | `← Leaderboard`, and deleted when the shell lands | **amended, designer 2026-09-09** — same row |
 | still-settling chip | `settling` | *(shipped, M3.8)* kept |
 | still-settling sentence, once per page | `The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.` | **amended, product 2026-09-10 (M3.19)** — the 2026-09-08 pair told a new player they begin at the bottom and rise, which is false on a season's first board, where every row is a rank seed and Proven orders exactly as rank does. The ruling is in `04-decisions.md`; "Still-settling marker (M3.8)" below quotes the same words |
@@ -1011,6 +1012,7 @@ words below are fixed.
 | hint under Recent games, when any row is unrated | `Some games don't move ratings: too short, short a player, or added from match history and not counted yet.` | **new**, product 2026-09-10 (M3.23) |
 | nightly embed, field name | `Top ten` when ten lines print, `The board` when fewer | **amended, product 2026-09-10 (M3.22)** — was `Top ten` always; see "Nightly leaderboard embed" |
 | window picker, the five options | `This week` · `Last week` · `This month` · `Last month` · `All time` | **new**, product 2026-09-10 (M5.12) — the same five words are the option, the board heading and the post title |
+| window picker, accessible name (on screen nowhere) | `Time window` | **new**, product 2026-09-10 (M5.12) — the `<nav>`'s `aria-label`, so five links are not announced as a second unnamed "navigation" beside `Leaderboard`. Product's own noun, and true on all three pages; if **M5.8** gives the control a visible heading it is this string, verbatim |
 | empty window, one per kind | `No games this week yet.` · `No games last week.` · `No games this month yet.` · `No games last month.` · `No games yet.` | **new**, product 2026-09-10 (M5.12) — a running window says *yet*, a closed one does not, because nothing more is coming |
 | a row's window line | `6 games · 4W 2L · +58` | **new**, product 2026-09-10 (M5.12) — the window's games, record and climb; absent on `All time`, where the row is today's row |
 | player chart reference line, in a window | `start` (`seed` stays on `All time`) | **new**, product 2026-09-10 (M5.12) — the rating carried into the window is not a seed |
@@ -1831,13 +1833,28 @@ url          https://<tonight page>                          [same localhost rul
 description  Blue was favored 54%. Top damage: Lena, 47.3k.  [absent when it would be empty]
 field 1      name "Blue"   inline   five lines: new rating and delta
 field 2      name "Red"    inline   five lines: new rating and delta
-footer       Season 1 · game 47                              ["Season 1" alone if the game cannot be counted]
+footer       Kustom · game 47                                ["Kustom" alone if the game cannot be counted]
 timestamp    game end
 ```
 
-`Season 1` alone in the footer is right and needs no apology (product, 2026-09-09): the game number is a
-count, and a count we could not take is simply not printed. Never `game ?`, never `game 0`, never a sentence
-explaining that something did not add up. Nobody reading a footer has asked a question yet.
+**Amended 2026-09-10 (product, with M5.12): the footer is `Kustom · game 47`, not `Season 1 · game 47`.**
+Seasons are gone from everything a friend reads (`04-decisions.md`), so the left half becomes the product's
+own name — the same word in the same place as the teams embed's `Kustom · more on the tonight page`. Exactly:
+`` `Kustom · game ${gameNumber}` ``, and `Kustom` when `gameNumber` is null. This supersedes the clause in
+**M3.21**'s acceptance that kept `Season 1 · game 12`; the count it was keeping is kept, the container it
+named is not.
+
+**The count is the group's all-time game number**, and that is the only reading it has: every game stored
+with a `started_at` at or before this one, rated or not, counted at the moment the post is written. `game 47`
+means the forty-seventh custom Kustom has on record — **not** the forty-seventh tonight, which is a number
+the tonight page already carries and which the footer would have to run a second query to learn. A game
+backfilled into an older night shifts the numbers after it, and no post is ever edited to match; a footer is
+a stamp on a message, not a row in a table.
+
+`Kustom` alone in the footer is right and needs no apology (product, 2026-09-09, unchanged): the game number
+is a count, and a count we could not take is simply not printed. Never `game ?`, never `game 0`, never a
+sentence explaining that something did not add up. Nobody reading a footer has asked a question yet. It is
+also the fallback the teams embed already has, so the two messages fail the same way.
 
 The embed exists only for a game the rating fold actually rated. A remake, a four-minute surrender, a
 scoreboard that is not five a side, the second companion's re-post: no message. There is no "no ratings this
@@ -1866,7 +1883,7 @@ package, pinned as a snapshot in `apps/web/lib/discord/embeds.test.ts`):
 > | `adc` Bilal · 1668 (-45) | `adc` Lena · 2127 (+39) |
 > | `support` Theo · 1372 (-47) | `support` Yuki · 1182 (+48) |
 >
-> Season 1 · game 47
+> Kustom · game 47
 
 The shape the hand version predicted survived contact with the package — Nadia at σ 5.10 moves most, Lena at
 σ 4.50 moves least — but every individual number moved by one or two points, which is why nothing here may be

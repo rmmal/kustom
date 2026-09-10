@@ -3871,7 +3871,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > `Nothing tonight` — and no other surface gains a new word for it. (6) A migration adds the enum value
     > and `packages/db/src/types.ts` is regenerated; `LobbyStatus` in the shared schemas carries it.
 
-- [ ] **M5.12** The window picker: read the board through `This week`, `Last week`, `This month`, `Last month`, `All time`. *(owner: web-engineer)* The replacement for the season selector M5.3 was going to build. `/leaderboard` defaults to `This week`, `/p/[puuid]` to `All time`, `/stats` to `This month` (M5.4).
+- [ ] **M5.12** The window picker: read the board through `This week`, `Last week`, `This month`, `Last month`, `All time`. *(owner: web-engineer)* The replacement for the season selector M5.3 was going to build. `/leaderboard` defaults to `This week`, `/p/[puuid]` to `All time`, `/stats` to `This month` (M5.4). **Footer ruling (product, 2026-09-10):** the result embed's footer becomes `Kustom · game ${gameNumber}` (`Kustom` when the count is null; the count is the all-time game number, unchanged), superseding the M3.21 clause that kept the season name; `ResultEmbedInput.seasonName` and the `season_id` filter in `countGamesInSeason` go with it (the number is identical on a one-season database); the selected picker option carries `aria-current="page"`.
 
     > **Brief (product, 2026-09-10)**
     >
