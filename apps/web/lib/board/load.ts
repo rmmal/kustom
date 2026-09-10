@@ -41,8 +41,16 @@ import type { BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate, 
  */
 const STREAK_GAME_WINDOW = 200;
 
-/** `in (…)` lists are a URL, and ten rows a game means ninety games is nine hundred rows. */
-const GAME_ID_CHUNK = 90;
+/**
+ * How many ids go in one `in (…)` list.
+ *
+ * **A PostgREST filter is a URL**, and a long enough `in` list is answered `414 URI too long`
+ * by the gateway before Postgres sees it — which is not theoretical: reading a busy week's
+ * board against a database with a few hundred players hit it on the first try (2026-09-10).
+ * Ten rows a game also means ninety games is nine hundred scoreboard rows, which is the other
+ * reason this number is small.
+ */
+const ID_CHUNK = 90;
 
 /** `05-design.md` gives the chart the detail view underneath it; five is what fits above the fold. */
 const RECENT_GAMES = 5;
@@ -532,20 +540,37 @@ async function loadPlayersByIds(
   client: PublicClient,
   playerIds: readonly string[],
 ): Promise<Map<string, PlayerRow>> {
-  if (playerIds.length === 0) return new Map();
-
-  const { data, error } = await client
-    .from('players_public')
-    .select('id, puuid, display_name, game_name, rank_tier, rank_division')
-    .in('id', [...playerIds]);
-  if (error) throw new Error(`board: player lookup failed: ${error.message}`);
-
   const players = new Map<string, PlayerRow>();
-  for (const row of data ?? []) {
-    if (row.id === null || row.puuid === null) continue;
-    players.set(row.id, toPlayer(row));
+
+  for (const chunk of inChunks(playerIds)) {
+    const { data, error } = await client
+      .from('players_public')
+      .select('id, puuid, display_name, game_name, rank_tier, rank_division')
+      .in('id', chunk);
+    if (error) throw new Error(`board: player lookup failed: ${error.message}`);
+
+    for (const row of data ?? []) {
+      if (row.id === null || row.puuid === null) continue;
+      players.set(row.id, toPlayer(row));
+    }
   }
   return players;
+}
+
+/**
+ * The unique ids, in lists short enough to be a URL. Empty in, nothing out — a caller with no
+ * ids makes **no request at all**, which is what `[]` means and `undefined` does not.
+ *
+ * Exported for its unit test: it is two lines of arithmetic that only fails on a database
+ * bigger than any test fixture, which is exactly the kind of code that ships broken.
+ */
+export function inChunks(ids: readonly string[]): string[][] {
+  const unique = [...new Set(ids)];
+  const chunks: string[][] = [];
+  for (let start = 0; start < unique.length; start += ID_CHUNK) {
+    chunks.push(unique.slice(start, start + ID_CHUNK));
+  }
+  return chunks;
 }
 
 /** Names for a set of player ids, from `players_public`, for the ids being rendered. */
@@ -553,40 +578,54 @@ async function loadNamesByPlayerId(
   client: PublicClient,
   playerIds: readonly string[],
 ): Promise<Map<string, { puuid: string; name: PlayerName }>> {
-  const unique = [...new Set(playerIds)];
-  if (unique.length === 0) return new Map();
-
-  const { data, error } = await client
-    .from('players_public')
-    .select('id, puuid, display_name, game_name')
-    .in('id', unique);
-  if (error) throw new Error(`board: name lookup failed: ${error.message}`);
-
   const names = new Map<string, { puuid: string; name: PlayerName }>();
-  for (const row of data ?? []) {
-    if (row.id === null || row.puuid === null) continue;
-    names.set(row.id, { puuid: row.puuid, name: row.display_name ?? row.game_name ?? null });
+
+  for (const chunk of inChunks(playerIds)) {
+    const { data, error } = await client
+      .from('players_public')
+      .select('id, puuid, display_name, game_name')
+      .in('id', chunk);
+    if (error) throw new Error(`board: name lookup failed: ${error.message}`);
+
+    for (const row of data ?? []) {
+      if (row.id === null || row.puuid === null) continue;
+      names.set(row.id, { puuid: row.puuid, name: row.display_name ?? row.game_name ?? null });
+    }
   }
   return names;
 }
 
+/**
+ * The `ratings` rows for a set of players, or for everybody when no ids are given.
+ *
+ * The id list is chunked for the reason {@link ID_CHUNK} gives: a window's board asks for one
+ * row per player who played, and a filter is a URL.
+ */
 async function loadRatings(
   client: PublicClient,
   seasonId: string,
   playerIds?: readonly string[],
 ): Promise<Map<string, RatingRow>> {
-  let query = client.from('ratings').select('player_id, mu, sigma, games, wins').eq('season_id', seasonId);
-  if (playerIds !== undefined) query = query.in('player_id', [...playerIds]);
+  const ratings = new Map<string, RatingRow>();
+  // `undefined` is "everybody" and `[]` is "nobody": one is a board, the other is a no-op.
+  const batches = playerIds === undefined ? [null] : inChunks(playerIds);
 
-  const { data, error } = await query;
-  if (error) throw new Error(`board: rating lookup failed: ${error.message}`);
+  for (const chunk of batches) {
+    let query = client.from('ratings').select('player_id, mu, sigma, games, wins').eq('season_id', seasonId);
+    if (chunk !== null) query = query.in('player_id', chunk);
 
-  return new Map(
-    (data ?? []).map((row) => [
-      row.player_id,
-      { rating: { mu: row.mu, sigma: row.sigma }, games: row.games, wins: row.wins },
-    ]),
-  );
+    const { data, error } = await query;
+    if (error) throw new Error(`board: rating lookup failed: ${error.message}`);
+
+    for (const row of data ?? []) {
+      ratings.set(row.player_id, {
+        rating: { mu: row.mu, sigma: row.sigma },
+        games: row.games,
+        wins: row.wins,
+      });
+    }
+  }
+  return ratings;
 }
 
 /**
@@ -703,8 +742,7 @@ function withRange<Q extends { gte(column: string, value: string): Q; lt(column:
 /** `game_players` for a set of games, in chunks, so no response is silently truncated. */
 async function loadGameRows(client: PublicClient, gameIds: readonly string[]): Promise<PlayerGameRow[]> {
   const rows: PlayerGameRow[] = [];
-  for (let start = 0; start < gameIds.length; start += GAME_ID_CHUNK) {
-    const chunk = gameIds.slice(start, start + GAME_ID_CHUNK);
+  for (const chunk of inChunks(gameIds)) {
     const { data, error } = await client
       .from('game_players')
       .select('game_id, player_id, side, role, mu_before, mu_after, sigma_after')

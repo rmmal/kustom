@@ -20,7 +20,7 @@ import {
   WINDOW_LABELS,
   winLossLabel,
 } from './copy';
-import { loadTopPlayers, loadTopPlayersOrNone } from './load';
+import { inChunks, loadTopPlayers, loadTopPlayersOrNone } from './load';
 import { compareBoardRows, sortBoardRows } from './order';
 import { isRated, recentGames } from './recent';
 import { currentStreak, formatStreak } from './streak';
@@ -526,5 +526,35 @@ describe('what a window did to a row', () => {
     // Yuki climbed 360 display points and is still last, because Proven is what sorts.
     expect(sorted.at(-1)?.name).toBe('Yuki');
     expect(sorted[0]?.name).toBe('Lena');
+  });
+});
+
+/**
+ * **A PostgREST filter is a URL** (M5.12, 2026-09-10). Reading a busy week's board against a
+ * database with a few hundred players answered `414 URI too long` from the gateway before
+ * Postgres saw the query — the board's `in (…)` lists had no cap on them. Three reads chunk
+ * now: the players on a window's board, their `ratings` rows, and the scoreboard rows.
+ */
+describe('the id lists the board filters on', () => {
+  const ids = (count: number): string[] => Array.from({ length: count }, (_, index) => `id-${index}`);
+
+  it('asks for nothing when there is nothing to ask for', () => {
+    expect(inChunks([])).toEqual([]);
+  });
+
+  it('keeps a group-sized list as one request', () => {
+    expect(inChunks(ids(20))).toHaveLength(1);
+  });
+
+  it('splits a list no URL would carry, losing nobody', () => {
+    const chunks = inChunks(ids(275));
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => chunk.length <= 90)).toBe(true);
+    expect(chunks.flat()).toEqual(ids(275));
+  });
+
+  it('asks for each id once, however many times a scoreboard names it', () => {
+    expect(inChunks(['a', 'b', 'a', 'b', 'c'])).toEqual([['a', 'b', 'c']]);
   });
 });

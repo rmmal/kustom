@@ -85,20 +85,23 @@
  * The window picker (M5.12), in the page header of both board pages.
  *
  * **Provisional dress.** `05-design.md` has no picker spec yet — it is M5.8's, with the rest
- * of `/stats` — so this borrows the tonight page's role-chip recipe verbatim: 44px mono chips
- * in flexible tracks that give five across on a desktop and 3 + 2 on a phone, with the chosen
- * one in `brand`. No dropdown: five options a thumb can reach beats a control that hides four
- * of them behind a tap, and it is the difference between two boards that otherwise look
- * identical.
+ * of `/stats` — so this borrows the tonight page's role-chip recipe: 44px mono chips, the
+ * chosen one in `brand`. No dropdown: five options a thumb can reach beats a control that
+ * hides four of them behind a tap, and the picker is the difference between two boards that
+ * otherwise look identical.
  * ------------------------------------------------------------------------- */
 
 .cn-windows {
-  display: grid;
-  /* The same cap-on-the-group rule the role chips use (the designer, 2026-09-10): `auto-fit`
-     counts columns from a definite max, so a per-chip cap gives two chips a row at 390px. */
-  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  /*
+   * **Wrapping flex, not the role chips' grid.** The role chips share five equal tracks because
+   * their words are one short noun each; these five are two words each and `This month` is
+   * wider than a 6rem track, so equal tracks would either stretch the short ones or wrap by a
+   * floor nobody chose. Chips sized to their own word wrap 3 + 2 at 390px and sit on one row
+   * from 720px up, which is what the two screenshots show.
+   */
+  display: flex;
+  flex-wrap: wrap;
   max-width: 47rem;
-  justify-content: start;
   gap: var(--cn-sp-2);
   margin-top: var(--cn-sp-3);
 }
@@ -107,8 +110,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 1 auto;
   min-height: 44px;
   padding: 0 var(--cn-sp-3);
+  white-space: nowrap;
   font-family: var(--cn-font-mono);
   font-size: var(--cn-t-xs);
   letter-spacing: 0.06em;
