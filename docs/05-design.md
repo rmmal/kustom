@@ -952,6 +952,52 @@ changed what stands beside them — a card with one hint per state, and a button
 product changed its mind about what the control means. Nothing here promises more than the balancer does,
 which is the one rule the whole block exists to keep.
 
+#### Copy — `Start a lobby` (M4.2, product 2026-09-10)
+
+Every word the one tap can produce, on either surface, in one table — the tonight page and `/admin` call the
+same route and may not end up saying two different things about one command. The control's own strings were
+settled in the M4.2 brief on 2026-09-09 and are quoted here unchanged; the rows marked **new** and
+**suspended** are what the 2026-09-10 pass ruled, where the brief had prose and no string. They live in
+`apps/web/lib/admin/lobbyStart.ts` (everything the route answers with, imported by both surfaces) and
+`apps/web/lib/tonight/copy.ts` (the one sentence only the browser can know). That is two files and one table;
+they may not drift.
+
+**The rule for a refusal is the M3.6 block's**, unchanged: say what happened, then say who can undo it or what
+to do next. Never the queue's vocabulary — `wrong_phase` and `already_in_lobby` are words for a log, not for a
+friend on a phone.
+
+| Where | String | Status |
+|---|---|---|
+| the button, both surfaces | `Start a lobby` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| while the command is pending or sent | `Opening a lobby on Hana's PC…` — the host the server picked, named while it is pending and not after | product 2026-09-09 (brief) — kept. Real ellipsis, as everywhere else |
+| on success | *(nothing — the member list appearing is the answer, and a toast on top of it is noise)* | product 2026-09-09 (brief) — kept |
+| under the member list while the lobby is filling, until ten are in | `Invited 7 friends — waiting for them to accept.` · `Invited 1 friend — waiting for them to accept.` | product 2026-09-09 (brief) — kept; the singular is the engineer's and is the only form the sentence can take at one |
+| a lobby of tonight is already `open`, `balanced` or `in_game` | `There is already a lobby open.` | product 2026-09-09 (brief) — kept |
+| nobody's companion has been up in the last 10 minutes | `Nobody has the companion running right now. Start it and try again.` | product 2026-09-09 (brief) — kept |
+| a `create_lobby` for tonight is still pending | `A lobby is already being opened.` | product 2026-09-09 (brief) — kept; it is also what the M4.9 unique index answers with |
+| the kind is flagged off by M4.1's gate | `Opening lobbies isn't verified on this patch yet.` | product 2026-09-09 (brief) — kept |
+| the host's client never answered and the command expired | `Nobody's client answered. Try again.` | product 2026-09-09 (brief) — kept, and it is the **only** failure sentence: from the friend holding the phone, a client in champion select and a client that refused the POST are one fact — nothing was created, press it again |
+| the host had made a lobby by hand a minute earlier (`already_in_lobby`) | `Hana already has a lobby open — everyone can join that one.` | product 2026-09-09 (brief) — kept |
+| the press never reached the server | `That did not reach the server. No lobby was opened — tap it again.` | **new**, product 2026-09-10 (M4.2) — the web engineer's sentence, confirmed byte for byte. It is the shape product fixed for `ROLE_TAP_OFFLINE` and `LINK_OFFLINE` — the fact, what is unchanged, then the whole fix — and `No lobby was opened` covers the invites too, because the fan-out only ever hangs off a lobby that exists. The page's own string, not the route's: the route never saw the request |
+| an anonymous visitor | `Sign in with Discord to start a lobby.` | **suspended**, product 2026-09-10 (M4.2) — the brief's string, **not rendered while the route is admin-gated**: it would promise a button a signed-in non-admin still could not press, and this page's one sign-in already lives on the role card forty pixels away. It returns, unchanged, the day the press widens to every linked player. Kept in this table rather than deleted so the widening does not have to invent it again |
+| tonight page, the lobby a friend can still join by hand | `Missed the invite? The lobby is Customs 09 Sep #1, password 4821.` — without a stored password, `Missed the invite? The lobby is Customs 09 Sep #1.` — with no name, **no line** | **new**, product 2026-09-10 (**M4.10**) — the name and password in mono, the sentence in Archivo. Drawn in the `filling` and `balanced` states only and gone from `in_game` on, because by then there is nothing to join. Placement is the designer's, with M4.7 |
+| `/admin`, under the button | `Customs 09 Sep #1 · password 4821` — the name alone when no password is stored | engineer 2026-09-10 (M4.2) — kept. The plain page reads the row itself, so an admin who reloads still sees what became of tonight's command. Same three shapes as the teams embed's `Lobby` field, minus its code spans |
+| `/admin`, nobody has pressed it tonight | `No lobby has been opened tonight.` | engineer 2026-09-10 (M4.2) — kept: the fact, with the button right above it, which is the admin area's whole voice |
+
+**Why the tonight page prints the name and the password.** The M4.2 brief already ruled it — *"It is not a
+secret: it goes in the Discord embed and on the tonight page"* — and the copy table, not the brief, was what
+went missing, so the control shipped without it. The scene is the argument: the fan-out runs **once**, on the
+create ack, and there is no second wave and no reminder ("the button is not a doorman"). Everyone who walks
+into voice after that, and everyone who dismissed the popup, has exactly one way in that does not interrupt
+nine people — the lobby's name and its four digits, read off the page they are already holding. Without the
+line the group does what it does today: somebody reads the password out loud in voice, which is a step, and
+steps are what this product claims not to have. `Missed the invite?` opens it because it tells the nine who
+are already in that the rest of the sentence is not for them.
+
+It is one lobby's exposure and it expires by itself: a new four-digit password is generated per lobby, the
+line is gone the moment the game starts, and a stranger who found the link would have to be watching during
+the twenty minutes it is up. Product weighed that against a latecomer having to ask, and the ask loses.
+
 ### What changes on the leaderboard and the player page (M3.5)
 
 M3.5 is being built against v1 right now. Nothing in its **content** decisions moves — `Proven` is still the
@@ -1116,8 +1162,9 @@ words below are fixed.
 | awards, section intro | `Three awards for the week. Nobody votes; the numbers pick.` / `… for the month. …` | **amended, product 2026-09-10 (M5.4)** — was `Three end-of-season awards.` |
 | an award on `/p/[puuid]` | `Most improved, week of 1 Sep.` / `Most improved, September.` | **amended, product 2026-09-10 (M5.4)** — was `Most improved, Season 1.` |
 | `/stats` cap line | `Showing the most recent 2000 games.` | **amended, product 2026-09-10 (M5.4)** — was `… of this season.` |
-| seed line on `/p/[puuid]` | `Seeded from Gold II at 1469, 37 games since.` — in a window, `Started the week at 1469, 6 games since.` | **new**, product 2026-09-10 (M5.15) |
-| a recent game, why the change is that size | `Won as the 42% side, +43` · `Lost as the 58% side, -31` · without a stored chance, `Won, +43` | **new**, product 2026-09-10 (M5.15) — the chance is their own side's, the change is `displayDelta` |
+| seed line on `/p/[puuid]`, `All time` | `Seeded from Gold II at 1469, 37 games since.` — and at **zero games the clause is dropped**: `Seeded from Gold II at 1469.` | **amended, product 2026-09-10 (M5.15)** — the zero form is the web engineer's reading and it stands: acceptance check 5 forbids a bare `0` on the newest player's page in the same breath as `NaN`, and the record line above it already vanishes at zero for the same reason. The count goes through `gamesLabel`, so one game reads `, 1 game since.` |
+| seed line on `/p/[puuid]`, in a window | `Started the week at 1469, 6 games since.` on `This week` and `Last week` · `Started the month at 1469, 14 games since.` on `This month` and `Last month` · **no line at all** in a window the player has no counted game in | **amended, product 2026-09-10 (M5.15)** — product wrote one window sentence and the picker has four windows. `Started the week` on `Last month` names the wrong calendar, and every other window string on this page (the empty lines, the slot's ranges) already says `week` or `month` per kind, so the noun is interpolated off `WindowKind` and there is no fifth string. Nothing prints in an empty window because the chart's reference falls back to the player's **seed** there, and `Started the week at <seed>` would name a number that week never saw — the window's own empty sentence is already on the page and is the true one |
+| a recent game, why the change is that size | `Won as the 42% side, +43` · `Lost as the 58% side, −31` · without a stored chance, `Won, +43` / `Lost, −31` | **amended, product 2026-09-10 (M5.15)** — the minus is **U+2212**, not the ASCII hyphen this row was first written with. "Rating delta" above already fixes U+2212 for every number on the web, and the sentence prints `formatWebDelta`'s own string — the same call the column beside it makes — so one number could not be spelled two ways on one row even if this table asked for it. Discord's ASCII `-` is untouched and unreachable: no post carries this sentence. The chance is their own side's, the change is `displayDelta` |
 | the one explanation line under `Recent games` | `Beating the favoured side moves you more than beating the underdog, and the board moves you more while it is still unsure about you.` | **new**, product 2026-09-10 (M5.15) — once per page, not per row |
 | games cannot be saved, admin and API | `Games cannot be saved: the database is missing its one season row.` | **amended, product 2026-09-10 (M5.14)** — was `… Start a season on the Seasons page.`; there is no such page action now |
 | games are not being saved, tonight page | `Tonight's games are not being saved. Play on — they can be added back from match history later.` | **amended, product 2026-09-10 (M5.14)** — was `An admin can start one.`; backfill is true, and it is the only thing the twenty people holding the link can act on |
