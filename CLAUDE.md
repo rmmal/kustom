@@ -33,7 +33,7 @@ those agents, stay inside what you own and route everything else through the lea
 ```
 pnpm install
 pnpm -r typecheck            # every package
-pnpm -r test                 # vitest, run mode
+pnpm -r test                 # vitest, run mode; packages run one at a time (pnpm-workspace.yaml) because they share the local stack
 pnpm lint                    # biome check .
 pnpm format                  # biome format --write .
 pnpm --filter web dev        # http://localhost:3000
