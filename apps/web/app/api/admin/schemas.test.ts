@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { internalPathSchema } from '@/lib/admin/formValues';
 import { discordConfigRequestSchema } from './discord-config/schema';
 import { adminPlayersRequestSchema } from './players/schema';
-import { startSeasonRequestSchema } from './seasons/schema';
 import { adminTokensRequestSchema } from './tokens/schema';
 
 /**
@@ -163,41 +162,6 @@ describe('discordConfigRequestSchema', () => {
 
   it('reads the clear checkbox', () => {
     expect(discordConfigRequestSchema.parse({ ...base, clearWebhook: 'true' }).clearWebhook).toBe(true);
-  });
-});
-
-describe('startSeasonRequestSchema', () => {
-  it('trims the name', () => {
-    expect(startSeasonRequestSchema.parse({ name: '  Season 2 ', confirmSeasonName: 'Season 1' })).toEqual({
-      name: 'Season 2',
-      confirmSeasonName: 'Season 1',
-    });
-  });
-
-  it('rejects an empty name', () => {
-    expect(startSeasonRequestSchema.safeParse({ name: '   ' }).success).toBe(false);
-  });
-
-  /**
-   * M3.9. The confirmation parses to null when nothing was typed rather than failing here, so
-   * the refusal can be the sentence that names the season to type — see `startSeason`, which is
-   * the only thing that knows what the right answer is.
-   */
-  it('reads a missing, empty or whitespace confirmation as nothing typed', () => {
-    for (const body of [
-      { name: 'Season 2' },
-      { name: 'Season 2', confirmSeasonName: '' },
-      { name: 'Season 2', confirmSeasonName: '   ' },
-      { name: 'Season 2', confirmSeasonName: null },
-    ]) {
-      expect(startSeasonRequestSchema.parse(body)).toMatchObject({ confirmSeasonName: null });
-    }
-  });
-
-  it('trims the confirmation, so a trailing space from a phone keyboard still ends the season', () => {
-    expect(
-      startSeasonRequestSchema.parse({ name: 'Season 2', confirmSeasonName: ' Season 1 ' }),
-    ).toMatchObject({ confirmSeasonName: 'Season 1' });
   });
 });
 

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { adminError, adminNotice, mintedToken } from './notices';
+import { type AdminFormKind, adminError, adminNotice, mintedToken } from './notices';
 
 /**
  * M3.20's in-place notices, and the guard that keeps them honest.
@@ -18,8 +18,10 @@ const handler = (path: string): string =>
 const players = handler('players/handler.ts');
 const tokens = handler('tokens/handler.ts');
 const discord = handler('discord-config/handler.ts');
-const seasons = handler('seasons/handler.ts');
 const reroll = handler('lobbies/[lobbyId]/reroll/handler.ts');
+
+/** Every form kind the admin area still has. `seasons` left with M5.14's Start button. */
+const KINDS: AdminFormKind[] = ['players', 'tokens', 'discord', 'reroll'];
 
 describe('players', () => {
   const notice = (values: Record<string, string>) => adminNotice('players', values, { ok: true });
@@ -86,20 +88,14 @@ describe('tokens, the Discord config and the season', () => {
     expect(discord).toContain("'Discord config saved'");
   });
 
-  it('reads the season sentence off the response: what ended and what is live now', () => {
-    expect(adminNotice('seasons', {}, { ok: true, season: { name: 'Season 2' }, endedSeason: null })).toBe(
-      'Season 2 is now the active season, and its leaderboard starts empty.',
-    );
-    expect(
-      adminNotice(
-        'seasons',
-        {},
-        { ok: true, season: { name: 'Season 2' }, endedSeason: { name: 'Season 1' } },
-      ),
-    ).toBe('Season 1 has ended. Season 2 is now the active season, and its leaderboard starts empty.');
-
-    expect(seasons).toContain('is now the active season, and its leaderboard starts empty.');
-    expect(seasons).toContain('has ended.');
+  /**
+   * **There is no seasons form left to answer** (M5.14, 2026-09-10). The kind, its sentence
+   * and `POST /api/admin/seasons` went together; `/admin/seasons` is one read-only line.
+   */
+  it('has no sentence for a season, because nothing starts one', () => {
+    expect(KINDS).not.toContain('seasons' as AdminFormKind);
+    // Every kind that is left answers with something a reader can act on.
+    for (const kind of KINDS) expect(adminNotice(kind, {}, { ok: true }).length).toBeGreaterThan(0);
   });
 });
 

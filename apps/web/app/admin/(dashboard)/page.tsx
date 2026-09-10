@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** The index: who you are, which season is live, tonight's reroll, and where everything is. */
+/** The index: who you are, which season row is live, tonight's reroll, and where everything is. */
 export default async function AdminIndexPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [params, admin] = await Promise.all([searchParams, requireAdmin()]);
   const client = getServiceClient();
@@ -73,7 +73,7 @@ export default async function AdminIndexPage({ searchParams }: { searchParams: P
           <Link href="/admin/discord">Discord config</Link> — webhook and channel ids
         </li>
         <li>
-          <Link href="/admin/seasons">Seasons</Link> — start a new one
+          <Link href="/admin/seasons">Seasons</Link> — the one season row, read-only
         </li>
       </ul>
     </main>
