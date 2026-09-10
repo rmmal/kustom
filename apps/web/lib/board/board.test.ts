@@ -1,5 +1,6 @@
 import { displayRating } from '@customs/core';
 import { describe, expect, it, vi } from 'vitest';
+import { closedWindow, formatWeekRange, type WindowKind, windowRange } from '../night';
 import { displayDelta, formatWebDelta, provenRating } from '../ratingDisplay';
 import { workedBoardRows, workedWindowRows } from '../testing/boardFixtures';
 import { CHART_HEIGHT, CHART_WIDTH, chartGeometry } from './chart';
@@ -18,6 +19,7 @@ import {
   START_LABEL,
   WINDOW_EMPTY,
   WINDOW_LABELS,
+  windowSlotLine,
   winLossLabel,
 } from './copy';
 import { inChunks, loadTopPlayers, loadTopPlayersOrNone } from './load';
@@ -32,6 +34,7 @@ import {
   STATS_WINDOW,
   WINDOW_ORDER,
   windowHref,
+  windowRangeLabel,
 } from './window';
 
 /**
@@ -39,6 +42,9 @@ import {
  * copy product owns. Everything with a page around it is in `app/_board/*.test.tsx`; everything
  * with a database behind it is in `app/board.integration.test.ts`.
  */
+
+/** The configured zone in every test that formats a window. */
+const CAIRO = 'Africa/Cairo';
 
 function row(overrides: Partial<BoardRow>): BoardRow {
   return {
@@ -556,5 +562,53 @@ describe('the id lists the board filters on', () => {
 
   it('asks for each id once, however many times a scoreboard names it', () => {
     expect(inChunks(['a', 'b', 'a', 'b', 'c'])).toEqual([['a', 'b', 'c']]);
+  });
+});
+
+/**
+ * The header slot (M5.12, the designer's slot; `05-design.md`'s copy table). One line under the
+ * picker: what the window covers and how many games are in it, or — when there are none — the
+ * window's own empty sentence, never both.
+ */
+describe('the line under the picker', () => {
+  /** Wednesday 2026-09-09, 21:00 Cairo. */
+  const now = new Date('2026-09-09T18:00:00Z');
+  const label = (kind: WindowKind, firstCountedAt: Date | null = null) =>
+    windowRangeLabel(kind, windowRange(kind, now, CAIRO), firstCountedAt, CAIRO);
+
+  it('names each of the five the way product spells it', () => {
+    expect(label('this-week')).toBe('Monday 7 Sep to Sunday 13 Sep');
+    expect(label('last-week')).toBe('Monday 31 Aug to Sunday 6 Sep');
+    expect(label('this-month')).toBe('September');
+    expect(label('last-month')).toBe('August');
+    expect(label('all-time', new Date('2025-09-08T18:00:00Z'))).toBe('Since 8 Sep 2025');
+  });
+
+  /** Only `All time` can fail to have a date, and only on a database with no counted game. */
+  it('has nothing to date all time from until a game has been played', () => {
+    expect(label('all-time')).toBeNull();
+    expect(label('this-week')).not.toBeNull();
+  });
+
+  it('assembles the range and the count, and never `1 games`', () => {
+    expect(windowSlotLine('Monday 1 Sep to Sunday 7 Sep', 14)).toBe(
+      'Monday 1 Sep to Sunday 7 Sep · 14 games',
+    );
+    expect(windowSlotLine('September', 34)).toBe('September · 34 games');
+    expect(windowSlotLine('Since 8 Sep 2025', 312)).toBe('Since 8 Sep 2025 · 312 games');
+    expect(windowSlotLine('Monday 1 Sep to Sunday 7 Sep', 1)).toBe('Monday 1 Sep to Sunday 7 Sep · 1 game');
+  });
+
+  /**
+   * **The week form is M5.10's post description byte for byte.** The Monday post and the board
+   * a tap later have to say the same words, so there is one formatter and this is the test that
+   * says so.
+   */
+  it('is the same string the closed week posts itself under', () => {
+    const week = closedWindow('last-week', now, CAIRO);
+
+    expect(windowRangeLabel('last-week', windowRange('last-week', now, CAIRO), null, CAIRO)).toBe(
+      formatWeekRange(week.start, week.end, CAIRO),
+    );
   });
 });

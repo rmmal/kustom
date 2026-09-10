@@ -59,7 +59,15 @@ export function workedBoardRows(): BoardRow[] {
 }
 
 export function workedBoard(overrides: Partial<BoardView> = {}): BoardView {
-  return { window: 'all-time', rows: workedBoardRows(), ...overrides };
+  const rows = overrides.rows ?? workedBoardRows();
+  return {
+    window: 'all-time',
+    rows,
+    // The group's first night, and the fold's own count of what it has played since.
+    range: 'Since 8 Sep 2025',
+    games: 312,
+    ...overrides,
+  };
 }
 
 /**
@@ -83,7 +91,18 @@ export function workedWindowRows(): BoardRow[] {
 }
 
 export function workedWindowBoard(window: WindowKind = 'this-week'): BoardView {
-  return { window, rows: workedWindowRows() };
+  return {
+    window,
+    rows: workedWindowRows(),
+    // The week `05-design.md`'s copy table prints, and the count the ten rows add up to.
+    range: window === 'this-month' || window === 'last-month' ? 'September' : 'Monday 1 Sep to Sunday 7 Sep',
+    games: 6,
+  };
+}
+
+/** The same board with nothing in the window: the slot prints the sentence and no card. */
+export function emptyWindowBoard(window: WindowKind = 'last-week'): BoardView {
+  return { window, rows: [], range: null, games: 0 };
 }
 
 /** One player's page, built from the same roster. `Hana` by default: 37 games, no chip. */
@@ -106,6 +125,7 @@ export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> 
     wins,
     losses: games - wins,
     settling: games < SETTLING_GAMES,
+    range: 'Since 8 Sep 2025',
     reference: seed,
     // A short walk that ends where the roster says they are, so the chart's last point and the
     // `Rating` beside it are the same number — and that starts above the seed, so the

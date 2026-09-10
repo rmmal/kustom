@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   closedWindow,
   DEFAULT_NIGHT_TIME_ZONE,
+  formatDayMonthYear,
+  formatMonthName,
   formatNightLabel,
+  formatWeekRange,
   isInWindow,
   isValidTimeZone,
   monthStart,
   nightStart,
+  type WindowKind,
   weekStart,
   windowRange,
 } from './night';
@@ -339,5 +343,70 @@ describe('the window that just closed', () => {
     );
 
     expect([...keys]).toEqual(['2026-09-28T03:00:00.000Z']);
+  });
+});
+
+/**
+ * Naming a window out loud (M5.12's slot, M5.10's post description). `05-design.md`'s board
+ * copy table fixes every string here; the week form is the post's description **byte for
+ * byte**, which is why it is one exported formatter and not two.
+ */
+describe('what a window is called', () => {
+  /** Wednesday 2026-09-09, 21:00 Cairo: this week is Mon 7 Sep to Mon 14 Sep. */
+  const now = new Date('2026-09-09T18:00:00Z');
+  const range = (kind: WindowKind) => windowRange(kind, now, CAIRO);
+
+  it('names a week by its first night and its last, month on both ends', () => {
+    const week = range('this-week');
+    expect(formatWeekRange(week.start as Date, week.end as Date, CAIRO)).toBe(
+      'Monday 7 Sep to Sunday 13 Sep',
+    );
+
+    const last = range('last-week');
+    expect(formatWeekRange(last.start as Date, last.end as Date, CAIRO)).toBe(
+      'Monday 31 Aug to Sunday 6 Sep',
+    );
+  });
+
+  /**
+   * **The last day named is the last night of the window**, not the boundary. A window ends on
+   * a Monday at 06:00 and nobody played on that Monday morning; naming it would print a day the
+   * board has no games from.
+   */
+  it('never names the Monday morning a window ends on', () => {
+    const week = range('this-week');
+    expect(formatWeekRange(week.start as Date, week.end as Date, CAIRO)).not.toContain('Monday 14');
+  });
+
+  it('carries the month on both ends when a week crosses one', () => {
+    const across = windowRange('this-week', new Date('2026-10-01T18:00:00Z'), CAIRO);
+    expect(formatWeekRange(across.start as Date, across.end as Date, CAIRO)).toBe(
+      'Monday 28 Sep to Sunday 4 Oct',
+    );
+  });
+
+  it('cuts September to three letters, like every other date on a page', () => {
+    const week = range('this-week');
+    expect(formatWeekRange(week.start as Date, week.end as Date, CAIRO)).not.toContain('Sept ');
+  });
+
+  it('names a month by its name and nothing else', () => {
+    expect(formatMonthName(range('this-month').start as Date, CAIRO)).toBe('September');
+    expect(formatMonthName(range('last-month').start as Date, CAIRO)).toBe('August');
+    // No year: a month window is this one or the one before it, never a year ago.
+    expect(formatMonthName(range('this-month').start as Date, CAIRO)).not.toMatch(/\d/);
+  });
+
+  /** The one window form that can reach a year, so the one that carries one. */
+  it('dates all time from a day, a month and a year', () => {
+    expect(formatDayMonthYear(new Date('2025-09-08T18:00:00Z'), CAIRO)).toBe('8 Sep 2025');
+    expect(formatDayMonthYear(new Date('2026-01-01T22:00:00Z'), CAIRO)).toBe('2 Jan 2026');
+  });
+
+  it('reads every one of them in the zone it is given', () => {
+    // 00:30 on the 1st in Cairo is still the 31st in New York, and the month's name follows.
+    const newYear = new Date('2026-08-31T22:30:00Z');
+    expect(formatMonthName(newYear, CAIRO)).toBe('September');
+    expect(formatMonthName(newYear, 'America/New_York')).toBe('August');
   });
 });

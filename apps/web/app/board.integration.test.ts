@@ -373,12 +373,43 @@ if (stack === null) {
       expect(wren?.settling).toBe(true);
     });
 
+    /**
+     * The header slot, from the database (M5.12): the window's dates and its **counted** games
+     * — a count of games, not of scoreboard rows, and not of games nobody rated.
+     */
+    it('names the window and counts its games', async () => {
+      const week = await loadBoard(anon, { window: 'last-week', ...WEEK });
+
+      expect(week.range).toBe('Monday 1 Jun to Sunday 7 Jun');
+      // Two games last week; the third is in the running one.
+      expect(week.games).toBe(2);
+
+      const month = await loadBoard(anon, { window: 'this-month', ...WEEK });
+      expect(month.range).toBe('June');
+      expect(month.games).toBe(3);
+    });
+
+    it('dates all time from the first counted game there has ever been', async () => {
+      const all = await loadBoard(anon, ALL_TIME);
+
+      // Other files share this database, so the day is theirs to move; the shape is not.
+      expect(all.range).toMatch(/^Since \d{1,2} [A-Z][a-z]{2} \d{4}$/);
+      expect(all.games).toBeGreaterThanOrEqual(3);
+    });
+
     it('is an empty board for a window nobody played in', async () => {
       // May: the month before the pair's first game, a closed window with nothing in it.
       const board = await loadBoard(anon, { window: 'last-month', ...WEEK });
 
       expect(board.window).toBe('last-month');
       expect(board.rows.filter((row) => row.puuid.startsWith(`it-${runId}-`))).toEqual([]);
+    });
+
+    it('leaves the range null when the window has no counted games, so the slot says so', async () => {
+      // 2019: before this product existed, and before any fixture in this repo.
+      const empty = await loadBoard(anon, { window: 'last-month', now: new Date('2019-04-10T18:00:00Z') });
+
+      expect(empty).toMatchObject({ range: null, games: 0, rows: [] });
     });
   });
 
@@ -387,6 +418,8 @@ if (stack === null) {
       const player = found(await loadPlayerBoard(anon, puuid.weekly, { window: 'last-week', ...WEEK }));
 
       expect(player).toMatchObject({ window: 'last-week', games: 2, wins: 1, losses: 1 });
+      // The range half, alone: the record beside it already carries the count.
+      expect(player.range).toBe('Monday 1 Jun to Sunday 7 Jun');
       // As of their last game inside the week, not where they are today.
       expect(player.rating).toBe(1_512);
       // The rating carried **into** the window, labelled `start` on the chart.
@@ -400,6 +433,8 @@ if (stack === null) {
       const player = found(await loadPlayerBoard(anon, puuid.weekly, ALL_TIME));
 
       expect(player).toMatchObject({ window: 'all-time', games: 3, wins: 2, losses: 1 });
+      // Dated from **their** first counted game, because the page is a person's history.
+      expect(player.range).toBe('Since 3 Jun 2026');
       expect(player.rating).toBe(1_548);
       // `seedFromRank('GOLD', 'IV')` is mu 23 — the seed, not the window's start.
       expect(player.reference).toBe(1_380);
@@ -409,7 +444,7 @@ if (stack === null) {
     it('keeps a player who did not play in the window on their own page', async () => {
       const player = found(await loadPlayerBoard(anon, puuid.weekly, { window: 'last-month', ...WEEK }));
 
-      expect(player).toMatchObject({ games: 0, wins: 0, losses: 0 });
+      expect(player).toMatchObject({ games: 0, wins: 0, losses: 0, range: null });
       // Their number is still theirs: the page is a person, and the empty line says the rest.
       expect(player.rating).toBe(1_548);
       expect(player.history).toEqual([]);

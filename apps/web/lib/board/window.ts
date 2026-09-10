@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import type { WindowKind } from '../night';
+import {
+  formatDayMonthYear,
+  formatMonthName,
+  formatWeekRange,
+  type WindowKind,
+  type WindowRange,
+} from '../night';
+import { sinceLabel } from './copy';
 
 /**
  * The window a page is being read through (M5.12): the parameter, its order, and each page's
@@ -80,4 +87,33 @@ export function parseWindow(value: string | string[] | undefined, fallback: Wind
  */
 export function windowHref(path: string, kind: WindowKind): string {
   return `${path}?window=${kind}`;
+}
+
+/**
+ * The slot's **range half**: `Monday 1 Sep to Sunday 7 Sep`, `September`, `Since 8 Sep 2025`
+ * (M5.12, the designer's slot).
+ *
+ * `null` only for `All time` with nothing to date from — a database with no counted game in it,
+ * where the slot prints the window's empty sentence instead.
+ *
+ * Formatted **on the server**, in the fixed locale and the configured zone, for the reason
+ * every other date on a public page is (`lib/night.ts`): a date the browser formatted in the
+ * reader's own locale would disagree with the server's render and the line would change under
+ * them.
+ */
+export function windowRangeLabel(
+  kind: WindowKind,
+  range: WindowRange,
+  firstCountedAt: Date | null,
+  timeZone?: string,
+): string | null {
+  if (kind === 'all-time') {
+    return firstCountedAt === null ? null : sinceLabel(formatDayMonthYear(firstCountedAt, timeZone));
+  }
+  // Every other window is bounded; the nulls belong to `all-time` alone (M5.9).
+  const start = range.start as Date;
+  const end = range.end as Date;
+  return kind === 'this-week' || kind === 'last-week'
+    ? formatWeekRange(start, end, timeZone)
+    : formatMonthName(start, timeZone);
 }

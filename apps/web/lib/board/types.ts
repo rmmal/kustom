@@ -78,6 +78,16 @@ export interface BoardView {
   window: WindowKind;
   /** Ordered by `proven` descending. Reading the primary column top to bottom never goes up. */
   rows: BoardRow[];
+  /**
+   * The header slot's **range half**, formatted on the server: `Monday 1 Sep to Sunday 7 Sep`,
+   * `September`, `Since 8 Sep 2025` (M5.12, the designer's slot).
+   *
+   * `null` when the window has no counted games, where the slot prints the window's empty
+   * sentence instead — never both, and never `· 0 games`.
+   */
+  range: string | null;
+  /** The window's counted games, for the other half of the slot. `0` on an empty window. */
+  games: number;
 }
 
 /** One of the player's own five in a recent game, in lane order. */
@@ -143,6 +153,12 @@ export interface PlayerBoardView {
   games: number;
   wins: number;
   losses: number;
+  /**
+   * The header slot's range half, as on the board — **the range alone**, with no count beside
+   * it (product, 2026-09-10): M5.15's seed line already ends `, 6 games since.`, and no page
+   * says one number twice. `null` when this player has nothing to date from.
+   */
+  range: string | null;
   /** The 30-game rule, always on the all-time count (M3.8). Never a fact about the window. */
   settling: boolean;
   /**

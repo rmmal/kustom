@@ -12,7 +12,13 @@ import { nightlyLeaderboardSkip } from './post';
  */
 
 function board(overrides: Partial<BoardView> = {}): BoardView {
-  return { window: 'this-week', rows: workedWindowRows(), ...overrides };
+  return {
+    window: 'this-week',
+    rows: workedWindowRows(),
+    range: 'Monday 1 Sep to Sunday 7 Sep',
+    games: 6,
+    ...overrides,
+  };
 }
 
 describe('nightlyLeaderboardSkip', () => {

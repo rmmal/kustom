@@ -74,8 +74,15 @@ export function PlayerView({ player }: PlayerViewProps) {
          * line, under the chips and above the hairline. A player with no counted game in the
          * window says so here rather than inside the card, where it used to sit between the two
          * numbers and the chart.
+         *
+         * **The range half prints alone here** (product, 2026-09-10): the record under the two
+         * numbers already says `6 games · 4W 2L`, and no page says one number twice.
          */}
-        {player.games === 0 ? <p className="cn-empty">{WINDOW_EMPTY[player.window]}</p> : null}
+        {player.range === null ? (
+          <p className="cn-empty">{WINDOW_EMPTY[player.window]}</p>
+        ) : (
+          <p className="cn-num cn-window-line">{player.range}</p>
+        )}
       </header>
 
       <PlayerWindow player={player} />

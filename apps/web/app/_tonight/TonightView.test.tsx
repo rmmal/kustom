@@ -80,7 +80,7 @@ describe('idle: no lobby tonight', () => {
   it('says the night, the state and the shipped sentence, and shows an empty rack', () => {
     const { container } = draw(snapshot(null));
 
-    expect(strip(container)).toEqual(['Tuesday 8 September · Season 1', 'NOBODY IN YET', IDLE_SENTENCE]);
+    expect(strip(container)).toEqual(['Tuesday 8 September', 'NOBODY IN YET', IDLE_SENTENCE]);
     // The rack is the idle page's body: ten `open` seats, the shape the page will have later.
     expect(container.querySelectorAll('.cn-rack-open')).toHaveLength(10);
     expect(screen.getByText('SEATS · 0 of 10')).toBeInTheDocument();
@@ -98,22 +98,25 @@ describe('idle: no lobby tonight', () => {
     expect(screen.getAllByText('Run the companion').length).toBeGreaterThan(0);
   });
 
-  it('says nothing about a season when one is active, and its own sentence when none is', () => {
-    const { unmount } = draw(snapshot(null));
+  /**
+   * **The slug is the night and nothing else** (M5.12, product 2026-09-10), and the page says
+   * nothing about a season until the one thing a friend can act on is true: that tonight's
+   * games are not being saved. The two cases were separate tests while the slug carried a
+   * season name; there is one line to check now.
+   */
+  it('is the night alone in the slug, and one sentence when games are not being saved', () => {
+    const { container, unmount } = draw(snapshot(null));
+    expect(container.querySelector('.cn-slug')).toHaveTextContent('Tuesday 8 September');
+    expect(container.querySelector('.cn-slug')?.textContent).not.toContain('·');
+    expect(document.body.textContent?.toLowerCase()).not.toContain('season');
     expect(screen.queryByText(NO_ACTIVE_SEASON_TONIGHT_MESSAGE)).not.toBeInTheDocument();
     unmount();
 
-    draw(snapshot(null, { seasonActive: false, seasonName: null }));
+    const { container: broken } = draw(snapshot(null, { seasonActive: false }));
+    expect(broken.querySelector('.cn-slug')).toHaveTextContent('Tuesday 8 September');
     expect(screen.getByText(NO_ACTIVE_SEASON_TONIGHT_MESSAGE)).toBeInTheDocument();
-    // Never the admin sentence: it ends by naming a page most of the group cannot open (M3.17).
+    // Never the admin sentence: it is written for whoever can open a database console (M3.17).
     expect(screen.queryByText(NO_ACTIVE_SEASON_MESSAGE)).not.toBeInTheDocument();
-    expect(document.body.textContent).not.toContain('Start a season on the Seasons page.');
-  });
-
-  it('drops the season from the slug when there is none, leaving the date alone', () => {
-    const { container } = draw(snapshot(null, { seasonActive: false, seasonName: null }));
-    expect(container.querySelector('.cn-slug')).toHaveTextContent('Tuesday 8 September');
-    expect(container.querySelector('.cn-slug')?.textContent).not.toContain('·');
   });
 
   it('puts the no-season line directly under the status strip, not at the foot of the page', () => {
@@ -156,11 +159,7 @@ describe('filling: the lobby is open', () => {
   it('counts the people around and seats them in join order with their ratings', () => {
     const { container } = draw(snapshot(lobbyView({ members: workedMembers(3) })));
 
-    expect(strip(container)).toEqual([
-      'Tuesday 8 September · Season 1',
-      '3 IN THE LOBBY live',
-      'Seven more to go.',
-    ]);
+    expect(strip(container)).toEqual(['Tuesday 8 September', '3 IN THE LOBBY live', 'Seven more to go.']);
     const rows = [...container.querySelectorAll('.cn-rack-row')];
     expect(rows.slice(0, 3).map((row) => row.textContent)).toEqual([
       'Bilaladc · mid1713',

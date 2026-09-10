@@ -10,6 +10,7 @@ import { sortBoardRows } from './order';
 import { recentGames } from './recent';
 import { currentStreak } from './streak';
 import type { BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate, RoleRecord } from './types';
+import { windowRangeLabel } from './window';
 
 /**
  * Everything `/leaderboard` and `/p/[puuid]` show, read with the **anon key** (M3.5).
@@ -115,11 +116,19 @@ export async function loadBoard(client: PublicClient, options: BoardOptions): Pr
   const season = await selectSeasonId(client);
   // No season row means no games — `games.season_id` is not null — so there is nothing to put
   // on any window. The page prints the window's empty line, which is true and is enough.
-  if (season === null) return { window, rows: [] };
+  if (season === null) return { window, rows: [], range: null, games: 0 };
+
+  const range = windowRange(window, options.now ?? new Date(), options.timeZone);
+  const facts = await loadWindowFacts(client, season, window, range);
+  // The slot: the range and the count, or the window's empty sentence when there is nothing to
+  // count. `range` is `null` for the empty case, which is what the view branches on.
+  const slot = {
+    range: facts.games === 0 ? null : windowRangeLabel(window, range, facts.firstCountedAt, options.timeZone),
+    games: facts.games,
+  };
 
   if (window !== 'all-time') {
-    const range = windowRange(window, options.now ?? new Date(), options.timeZone);
-    return { window, rows: sortBoardRows(await windowRows(client, season, range)) };
+    return { window, ...slot, rows: sortBoardRows(await windowRows(client, season, range)) };
   }
 
   const [players, ratings, results] = await Promise.all([
@@ -149,7 +158,63 @@ export async function loadBoard(client: PublicClient, options: BoardOptions): Pr
     };
   });
 
-  return { window, rows: sortBoardRows(rows) };
+  return { window, ...slot, rows: sortBoardRows(rows) };
+}
+
+/**
+ * The two facts the header slot is made of: how many counted games the window holds, and — for
+ * `All time` — the day the first of them was played (M5.12, the designer's slot).
+ *
+ * **A counted game is a game with a rated scoreboard row**, and the count is of *games*, not of
+ * rows: PostgREST's `count: 'exact'` over a `!inner` embed counts the parent, which is exactly
+ * the number the slot wants (checked against the local stack, 2026-09-10: 35 games behind 350
+ * rated rows).
+ *
+ * It is a second read rather than a count taken off the rows a window already loads, so that
+ * `All time` — which reads no games at all — and the four windows get their number from one
+ * definition instead of two.
+ */
+async function loadWindowFacts(
+  client: PublicClient,
+  seasonId: string,
+  window: WindowKind,
+  range: WindowRange,
+): Promise<{ games: number; firstCountedAt: Date | null }> {
+  const games = await countCountedGames(client, seasonId, range);
+  if (games === 0 || window !== 'all-time') return { games, firstCountedAt: null };
+  return { games, firstCountedAt: await firstCountedGameAt(client, seasonId) };
+}
+
+async function countCountedGames(
+  client: PublicClient,
+  seasonId: string,
+  range: WindowRange,
+): Promise<number> {
+  let query = client
+    .from('games')
+    .select('id, game_players!inner(mu_after)', { count: 'exact', head: true })
+    .eq('season_id', seasonId)
+    .not('game_players.mu_after', 'is', null);
+  query = withRange(query, 'started_at', range);
+
+  const { count, error } = await query;
+  if (error) throw new Error(`board: counting the window's games failed: ${error.message}`);
+  return count ?? 0;
+}
+
+/** The oldest counted game there is: `All time`'s `Since 8 Sep 2025`. */
+async function firstCountedGameAt(client: PublicClient, seasonId: string): Promise<Date | null> {
+  const { data, error } = await client
+    .from('games')
+    .select('started_at, game_players!inner(mu_after)')
+    .eq('season_id', seasonId)
+    .not('game_players.mu_after', 'is', null)
+    .order('started_at', { ascending: true })
+    .limit(1);
+  if (error) throw new Error(`board: first game lookup failed: ${error.message}`);
+
+  const startedAt = data?.[0]?.started_at;
+  return startedAt === undefined ? null : new Date(startedAt);
 }
 
 /**
@@ -297,6 +362,7 @@ export async function loadPlayerBoard(
       puuid: player.puuid,
       name: player.name,
       window,
+      range: null,
       rating: displayRating(seeded.mu),
       proven: provenRating(seeded),
       games: 0,
@@ -372,6 +438,20 @@ export async function loadPlayerBoard(
     puuid: player.puuid,
     name: player.name,
     window,
+    /**
+     * **The window's range, dated from this player's own history on `All time`** — the page is
+     * a person, and `Since 8 Sep 2025` there means since *their* first counted game, not the
+     * group's. A week or a month is a calendar fact and is the same on every page.
+     */
+    range:
+      counted === 0
+        ? null
+        : windowRangeLabel(
+            window,
+            range,
+            first === undefined ? null : new Date(first.game.startedAt),
+            options.timeZone,
+          ),
     rating: displayRating(rating.mu),
     proven: provenRating(rating),
     games: counted,
