@@ -35,6 +35,7 @@ import { CompanionCard, HowThisWorksCard } from '../_shell/HowThisWorks';
 import { RerollControl } from './RerollControl';
 import { RoleTonight } from './RoleTonight';
 import { SeatRack } from './SeatRack';
+import { SideLine } from './SideLine';
 import { StartLobby } from './StartLobby';
 
 /**
@@ -314,6 +315,14 @@ function TeamsBlock({
         <TeamCard side="blue" seats={teams.blue} viewerPuuid={viewer.puuid} />
         <TeamCard side="red" seats={teams.red} viewerPuuid={viewer.puuid} />
       </div>
+      {/*
+       * The side line (M4.7 (b)), in **`balanced` only** (product, 2026-09-11): once the game has
+       * launched there is no lobby to move in, and `Move to your side in the lobby.` names a room
+       * that no longer exists. The same rule M4.10's line one element down follows, for the same
+       * reason — and `teams` also draws a **finished** game the fold did not rate, with the teams
+       * still up under `GAME OVER`, which the status gate rules out too.
+       */}
+      {lobby.status === 'balanced' ? <SideLine /> : null}
       <Explanation
         lobby={lobby}
         teams={teams}

@@ -127,6 +127,17 @@ if (stack === null) {
     other: '',
   };
   const gameIds: string[] = [];
+  /**
+   * Seven more seats, so the two `All time` games below are **ten-row games**.
+   *
+   * Since M5.21 the board's streak is folded over the games `gateGame` counts — ten rows, five
+   * a side — which is the same universe `/p/[puuid]` folds. A three-row fixture game is not a
+   * game the pipeline can produce, so a streak read off one would be asserting against a state
+   * that cannot exist. These fill the seats nothing asserts on: no `ratings` row, no name in
+   * any expectation but the lineup of Zoe's own side.
+   */
+  const fillerPuuids = Array.from({ length: 7 }, (_, index) => `it-${runId}-fil${index}`);
+  const fillerIds: string[] = [];
 
   beforeAll(async () => {
     const { data: season } = await db.from('seasons').select('id').eq('is_active', true).maybeSingle();
@@ -142,6 +153,12 @@ if (stack === null) {
         { puuid: puuid.ali, display_name: 'Ali', rank_tier: 'GOLD', rank_division: 'IV' },
         { puuid: puuid.weekly, display_name: 'Wren', rank_tier: 'GOLD', rank_division: 'IV' },
         { puuid: puuid.other, display_name: 'Otto', rank_tier: 'GOLD', rank_division: 'IV' },
+        ...fillerPuuids.map((id, index) => ({
+          puuid: id,
+          display_name: `Fil${index}`,
+          rank_tier: 'GOLD',
+          rank_division: 'IV',
+        })),
       ])
       .select('id, puuid');
     expect(error).toBeNull();
@@ -151,6 +168,11 @@ if (stack === null) {
       if (row.puuid === puuid.ali) playerIds.ali = row.id;
       if (row.puuid === puuid.weekly) playerIds.weekly = row.id;
       if (row.puuid === puuid.other) playerIds.other = row.id;
+    }
+    // In the order they were asked for, so a seat's role below is the same seat every run.
+    for (const id of fillerPuuids) {
+      const row = (players ?? []).find((player) => player.puuid === id);
+      fillerIds.push(row?.id ?? '');
     }
 
     // Two of the three have a rating row; the nameless one is seeded from rank in memory, the
@@ -187,8 +209,23 @@ if (stack === null) {
     });
 
     for (const [index, game] of [
-      { winning_side: 100, minutesAgo: 60, zoeRole: 'top', muBefore: 25, muAfter: 25.6 },
-      { winning_side: 200, minutesAgo: 20, zoeRole: 'mid', muBefore: 25.6, muAfter: 25.2 },
+      {
+        winning_side: 100,
+        minutesAgo: 60,
+        zoeRole: 'top',
+        // The three lanes Zoe and the nameless seat leave on blue, in seat order.
+        blueRoles: ['mid', 'adc', 'support'],
+        muBefore: 25,
+        muAfter: 25.6,
+      },
+      {
+        winning_side: 200,
+        minutesAgo: 20,
+        zoeRole: 'mid',
+        blueRoles: ['top', 'adc', 'support'],
+        muBefore: 25.6,
+        muAfter: 25.2,
+      },
     ].entries()) {
       const { data: row } = await db
         .from('games')
@@ -232,6 +269,25 @@ if (stack === null) {
         // On Zoe's side and never rated: the lineup still prints them, and they still have no
         // games of their own.
         { game_id: gameId, player_id: playerIds.nameless, side: 100, role: 'jungle' },
+        // The other seven seats, so this is a game the gate counts. Rated flat at 25, so they
+        // move nobody's numbers and appear in no assertion but Zoe's own lineup.
+        ...fillerIds.map((id, seat) => ({
+          game_id: gameId,
+          player_id: id,
+          side: seat < 3 ? 100 : 200,
+          role: (seat < 3
+            ? (game.blueRoles[seat] as string)
+            : (['top', 'jungle', 'mid', 'adc'][seat - 3] as string)) as
+            | 'top'
+            | 'jungle'
+            | 'mid'
+            | 'adc'
+            | 'support',
+          mu_before: 25,
+          sigma_before: 5,
+          mu_after: 25,
+          sigma_after: 5,
+        })),
       ]);
     }
 
@@ -289,7 +345,7 @@ if (stack === null) {
     if (gameIds.length > 0) await db.from('games').delete().in('id', gameIds);
     // The splits go with it: `splits.lobby_id` cascades.
     if (lobbyId !== '') await db.from('lobbies').delete().eq('id', lobbyId);
-    const ids = Object.values(playerIds).filter((id) => id !== '');
+    const ids = [...Object.values(playerIds), ...fillerIds].filter((id) => id !== '');
     if (ids.length > 0) {
       await db.from('ratings').delete().in('player_id', ids);
       await db.from('players').delete().in('id', ids);
@@ -323,7 +379,16 @@ if (stack === null) {
       const board = await loadBoard(anon, ALL_TIME);
       const seeded = board.rows.find((row) => row.puuid === puuid.nameless);
 
-      expect(seeded).toMatchObject({ name: null, games: 0, wins: 0, streak: null, settling: true });
+      expect(seeded).toMatchObject({ name: null, games: 0, wins: 0, settling: true });
+      /**
+       * **The rated-vs-counted seam, pinned** (M5.21). This player sat on Zoe's side in both
+       * games and the fold rated neither of their rows, so `ratings` says `0 games · 0W 0L`
+       * while the streak — folded over the games the *gate* counts, exactly as `/p/[puuid]`
+       * folds them — says they lost the last one. It is the state a backfill leaves behind
+       * until `rebuild-ratings` runs, and it is documented rather than papered over: a row
+       * whose streak was read from a second, narrower universe was the defect M5.21 removed.
+       */
+      expect(seeded?.streak).toEqual({ kind: 'L', length: 1 });
     });
 
     it('renders the nameless row as `Someone`, with the hint once and no puuid', async () => {
@@ -511,9 +576,17 @@ if (stack === null) {
       expect(player.recent).toHaveLength(2);
       expect(player.recent[0]?.won).toBe(false);
       expect(player.recent[1]?.won).toBe(true);
-      // Zoe's side only, in lane order, names read from `players_public` by these ids.
-      expect(player.recent[0]?.team.map((seat) => seat.role)).toEqual(['jungle', 'mid']);
-      expect(player.recent[0]?.team.map((seat) => seat.name)).toEqual([null, 'Zoe']);
+      // Zoe's side only, in lane order, names read from `players_public` by these ids. The
+      // nameless seat is the `null` at jungle; the other three are the filler seats that make
+      // this a ten-row game.
+      expect(player.recent[0]?.team.map((seat) => seat.role)).toEqual([
+        'top',
+        'jungle',
+        'mid',
+        'adc',
+        'support',
+      ]);
+      expect(player.recent[0]?.team.map((seat) => seat.name)).toEqual(['Fil0', null, 'Zoe', 'Fil1', 'Fil2']);
     });
 
     it('carries the chance the balancer gave their own side, for a game born in a lobby', async () => {

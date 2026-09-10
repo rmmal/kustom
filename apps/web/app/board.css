@@ -69,13 +69,13 @@
 }
 
 /*
- * The same strip with no rule under it, for a header with nothing beneath it to close over
- * (the designer, 2026-09-10): `/stats` on an empty window is a heading, a picker and one
- * sentence, and a hairline between the picker and that sentence draws a box around nothing.
+ * There is no bare variant of the strip. `/stats` had one — an empty window took the hairline
+ * off, because the sentence under it was the page's only block — and M5.23 moved that sentence
+ * into the slot the picker already carries, where the two board pages have always printed it.
+ * All three keep the rule on every window: the same header closes over cards on the windows
+ * that have them, and a hairline that comes and goes with the answer reads as a page that
+ * failed rather than a week that was quiet (the designer, 2026-09-11).
  */
-.cn-strip-bare {
-  border-bottom: 0;
-}
 
 .cn-strip-title {
   margin: 0;

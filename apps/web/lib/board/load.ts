@@ -1,16 +1,17 @@
 import { displayRating, type Rating, seedFromRank } from '@customs/core';
 import type { RoleValue, SideValue } from '@customs/db';
+import { inChunks } from '../chunks';
 import { readSeed, type StoredSeed, seedFor } from '../ingest/seed';
 // `LANE_ORDER` left with `roleRecord` (M5.20): `By role` is `lib/stats`' fold now.
 import { inLaneOrder } from '../laneOrder';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import { provenRating, provenSortKey } from '../ratingDisplay';
+import { loadStreaks } from '../stats/load';
 import type { PlayerName } from '../tonight/types';
 import { rankLabel, SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
 import { recentGames } from './recent';
-import { currentStreak } from './streak';
 import type { BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate } from './types';
 import { windowRangeLabel } from './window';
 
@@ -31,29 +32,17 @@ import { windowRangeLabel } from './window';
  * - **Proven is `provenRating`, once.** `ratings.ordinal` is a generated column and the index
  *   the season is sorted by, but the integer on the page comes through core, so SQL and core
  *   cannot disagree about a row's position.
- */
-
-/**
- * How far back the streak column looks: the season's most recent games, newest first.
+ * - **One streak, one window** (M5.21). The `L2` at the end of a row is `lib/stats`' fold, read
+ *   through `loadStreaks` — the same games, the same cap and the same order (`started_at`, then
+ *   `lcu_game_id`) as `/p/[puuid]`. Nothing here folds a second one.
  *
- * The streak is the run at the front of a player's history, so this only matters for somebody
- * whose whole run is older than this many games of everybody else's — roughly forty nights.
- * The cap is here because a season's `game_players` is thousands of rows and PostgREST caps a
- * response at a thousand; reading a bounded window is honest, and reading everything would be
- * silently truncated in an order nothing controls.
+ * **The seam this file still has, on purpose.** Every number on a row except the streak is
+ * counted off *rated* rows — `ratings` for `All time`, `mu_after is not null` for a window —
+ * and the streak counts what `gateGame` counts. They differ by exactly the games a backfill has
+ * landed and `rebuild-ratings` has not folded yet, so a row can read `0 games · 0W 0L · W2`
+ * until the rebuild runs (`04-decisions.md`, 2026-09-11 and 2026-09-11 (M5.21)). Closing it is
+ * a rebuild, not a read.
  */
-const STREAK_GAME_WINDOW = 200;
-
-/**
- * How many ids go in one `in (…)` list.
- *
- * **A PostgREST filter is a URL**, and a long enough `in` list is answered `414 URI too long`
- * by the gateway before Postgres sees it — which is not theoretical: reading a busy week's
- * board against a database with a few hundred players hit it on the first try (2026-09-10).
- * Ten rows a game also means ninety games is nine hundred scoreboard rows, which is the other
- * reason this number is small.
- */
-const ID_CHUNK = 90;
 
 /** `05-design.md` gives the chart the detail view underneath it; five is what fits above the fold. */
 const RECENT_GAMES = 5;
@@ -145,11 +134,22 @@ export async function loadBoard(client: PublicClient, options: BoardOptions): Pr
     return { window, ...slot, rows: sortBoardRows(await windowRows(client, season, range)) };
   }
 
-  const [players, ratings, results] = await Promise.all([
+  /**
+   * **The streak is `lib/stats`' fold, over this window** (M5.21). Not a third read of
+   * `game_players` with its own cap and its own order: `loadStreaks` is the read `/stats` and
+   * `/p/[puuid]` make, so the `L2` on a row and the `L2` on that person's own page are one
+   * computation and cannot drift. Keyed by puuid, which is the identity both sides carry.
+   *
+   * The stats read filters on the **window** and not on the season, because `/p/[puuid]`'s does
+   * not either and equality is the point. With one season — M5.14 took season creation out —
+   * `All time` and "this season" are the same list of games.
+   */
+  const [players, ratings, streaks] = await Promise.all([
     loadAllPlayers(client),
     loadRatings(client, season),
-    loadRecentResults(client, season),
+    loadStreaks(client, options),
   ]);
+  const runs = new Map(streaks.map((streak) => [streak.puuid, streak.current]));
 
   const rows: BoardRow[] = players.map((player) => {
     const stored = ratings.get(player.id);
@@ -166,7 +166,7 @@ export async function loadBoard(client: PublicClient, options: BoardOptions): Pr
       games,
       wins,
       losses: games - wins,
-      streak: currentStreak(results.get(player.id) ?? []),
+      streak: runs.get(player.puuid) ?? null,
       climb: null,
       settling: games < SETTLING_GAMES,
     };
@@ -700,22 +700,6 @@ async function loadPlayersByIds(
   return players;
 }
 
-/**
- * The unique ids, in lists short enough to be a URL. Empty in, nothing out — a caller with no
- * ids makes **no request at all**, which is what `[]` means and `undefined` does not.
- *
- * Exported for its unit test: it is two lines of arithmetic that only fails on a database
- * bigger than any test fixture, which is exactly the kind of code that ships broken.
- */
-export function inChunks(ids: readonly string[]): string[][] {
-  const unique = [...new Set(ids)];
-  const chunks: string[][] = [];
-  for (let start = 0; start < unique.length; start += ID_CHUNK) {
-    chunks.push(unique.slice(start, start + ID_CHUNK));
-  }
-  return chunks;
-}
-
 /** Names for a set of player ids, from `players_public`, for the ids being rendered. */
 async function loadNamesByPlayerId(
   client: PublicClient,
@@ -921,36 +905,4 @@ function toGameRow(row: RawGamePlayerRow): PlayerGameRow {
     muAfter: row.mu_after,
     sigmaAfter: row.sigma_after ?? null,
   };
-}
-
-/**
- * Every player's recent results, newest first, over the season's last {@link STREAK_GAME_WINDOW}
- * games. Only rated games count, so the streak is a run through the same games `ratings.games`
- * and `ratings.wins` were folded from and `13W 15L · L2` adds up.
- */
-async function loadRecentResults(client: PublicClient, seasonId: string): Promise<Map<string, boolean[]>> {
-  const games = await loadSeasonGames(client, seasonId, { limit: STREAK_GAME_WINDOW });
-  if (games.length === 0) return new Map();
-
-  const rows = await loadGameRows(
-    client,
-    games.map((game) => game.id),
-  );
-  const byGame = new Map(games.map((game) => [game.id, game]));
-  const byPlayer = new Map<string, { startedAt: string; won: boolean }[]>();
-
-  for (const row of rows) {
-    const game = byGame.get(row.gameId);
-    if (game === undefined || row.muAfter === null) continue;
-    const results = byPlayer.get(row.playerId) ?? [];
-    results.push({ startedAt: game.startedAt, won: row.side === game.winningSide });
-    byPlayer.set(row.playerId, results);
-  }
-
-  return new Map(
-    [...byPlayer].map(([playerId, results]) => [
-      playerId,
-      results.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)).map((result) => result.won),
-    ]),
-  );
 }

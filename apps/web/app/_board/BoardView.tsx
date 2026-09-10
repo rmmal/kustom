@@ -1,9 +1,10 @@
-import { LEADERBOARD_LABEL, WINDOW_EMPTY, WINDOW_LABELS, windowSlotLine } from '@/lib/board/copy';
+import { LEADERBOARD_LABEL, WINDOW_LABELS, windowSlotLine } from '@/lib/board/copy';
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
 import { isNameless } from '@/lib/tonight/copy';
 import { BoardCard } from '../_leaderboard/BoardCard';
 import { NamelessHint, SettlingNote } from './parts';
 import { WindowPicker } from './WindowPicker';
+import { WindowSlot } from './WindowSlot';
 
 /**
  * `/leaderboard` (M3.5, M3.8, M3.10; dressed for Floodlit in M3.19). A pure function of one
@@ -61,16 +62,13 @@ export function BoardView({ board, viewerPuuid }: BoardViewProps) {
          * (the designer, 2026-09-10). Not an empty page and not a spinner: one sentence, in
          * `dim`, over a board that is simply not drawn — the sentence is the whole answer.
          *
-         * One **slot**, two strings, never both: the window's dates and its game count
-         * (`Monday 1 Sep to Sunday 7 Sep · 14 games`) when there is something to count, and
-         * the window's own empty sentence when there is not. `· 0 games` is a thing no reader
-         * needs told twice.
+         * The slot itself is `WindowSlot`, shared with `/p/[puuid]` and `/stats` (M5.23): one
+         * component, so three pages under one picker cannot dress one sentence three ways.
          */}
-        {empty ? (
-          <p className="cn-empty">{WINDOW_EMPTY[board.window]}</p>
-        ) : (
-          <p className="cn-num cn-window-line">{windowSlotLine(board.range as string, board.games)}</p>
-        )}
+        <WindowSlot
+          window={board.window}
+          line={empty ? null : windowSlotLine(board.range as string, board.games)}
+        />
       </header>
 
       <section className="cn-block">
