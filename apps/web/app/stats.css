@@ -3,6 +3,11 @@
  * the window picker and the card/record recipes this page reuses. Nothing below re-declares any
  * of them: a second `.cn-strip` or `.cn-record` here would be two dresses for one idea.
  *
+ * **Two pages load it since M5.20**: the per-player sections under the rating chart on
+ * `/p/[puuid]` are the same recipes with one player in them — the block inside a card, the
+ * group label, the "not enough yet" line, the two-cell row — so they are read from this file
+ * rather than copied into `board.css` under a second set of names.
+ *
  * **This is a plain layout on purpose.** M5.4 ships correct numbers; the dress is **M5.8**'s,
  * and `05-design.md` has no `/stats` section yet. So every rule here is either a token
  * (`--cn-sp-*`, `--cn-t-*`, `--cn-dim`) or a variation on a rule the board pages already ship,
@@ -98,14 +103,46 @@
 /*
  * A ranked role row: rank, name, record. Three cells and not a table — the same grid the
  * player page's `By role` row uses, with the rank column in front of it.
+ *
+ * **Both selectors name `.cn-record` as well** (M5.20): these rows are used on `/p/[puuid]` now,
+ * where this file and `board.css` are loaded in an order neither page controls, and
+ * `.cn-record`'s own three-column default would win a tie by source order alone. Two classes
+ * beat one wherever the bundler puts them.
  */
-.cn-stats-record {
+.cn-record.cn-stats-record {
   grid-template-columns: 1.5rem 1fr auto;
 }
 
-/* A duo row and a streak row are two cells: who, and how it went. */
-.cn-stats-duo {
+/* A duo row, a partner row and a streak row are two cells: who, and how it went. */
+.cn-record.cn-stats-duo {
   grid-template-columns: 1fr auto;
+}
+
+/*
+ * A side as the subject of a row (M5.20, `/p/[puuid]`): `Blue`, `Red`.
+ *
+ * **Archivo and capitalised** (product, 2026-09-11): a side is a word this product capitalises
+ * on every surface a friend reads, so it is language and not a token — the mono lower-case
+ * register belongs to the roles alone, and `.cn-lineup-role` is a role and its icon.
+ *
+ * **In its own side's colour** (the designer, 2026-09-11): the two words are the one place on
+ * this page where a side is the subject, and `dim` on both makes them a pair of grey labels
+ * with nothing to tell them apart at a glance. The colour is on the **word** — never a tint
+ * behind the row, which is the tonight page's "which team" and a different question.
+ */
+.cn-stats-side {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cn-side-blue {
+  color: var(--cn-blue);
+}
+
+.cn-side-red {
+  color: var(--cn-red);
 }
 
 /* Mono, `dim`, and never `brand`: rank 1 on this page is not the top of the board. */

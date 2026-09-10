@@ -56,19 +56,34 @@ export const ON_A_STREAK_GAMES = 3;
  * ------------------------------------------------------------------------- */
 
 /**
- * `Blue wins 53% of the time · 214 games` (product).
+ * `Blue wins 53% of the time.` (product, 2026-09-11, M5.22 — was `… · 214 games`).
+ *
+ * **The count is gone from both group statements and the full stop arrives with its
+ * departure.** The slot above them already prints it, and all three numbers are the same
+ * number by construction — the slot's, this line's and the average's are one `countedGames`
+ * length passed from one field — so `· 214 games` here was the slot retyped a few lines under
+ * itself, which this product refuses on the other page twice already. The trailing count was
+ * also what made this a legend rather than a sentence; the card's third line
+ * ({@link playersLine}) has been a stopped sentence since M5.4.
  *
  * **The group's side rate is the only group-wide rate on this page**, and it is meaningful
  * precisely because a group-wide *role* rate is not: every game has a blue top and a red top,
  * so any group-level role rate is 50.0% by construction.
  */
-export function blueWinLine(percent: number, games: number): string {
-  return `Blue wins ${percent}% of the time · ${gamesLabel(games)}`;
+export function blueWinLine(percent: number): string {
+  return `Blue wins ${percent}% of the time.`;
 }
 
-/** `Average game 32 min · 214 games` (product). Never `0 min` — zero games prints no line. */
-export function averageGameLine(minutes: number, games: number): string {
-  return `Average game ${minutes} min · ${gamesLabel(games)}`;
+/**
+ * `Average game 32 min.` (product, 2026-09-11, M5.22 — was `… · 214 games`).
+ *
+ * The same ruling and the same stop as {@link blueWinLine}, and it makes this **byte for byte
+ * the per-player line on `/p/[puuid]`** — one function on two pages, so the answer to "why does
+ * the group's average carry a count and mine does not" is that neither does. Never `0 min`:
+ * zero counted games prints no line on either page.
+ */
+export function averageGameLine(minutes: number): string {
+  return `Average game ${minutes} min.`;
 }
 
 /**
@@ -173,6 +188,112 @@ export const NOBODY_ON_A_STREAK = `Nobody is on a streak of ${ON_A_STREAK_GAMES}
 /** `71%`. The one place a rate becomes words, so every list prints it the same way. */
 export function percentLabel(percent: number): string {
   return `${percent}%`;
+}
+
+/* ---------------------------------------------------------------------------
+ * The per-player sections on `/p/[puuid]` (M5.20).
+ *
+ * **Every string here is product's** (ruled 2026-09-11; `05-design.md`, "Copy — the per-player
+ * sections on `/p/[puuid]`"). Eight were written against the brief's "print a not-enough-yet
+ * line here": seven kept as written and became product's, and one was replaced — `blue` / `red`
+ * are `Blue` / `Red`. This file is that table's code half, the way it is for the two above it,
+ * and nothing below may be re-typed into `PlayerStats.tsx`.
+ *
+ * Everything these sections say that product **has** already written is imported and not
+ * re-worded: the window's five labels and five empty sentences, `By role`, `Streaks`,
+ * `Best together`, `Worst together`, `Longest win streak`, `Longest losing streak`, the no-role
+ * footnote, the cap line, `13W 15L`, `71%` and `W3`. One page, one vocabulary.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * `By side` — the card under `By role` on a person's page (product, 2026-09-11).
+ *
+ * The group's blue rate is `/stats`'s headline and is not repeated here, so this card is the
+ * one place in the product where a side is a record rather than a colour on a team, and it
+ * takes the same two words as the card above it: a preposition and the thing.
+ */
+export const SIDE_RECORD_HEADING = 'By side';
+
+/**
+ * `Blue` and `Red` as the two rows of that card (product, 2026-09-11, replacing the lower-case
+ * `blue` / `red` this file shipped first).
+ *
+ * **Capitalised, because every side this product prints to a friend is**: the teams embed's
+ * `Blue · 7695`, the result's `Blue was favored 54%.`, the team card's header, and `/stats`'s
+ * own `Blue wins 69% of the time.` one tab away. Roles are lower case in every surface — `top`
+ * is the word's form, not a list convention — so the mono lower-case exception stays theirs
+ * alone, and a side is **a name read as language and set in Archivo** like the partner names in
+ * the card below it.
+ *
+ * **The dress is the designer's, 2026-09-11**: the two words print in `--cn-blue` and
+ * `--cn-red` rather than `dim`, because this is the one card in the product where a side is the
+ * subject of a row rather than a team, so the colour is the content. It is **on the word**: no
+ * tint, no border, no chip — the team card's marks mean "which team" and this card is a record.
+ */
+export const SIDE_LABELS: Readonly<Record<100 | 200, string>> = { 100: 'Blue', 200: 'Red' };
+
+/**
+ * `Partners` — the card of the three best and three worst (product, 2026-09-11).
+ *
+ * `/stats` calls its own section `Duos` because every row there is a pair of other people; each
+ * row here is **one** other person, read from the page owner's side of it, and `Duos` over a
+ * list of single names would be the page asking the reader to do the subtraction. Two things
+ * with two names is not the `Leaderboard` rule broken.
+ */
+export const PARTNERS_HEADING = 'Partners';
+
+/**
+ * Nobody has reached the five (product, 2026-09-11).
+ *
+ * The shape of the page's other two "not enough yet" lines, with the minimum as a digit and
+ * `yet` because it is a running count. `them`, third person, is this page's own pronoun
+ * (M3.26): the page is about somebody who is usually not the reader.
+ */
+export const NO_PARTNERS = `Nobody has ${MIN_DUO_GAMES} games with them yet.` as const;
+
+/**
+ * The first row of `Streaks` on a person's page (product, 2026-09-11): the run ending at their
+ * most recent counted game, product's own name for it in the M5.4 brief ("**Current streak**:
+ * the run ending at their most recent counted game, printed `W3` / `L2`"), promoted to a label
+ * beside {@link LONGEST_WIN} and {@link LONGEST_LOSS}, which are already labels.
+ *
+ * It does not collide with {@link ON_A_STREAK}: that block is everyone on three or more and
+ * needs a bar to exist, this row is one person's run and prints `W1` as readily as `W8`.
+ */
+export const CURRENT_STREAK = 'Current streak';
+
+/*
+ * `playerAverageGameLine` stood here until M5.22 (2026-09-11).
+ *
+ * Product dropped the count from the group's two statements in the same pass, which makes
+ * `Average game 32 min.` the same sentence on both pages — so `/p/[puuid]` calls
+ * {@link averageGameLine} and there is no second constant to drift from it.
+ */
+
+/**
+ * `Most improved, September.` / `Most improved, week of 1 Sep.` — one line for a player who won
+ * an award in a closed window (product, `05-design.md`'s copy table, 2026-09-10).
+ *
+ * **No badge and no icon**, and no rule, no delta and no percentage: the award's own line, with
+ * all of that in it, is on `/stats` and in the Monday post. This says which award and which
+ * calendar, and the reader taps through for the rest.
+ *
+ * The label is the award's own (`MOST_IMPROVED`, `BEST_OFF_ROLE`, `CURSED_DUO`), so the three
+ * cannot drift from the block they were won in.
+ */
+export function awardWonLine(label: string, period: string): string {
+  return `${label}, ${period}.`;
+}
+
+/**
+ * `week of 1 Sep` — the second half of that line on the two week windows (product's `week of 1
+ * Sep`, from the copy table; the month form is `formatMonthName`'s `September`, unwrapped).
+ *
+ * The day is the window's own Monday, formatted on the server in the fixed locale and the
+ * configured zone like every other date on a public page.
+ */
+export function weekOfLabel(day: string): string {
+  return `week of ${day}`;
 }
 
 /* ---------------------------------------------------------------------------

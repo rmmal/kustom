@@ -244,8 +244,8 @@ if (stack === null) {
       const text = html.replace(/<[^>]*>/g, ' ');
 
       expect(text).toContain('Monday 4 May to Sunday 10 May · 6 games');
-      expect(text).toContain('Blue wins 83% of the time · 6 games');
-      expect(text).toContain('Average game 30 min · 6 games');
+      expect(text).toContain('Blue wins 83% of the time.');
+      expect(text).toContain('Average game 30 min.');
       expect(text).toContain('St0 · +212 · 1266 → 1478');
       // The puuid is in the href of every name; nothing a reader reads carries one.
       expect(html).toContain(`/p/${puuidOf('st0')}`);

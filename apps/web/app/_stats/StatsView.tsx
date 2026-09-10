@@ -124,14 +124,19 @@ export function StatsView({ stats }: StatsViewProps) {
            * The window's three facts, in one card (the designer, 2026-09-10): they are one
            * subject — what the whole group did — and three bare sentences between two cards read
            * as a gap rather than as a block. No header bar: they name themselves.
+           *
+           * **Three parallel stopped sentences, and the count is in none of them** (product,
+           * 2026-09-11, M5.22): all three numbers on this band are one `countedGames` length, so
+           * `· 32 games` beside two of them was the slot above retyped twice. The slot keeps it,
+           * byte for byte, because M5.10's Monday post is that same string.
            */}
           <section className="cn-block">
             <section className="cn-card cn-stats-lines">
               {stats.blueWinRate === null ? null : (
-                <p className="cn-stats-line">{blueWinLine(stats.blueWinRate, stats.games)}</p>
+                <p className="cn-stats-line">{blueWinLine(stats.blueWinRate)}</p>
               )}
               {stats.averageMinutes === null ? null : (
-                <p className="cn-stats-line">{averageGameLine(stats.averageMinutes, stats.games)}</p>
+                <p className="cn-stats-line">{averageGameLine(stats.averageMinutes)}</p>
               )}
               <p className="cn-stats-line">{playersLine(stats.players)}</p>
             </section>

@@ -124,12 +124,15 @@ export interface RecentGame {
   team: RecentTeammate[];
 }
 
-export interface RoleRecord {
-  role: RoleValue;
-  games: number;
-  wins: number;
-  losses: number;
-}
+/*
+ * `RoleRecord` stood here until M5.20 (2026-09-11) and is **deleted, not moved**.
+ *
+ * It was this file's own fold of `By role` over the player's *rated* rows, and M5.20 draws that
+ * section from `lib/stats` — over the counted games `gateGame` decides, with product's five-row
+ * minimum and a percentage. Keeping both would have been two records for one person on one
+ * page, disagreeing the day a backfill lands unrated (`04-decisions.md`). The type that
+ * replaces it is `PlayerRoleRecord` in `lib/stats/types.ts`.
+ */
 
 /**
  * `/p/[puuid]`, read through one window (M3.5, windowed by M5.12).
@@ -189,8 +192,6 @@ export interface PlayerBoardView {
   reference: number;
   /** The `Rating` series in `started_at` order, oldest first. Empty for no games. */
   history: number[];
-  /** Lane order, and only roles the scoreboard actually gave them, inside the window. */
-  roles: RoleRecord[];
   /** The window's last few games, rated or not (M3.23). */
   recent: RecentGame[];
 }

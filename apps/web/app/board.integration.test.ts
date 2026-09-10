@@ -41,6 +41,13 @@ if (stack === null) {
   const { PlayerView } = await import('./_board/PlayerView');
   const { NAMELESS_HINT } = await import('@/lib/tonight/copy');
   const { RATING_EXPLANATION } = await import('@/lib/board/copy');
+  /**
+   * This file is the **board's** half of `/p/[puuid]`. M5.20's sections under the chart are read
+   * through `lib/stats` and are covered against this same stack in
+   * `playerStats.integration.test.ts`, so the renders below pass the empty view and assert
+   * nothing about them.
+   */
+  const { emptyPlayerStats } = await import('@/lib/testing/boardFixtures');
 
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -459,7 +466,6 @@ if (stack === null) {
       expect(player.reference).toBe(1_500);
       expect(player.history).toEqual([1_500, 1_536, 1_512]);
       expect(player.recent).toHaveLength(2);
-      expect(player.roles.map((record) => record.games)).toEqual([2]);
     });
 
     it('is where they are today on `All time`, with the seed line back', async () => {
@@ -486,15 +492,14 @@ if (stack === null) {
   });
 
   describe('the player page with the anon key', () => {
-    it('is the two numbers, the history in started_at order, and the role record', async () => {
+    it('is the two numbers and the history in started_at order', async () => {
       const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
 
       expect(player).toMatchObject({ name: 'Zoe', rating: 1_512, proven: 912, games: 2, wins: 1 });
       // The rating carried into the first game, then out of each one: oldest first.
       expect(player.history).toEqual([1_500, 1_536, 1_512]);
-      // Lane order, from `lib/laneOrder.ts`, and only roles the scoreboard gave.
-      expect(player.roles.map((record) => record.role)).toEqual(['top', 'mid']);
-      expect(player.roles.map((record) => record.wins)).toEqual([1, 0]);
+      // `By role` moved to `lib/stats` with M5.20 and is read there — one fold of one record,
+      // over the games the rating fold counted (`playerStats.integration.test.ts`).
       // `seedFromRank('GOLD', 'IV')` is mu 23, so the reference line is 1380 — in the series'
       // own units, never the seed's ordinal.
       expect(player.reference).toBe(1_380);
@@ -522,7 +527,9 @@ if (stack === null) {
 
     it('says why each change is the size it is, in one sentence per row', async () => {
       const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
-      const text = textOf(renderToStaticMarkup(createElement(PlayerView, { player })));
+      const text = textOf(
+        renderToStaticMarkup(createElement(PlayerView, { player, stats: emptyPlayerStats() })),
+      );
 
       // Zoe was on blue, and the split the group played gave blue 58%.
       expect(text).toContain('As the 58% side.');
@@ -538,7 +545,7 @@ if (stack === null) {
 
     it('renders a nameless teammate as `Someone` and never a puuid', async () => {
       const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
-      const html = renderToStaticMarkup(createElement(PlayerView, { player }));
+      const html = renderToStaticMarkup(createElement(PlayerView, { player, stats: emptyPlayerStats() }));
 
       const text = textOf(html);
       expect(text).toContain('Someone');
