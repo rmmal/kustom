@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mintCompanionToken } from '@/lib/companionAuth';
 import { ensurePlayers } from '@/lib/ingest/players';
-import { eogBody, testGameId, testPuuids } from '@/lib/testing/fixtures';
+import { eogBody, ROLES_IN_ORDER, testGameId, testPuuids } from '@/lib/testing/fixtures';
 import { resolveLocalStack } from '@/lib/testing/localStack';
 
 /**
@@ -501,6 +501,107 @@ if (stack === null) {
       expect(gone).toBe(0);
 
       await db.from('players').delete().eq('id', strayId);
+    });
+  });
+
+  describe('inferred roles (M5.17)', () => {
+    /** The pair the fold and the rebuild both have to agree on, by puuid. */
+    async function roleRows() {
+      const { data, error } = await db
+        .from('players')
+        .select('puuid, main_role, secondary_role, roles_counted, roles_inferred_at')
+        .in('puuid', puuids)
+        .order('puuid');
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    }
+
+    it('reaches the pairs the live fold reached, rebuilds them from a wipe, and then moves nothing', async () => {
+      // Every game in this file was posted with no party id, so nothing was ever a fill and
+      // every rated game counts. The fixture gives each player the same position in all of
+      // them, which is what makes the expected answer sayable in one line.
+      const live = await roleRows();
+      expect(live).toHaveLength(10);
+      for (const row of live) {
+        const index = puuids.indexOf(row.puuid);
+        expect([row.puuid, row.main_role]).toEqual([row.puuid, ROLES_IN_ORDER[index % 5]]);
+        expect(row.roles_inferred_at).not.toBeNull();
+      }
+
+      // 1. The rebuild reads the same games and reaches the same pairs, so this file's ten are
+      //    untouched — the same claim the rating columns make two describes up.
+      //
+      //    `rolesChanged` is **not** asserted here: the recompute covers every player in the
+      //    database (M5.17), and the local stack is shared with files that leave rows behind, so
+      //    the first run of any given day may legitimately stamp somebody else's leftovers. What
+      //    is asserted is this file's rows, and then that a second run moves nothing at all.
+      const first = await rebuild();
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      expect(await roleRows()).toEqual(live);
+
+      // 2. Idempotent: with everybody stamped, a second run writes nothing anywhere, so
+      //    `roles_inferred_at` does not creep forward.
+      const second = await rebuild();
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.report.rolesChanged).toBe(0);
+      expect(await roleRows()).toEqual(live);
+
+      // 3. From scratch. Wiped pairs, and the rebuild puts them back out of the games alone —
+      //    and moves exactly the ten rows that were wiped, because everybody else still agrees.
+      await db
+        .from('players')
+        .update({ main_role: null, secondary_role: null, roles_counted: 0, roles_inferred_at: null })
+        .in('id', playerIds);
+
+      const third = await rebuild();
+      expect(third.ok).toBe(true);
+      if (!third.ok) return;
+      expect(third.report.rolesChanged).toBe(10);
+
+      const rebuilt = await roleRows();
+      expect(rebuilt.map((row) => [row.puuid, row.main_role, row.secondary_role, row.roles_counted])).toEqual(
+        live.map((row) => [row.puuid, row.main_role, row.secondary_role, row.roles_counted]),
+      );
+
+      const fourth = await rebuild();
+      expect(fourth.ok).toBe(true);
+      if (!fourth.ok) return;
+      expect(fourth.report.rolesChanged).toBe(0);
+      expect(await roleRows()).toEqual(rebuilt);
+    });
+
+    it('replaces a hand-set pair on somebody who has never played a game', async () => {
+      // The M1-era row nothing else would ever visit: no game, no rating, two roles typed in by
+      // an admin in another era. The first recompute after this task is what clears them.
+      const idlePuuid = `it-${runId}-idle`;
+      const ids = await ensurePlayers(db, [{ puuid: idlePuuid }]);
+      const idleId = ids.get(idlePuuid) as string;
+      await db
+        .from('players')
+        .update({ main_role: 'support', secondary_role: 'top', roles_counted: 0, roles_inferred_at: null })
+        .eq('id', idleId);
+
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+
+      const { data } = await db
+        .from('players')
+        .select('main_role, secondary_role, roles_counted, roles_inferred_at')
+        .eq('id', idleId)
+        .single();
+      // Flexible, which is what the balancer already does with somebody it knows nothing about,
+      // and stamped, so the next run leaves the row alone.
+      expect(data).toMatchObject({ main_role: null, secondary_role: null, roles_counted: 0 });
+      expect(data?.roles_inferred_at).not.toBeNull();
+
+      const again = await rebuild();
+      expect(again.ok).toBe(true);
+      if (!again.ok) return;
+      expect(again.report.rolesChanged).toBe(0);
+
+      await db.from('players').delete().eq('id', idleId);
     });
   });
 

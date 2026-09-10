@@ -4,11 +4,17 @@ import {
   setPlayerBackfill,
   setPlayerDiscordId,
   setPlayerDisplayName,
-  setPlayerRoles,
 } from '@/lib/admin/players';
 import type { AdminWriteResult } from '@/lib/admin/result';
 import type { AdminContext } from '@/lib/adminRoute';
 import { type AdminPlayersRequest, adminPlayersResponseSchema } from './schema';
+
+/** M5.17's refusal, for the one caller that can still reach `set-roles`: a stale open tab. */
+export const ROLES_ARE_INFERRED =
+  'Roles are worked out from the games people play, so there is nothing to set here. Reload the page to see the current pair.';
+
+/** Everything the route still does. `set-roles` is refused before this type is ever reached. */
+type LiveAction = Exclude<AdminPlayersRequest, { action: 'set-roles' }>;
 
 /**
  * Separate from `route.ts` because a Next route file may only export HTTP verbs, and the
@@ -19,6 +25,10 @@ export async function handleAdminPlayers(
   input: AdminPlayersRequest,
   context: AdminContext,
 ): Promise<NextResponse> {
+  // 410 rather than 404 or a silent success: the action existed, it is gone, and the sentence
+  // says what replaced it (M5.17).
+  if (input.action === 'set-roles') return context.fail(410, ROLES_ARE_INFERRED);
+
   const result = await runAction(input, context);
   if (!result.ok) return context.fail(result.status, result.error);
 
@@ -29,14 +39,8 @@ export async function handleAdminPlayers(
   );
 }
 
-function runAction(input: AdminPlayersRequest, context: AdminContext): Promise<AdminWriteResult<string>> {
+function runAction(input: LiveAction, context: AdminContext): Promise<AdminWriteResult<string>> {
   switch (input.action) {
-    case 'set-roles':
-      return setPlayerRoles(context.client, {
-        playerId: input.playerId,
-        mainRole: input.mainRole,
-        secondaryRole: input.secondaryRole,
-      });
     case 'set-name':
       return setPlayerDisplayName(context.client, {
         playerId: input.playerId,
@@ -66,10 +70,8 @@ function runAction(input: AdminPlayersRequest, context: AdminContext): Promise<A
   }
 }
 
-function noticeFor(input: AdminPlayersRequest): string {
+function noticeFor(input: LiveAction): string {
   switch (input.action) {
-    case 'set-roles':
-      return `roles saved: ${input.mainRole ?? 'flexible'} / ${input.secondaryRole ?? 'none'}`;
     case 'set-name':
       // Both halves matter to the admin: what the name is now, and whether the client may
       // still move it. "back on automatic" is the only way to tell a cleared field worked.

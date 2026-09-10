@@ -1,12 +1,12 @@
 import { displayRating, ordinal } from '@customs/core';
 import type { Metadata } from 'next';
 import { playerLabel, shortPuuid } from '@/lib/admin/playerName';
-import { type AdminPlayerRow, listAdminPlayers } from '@/lib/admin/players';
+import { type AdminPlayerRow, formatInferredRoles, listAdminPlayers } from '@/lib/admin/players';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
 import { AdminForm } from '../../_components/AdminForm';
-import { Empty, formatDay, Notices, RoleSelect, type SearchParams } from '../../_components/ui';
+import { Empty, formatDay, InferredRoles, Notices, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +16,12 @@ export const metadata: Metadata = {
 };
 
 /**
- * Every player, with the five things only an admin can change: the name the group uses, roles,
- * the Discord link, the admin flag and backfill approval (M5.1).
+ * Every player, with the four things only an admin can change: the name the group uses, the
+ * Discord link, the admin flag and backfill approval (M5.1).
+ *
+ * **Roles are not one of them any more** (M5.17). The column is still here and it is the only
+ * read-only one: the pair is inferred from the games that player has actually played, and the
+ * count behind it says how many games the answer rests on.
  *
  * Read with the service-role client, so `discord_id` is visible — `players_public` (what every
  * public page reads) does not carry it.
@@ -35,7 +39,8 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
         {players.length} player{players.length === 1 ? '' : 's'}. Ratings are the active season
         {season === null ? ' (none active)' : ` (${season.name})`}. A row appears on its own the first time a
         PUUID shows up in a lobby, a game or a rank report — there is no "add player". A name follows the Riot
-        ID until you set one here; clear the field to put it back on automatic.
+        ID until you set one here; clear the field to put it back on automatic. Roles are worked out from the
+        games each player has played and cannot be set by hand.
       </p>
       {/* Product's copy, verbatim (M5.1): the decision an admin is being asked to make is
           "whose PC is this", and nothing else on this page says it. */}
@@ -114,14 +119,9 @@ function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingP
       <td>{formatRank(player)}</td>
       <td>{formatRating(player)}</td>
       <td>
-        {/* Both roles are posted together, so "none" clears rather than meaning "unchanged". */}
-        <AdminForm action="/api/admin/players" kind="players">
-          <input type="hidden" name="action" value="set-roles" />
-          <input type="hidden" name="playerId" value={player.id} />
-          <RoleSelect name="mainRole" value={player.mainRole} label="main" />
-          <RoleSelect name="secondaryRole" value={player.secondaryRole} label="second" />
-          <button type="submit">Save</button>
-        </AdminForm>
+        {/* Read-only, and the only cell on this page that is (M5.17): the pair comes from the
+            games this player has played, recomputed after every rated game and every rebuild. */}
+        <InferredRoles pair={formatInferredRoles(player)} inferredAt={player.rolesInferredAt} />
       </td>
       <td>
         <AdminForm action="/api/admin/players" kind="players">

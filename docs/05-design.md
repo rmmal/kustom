@@ -802,7 +802,7 @@ placement are the designer's and are untouched.
 | rack header | `SEATS` · `<n> of 10` · `rating` | product 2026-09-09 |
 | empty seat | `open` | product 2026-09-09 |
 | all-flexible hint | `Nobody has set a role tonight, so the bot can put anyone anywhere.` | product 2026-09-09 — **changed** |
-| all-flexible hint, admin only, appended | `Set roles` (link to `/admin`) — **rendered only once M3.6 ships the control it points at** | product 2026-09-09 |
+| all-flexible hint, admin only, appended | ~~`Set roles` (link to `/admin`)~~ — **removed 2026-09-10 with M5.17**: roles are inferred from play and `/admin/players` shows them read-only, so the link pointed at nothing. The hint sentence stands alone, for everybody, admin or not | product 2026-09-09, removed by the lead 2026-09-10 (M5.17) |
 | empty lobby | *(shipped)* `Nobody in the lobby yet.` — one place only, see `sentence, 0 in` | shipped, kept |
 | past the ten | *(shipped)* `Around` | shipped, kept |
 | nameless hint | *(shipped)* `Names fill in after someone's first game.` | shipped, kept |
@@ -896,7 +896,7 @@ can act on; "an admin can" is).
 | above the list, signed in with no player | `Which one of these is you? Pick yourself once and the page knows you from now on.` | product 2026-09-09 (brief) — shipped verbatim, kept |
 | on every row of that list | `That's me` | product 2026-09-09 (brief) — shipped verbatim, kept. Straight apostrophe |
 | signed in with no player and no lobby to pick out of | `Signed in. Open the page while the lobby is up and you can pick yourself out of it.` | product 2026-09-09 (brief) — shipped verbatim, kept |
-| appended to the all-flexible hint, admin only | `Set roles` | product 2026-09-09 (the table above) — now rendered, kept |
+| appended to the all-flexible hint, admin only | ~~`Set roles`~~ — **gone 2026-09-10 (M5.17)**, with `SET_ROLES_LINK`. There is no role control to link to: the hint stands alone and the one role a friend can still choose is the card under the rack | product 2026-09-09 (the table above), removed by the lead 2026-09-10 |
 | the tap did not reach the server | `That did not reach the server. Your role is unchanged — tap it again.` | **product 2026-09-10 (M3.6)** — replaces `That did not reach the server. Your role is unchanged.` |
 | `That's me` did not reach the server | `That did not reach the server. Nothing changed — tap it again.` | **product 2026-09-10 (M3.6)** — replaces `That did not reach the server. Nothing changed.` |
 | a non-admin naming somebody else (403) | `That is not you. Only an admin can set somebody else's role.` | **product 2026-09-10 (M3.6)** — replaces `That is not your row. Only an admin can set a role for somebody else.` |

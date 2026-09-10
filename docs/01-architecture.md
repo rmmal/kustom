@@ -52,6 +52,7 @@ schema below; the listing is kept in step with it.
 seasons        (id, name, starts_at, ends_at, is_active, created_at)
 players        (id, puuid unique, summoner_id, game_name, tag_line, display_name,
                 discord_id null, is_admin, main_role, secondary_role,
+                roles_inferred_at null, roles_counted,          -- 0010, M5.17
                 rank_tier, rank_division, rank_lp, rank_updated_at, created_at)
 ratings        (player_id, season_id, mu, sigma, ordinal generated (mu - 2 * sigma) stored,
                 games, wins, updated_at)  pk (player_id, season_id), index (season_id, ordinal desc)
@@ -63,7 +64,8 @@ splits         (id, lobby_id, rank, blue jsonb, red jsonb, gap, blue_win_prob, s
 games          (id, lcu_game_id unique, lobby_id null, season_id, started_at, duration_s, winning_side,
                 source 'eog' | 'backfill', raw jsonb, created_at)
 game_players   (game_id, player_id, side, role null, champion_id, kills, deaths, assists, gold, damage_to_champs,
-                cs, mu_before null, sigma_before null, mu_after null, sigma_after null)
+                cs, mu_before null, sigma_before null, mu_after null, sigma_after null,
+                counts_for_role_inference)                      -- 0010, M5.17
 companion_tokens (id, player_id, token_hash, label, last_seen_at, revoked_at null, created_at)
 companion_commands (id, target_player_id, kind, payload jsonb, status, created_at, acked_at,
                 sent_at, attempts, result jsonb, error, expires_at)   -- 0006, M4.1
@@ -177,6 +179,16 @@ pair into the same `players.main_role` / `secondary_role` the balancer already r
 - Fewer than `config.roles.minGames = 3` counted games: `{ main: null, secondary: null }`, flexible, which the
   balancer already handles. One role only: a main and no backup, never an invented second.
 - Output carries `counted`, the number of games the answer rests on, for the admin page.
+- **Where the answer is stored** (M5.17, `0010_inferred_roles.sql`): `players.main_role` / `secondary_role`, plus
+  `roles_counted` and `roles_inferred_at`. The M1-era hand-set pair is overwritten by the first recompute.
+  `game_players.counts_for_role_inference` is the guard's input, written at fold time by the same update that
+  claims the rating columns — it defaults to true, which is the honest answer for every game we did not balance.
+- **When it runs** (`lib/ingest/roles.ts`): after a rated fold, for the ten who played, and at the end of
+  `rebuild-ratings`, for everybody with a game in the season. Nowhere else — no cron, no button, no recompute on
+  page load. It reads a player's rated games across every season, because a role is a fact about a person. Only
+  rows whose pair, count or stamp actually move are written, so a second rebuild changes nothing; a failure after
+  a rated fold is logged and swallowed, because the game is rated and the next game or rebuild fixes the pair.
+  `/admin/players` shows the pair read-only and `POST /api/admin/players` answers 410 to `set-roles`.
 
 ## Lobby lifecycle (server side)
 

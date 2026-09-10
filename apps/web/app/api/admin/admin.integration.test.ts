@@ -49,7 +49,7 @@ if (stack === null) {
   process.env.BOOTSTRAP_ADMIN_PUUID = '';
   process.env.BOOTSTRAP_ADMIN_DISCORD_ID = '';
 
-  const { handleAdminPlayers } = await import('./players/handler');
+  const { handleAdminPlayers, ROLES_ARE_INFERRED } = await import('./players/handler');
   const { adminPlayersRequestSchema } = await import('./players/schema');
   const { handleAdminTokens } = await import('./tokens/handler');
   const { adminTokensRequestSchema } = await import('./tokens/schema');
@@ -300,36 +300,24 @@ if (stack === null) {
     });
   });
 
-  describe('roles', () => {
-    it('sets both roles and clears them back to null', async () => {
-      const route = routes.players(sessionUser(adminDiscordId));
+  describe('roles are inferred, not set (M5.17)', () => {
+    it('answers 410 with a sentence and writes nothing', async () => {
+      // Somebody's roles, as a recompute would have left them. The route must not touch them.
+      await db
+        .from('players')
+        .update({ main_role: 'jungle', secondary_role: 'mid', roles_counted: 12 })
+        .eq('id', memberPlayerId);
 
-      const set = await route(
-        post({ action: 'set-roles', playerId: memberPlayerId, mainRole: 'jungle', secondaryRole: 'mid' }),
+      const response = await routes.players(sessionUser(adminDiscordId))(
+        post({ action: 'set-roles', playerId: memberPlayerId, mainRole: 'top', secondaryRole: null }),
       );
-      expect(set.status).toBe(200);
+
+      expect(response.status).toBe(410);
+      await expect(response.json()).resolves.toEqual({ ok: false, error: ROLES_ARE_INFERRED });
       expect(await playerRow(memberPlayerId)).toMatchObject({
         main_role: 'jungle',
         secondary_role: 'mid',
       });
-
-      // The point of M1.6: a null main role means flexible, and there has to be a way back.
-      const cleared = await route(
-        post({ action: 'set-roles', playerId: memberPlayerId, mainRole: '', secondaryRole: null }),
-      );
-      expect(cleared.status).toBe(200);
-      expect(await playerRow(memberPlayerId)).toMatchObject({
-        main_role: null,
-        secondary_role: null,
-      });
-    });
-
-    it('refuses the same role twice', async () => {
-      const response = await routes.players(sessionUser(adminDiscordId))(
-        post({ action: 'set-roles', playerId: memberPlayerId, mainRole: 'top', secondaryRole: 'top' }),
-      );
-
-      expect(response.status).toBe(400);
     });
   });
 

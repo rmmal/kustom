@@ -1,8 +1,9 @@
-import { type Rating, seedFromRank } from '@customs/core';
+import { type Rating, type Role, seedFromRank } from '@customs/core';
 import type { RatingInsert, SideValue } from '@customs/db';
 import { PLAYERS_PER_GAME } from '../lobbyState';
 import type { ServiceClient } from '../supabase';
 import { type FoldSkipReason, foldGame, gateGame, mustGet } from './fold';
+import { recomputeInferredRoles, roleInferenceFlags } from './roles';
 
 /**
  * The rating fold (M2.5): what an end-of-game block does to the leaderboard.
@@ -30,6 +31,9 @@ interface GamePlayerRow {
   muAfter: number | null;
   rankTier: string | null;
   rankDivision: string | null;
+  /** The pair at fold time, which is what the role guard is measured against (M5.17). */
+  mainRole: Role | null;
+  secondaryRole: Role | null;
 }
 
 /**
@@ -80,16 +84,28 @@ export async function rateStoredGame(client: ServiceClient, gameId: string): Pro
 
   const after = foldGame(blueRows, redRows, before, game.winningSide);
 
+  // The feedback-loop guard (M5.17), decided here because here is the only place it is
+  // knowable: the recompute at the bottom of this function is about to move the very roles it
+  // is measured against. `false` for the players the balancer filled; everyone else keeps the
+  // column's `true`.
+  const roleFlags = await roleInferenceFlags(client, game.lobbyId, rows);
+
   // The claim is the null rating column, not a new column: whoever writes the first row owns
   // the fold. Two companions post the same game and both requests get this far; the loser's
   // update matches nothing and it stops here, having changed nothing.
   const ordered = [...rows].sort((a, b) => (a.playerId < b.playerId ? -1 : 1));
   let claimed = 0;
   for (const row of ordered) {
-    const wrote = await writeRatingColumns(client, gameId, row.playerId, {
-      before: mustGet(before, row.playerId),
-      after: mustGet(after, row.playerId),
-    });
+    const wrote = await writeRatingColumns(
+      client,
+      gameId,
+      row.playerId,
+      {
+        before: mustGet(before, row.playerId),
+        after: mustGet(after, row.playerId),
+      },
+      roleFlags.get(row.playerId) ?? true,
+    );
     if (wrote) claimed += 1;
     else if (claimed === 0) {
       // The first row was already written: this game has been rated. Nothing else is touched,
@@ -108,6 +124,19 @@ export async function rateStoredGame(client: ServiceClient, gameId: string): Pro
 
   await applyRatings(client, game.seasonId, game.winningSide, rows, after, stored);
 
+  // The ten who played, and nobody else (M5.17). Deliberately not fatal: the game is rated and
+  // the numbers are right, and a pair that failed to move is fixed by the next game these
+  // people play or by the next `rebuild-ratings`. Failing here would 500 a post whose retry
+  // answers `already-rated` and never reaches this line again.
+  try {
+    await recomputeInferredRoles(
+      client,
+      rows.map((row) => row.playerId),
+    );
+  } catch (error) {
+    console.error(`rating: game ${gameId} rated, but the role recompute failed`, error);
+  }
+
   return { rated: true, reason: null, claimed };
 }
 
@@ -115,25 +144,34 @@ interface StoredGame {
   seasonId: string;
   durationS: number;
   winningSide: SideValue;
+  /** Null for a backfilled game and for a game played from no lobby: nobody was filled. */
+  lobbyId: string | null;
 }
 
 async function selectGame(client: ServiceClient, gameId: string): Promise<StoredGame> {
   const { data, error } = await client
     .from('games')
-    .select('season_id, duration_s, winning_side')
+    .select('season_id, duration_s, winning_side, lobby_id')
     .eq('id', gameId)
     .single();
   if (error) throw new Error(`rating: game select failed: ${error.message}`);
   if (data.winning_side !== 100 && data.winning_side !== 200) {
     throw new Error(`rating: game ${gameId} has no winning side`);
   }
-  return { seasonId: data.season_id, durationS: data.duration_s, winningSide: data.winning_side };
+  return {
+    seasonId: data.season_id,
+    durationS: data.duration_s,
+    winningSide: data.winning_side,
+    lobbyId: data.lobby_id,
+  };
 }
 
 async function selectGamePlayers(client: ServiceClient, gameId: string): Promise<GamePlayerRow[]> {
   const { data, error } = await client
     .from('game_players')
-    .select('player_id, side, mu_after, players!inner(puuid, rank_tier, rank_division)')
+    .select(
+      'player_id, side, mu_after, players!inner(puuid, rank_tier, rank_division, main_role, secondary_role)',
+    )
     .eq('game_id', gameId);
   if (error) throw new Error(`rating: game_players select failed: ${error.message}`);
 
@@ -146,6 +184,8 @@ async function selectGamePlayers(client: ServiceClient, gameId: string): Promise
       muAfter: row.mu_after,
       rankTier: row.players.rank_tier,
       rankDivision: row.players.rank_division,
+      mainRole: row.players.main_role,
+      secondaryRole: row.players.secondary_role,
     }));
 }
 
@@ -176,14 +216,18 @@ async function selectRatings(
 }
 
 /**
- * One row's four rating columns, guarded by `mu_after is null`. `false` means somebody else
- * has already written it.
+ * One row's four rating columns and the role guard, guarded by `mu_after is null`. `false` means
+ * somebody else has already written it.
+ *
+ * `counts_for_role_inference` rides along with the claim rather than in a pass of its own, so
+ * the row that lost the race writes neither and the winner writes both (M5.17).
  */
 async function writeRatingColumns(
   client: ServiceClient,
   gameId: string,
   playerId: string,
   ratings: { before: Rating; after: Rating },
+  countsForRoleInference: boolean,
 ): Promise<boolean> {
   const { data, error } = await client
     .from('game_players')
@@ -192,6 +236,7 @@ async function writeRatingColumns(
       sigma_before: ratings.before.sigma,
       mu_after: ratings.after.mu,
       sigma_after: ratings.after.sigma,
+      counts_for_role_inference: countsForRoleInference,
     })
     .eq('game_id', gameId)
     .eq('player_id', playerId)

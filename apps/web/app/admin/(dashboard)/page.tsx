@@ -63,8 +63,8 @@ export default async function AdminIndexPage({ searchParams }: { searchParams: P
       <h2>Pages</h2>
       <ul>
         <li>
-          <Link href="/admin/players">Players</Link> — roles (including back to flexible), Discord links,
-          admin flags
+          <Link href="/admin/players">Players</Link> — names, Discord links, admin flags, backfill approval.
+          Roles are read-only: they are worked out from the games people play
         </li>
         <li>
           <Link href="/admin/tokens">Companion tokens</Link> — mint and revoke

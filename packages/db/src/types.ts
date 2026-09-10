@@ -176,6 +176,7 @@ export type Database = {
         Row: {
           assists: number
           champion_id: number | null
+          counts_for_role_inference: boolean
           cs: number
           damage_to_champs: number
           deaths: number
@@ -193,6 +194,7 @@ export type Database = {
         Insert: {
           assists?: number
           champion_id?: number | null
+          counts_for_role_inference?: boolean
           cs?: number
           damage_to_champs?: number
           deaths?: number
@@ -210,6 +212,7 @@ export type Database = {
         Update: {
           assists?: number
           champion_id?: number | null
+          counts_for_role_inference?: boolean
           cs?: number
           damage_to_champs?: number
           deaths?: number
@@ -420,6 +423,8 @@ export type Database = {
           rank_updated_at: string | null
           role_tonight: Database["public"]["Enums"]["player_role"] | null
           role_tonight_until: string | null
+          roles_counted: number
+          roles_inferred_at: string | null
           secondary_role: Database["public"]["Enums"]["player_role"] | null
           summoner_id: string | null
           tag_line: string | null
@@ -441,6 +446,8 @@ export type Database = {
           rank_updated_at?: string | null
           role_tonight?: Database["public"]["Enums"]["player_role"] | null
           role_tonight_until?: string | null
+          roles_counted?: number
+          roles_inferred_at?: string | null
           secondary_role?: Database["public"]["Enums"]["player_role"] | null
           summoner_id?: string | null
           tag_line?: string | null
@@ -462,6 +469,8 @@ export type Database = {
           rank_updated_at?: string | null
           role_tonight?: Database["public"]["Enums"]["player_role"] | null
           role_tonight_until?: string | null
+          roles_counted?: number
+          roles_inferred_at?: string | null
           secondary_role?: Database["public"]["Enums"]["player_role"] | null
           summoner_id?: string | null
           tag_line?: string | null
@@ -679,6 +688,8 @@ export type Database = {
           rank_lp: number | null
           rank_tier: string | null
           rank_updated_at: string | null
+          roles_counted: number
+          roles_inferred_at: string | null
           secondary_role: Database["public"]["Enums"]["player_role"] | null
           summoner_id: string | null
           tag_line: string | null

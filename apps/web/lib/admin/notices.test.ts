@@ -24,13 +24,10 @@ const reroll = handler('lobbies/[lobbyId]/reroll/handler.ts');
 describe('players', () => {
   const notice = (values: Record<string, string>) => adminNotice('players', values, { ok: true });
 
-  it('says what a role save did, and that an empty main role is flexible', () => {
-    expect(notice({ action: 'set-roles', mainRole: 'mid', secondaryRole: 'top' })).toBe(
-      'roles saved: mid / top',
-    );
-    expect(notice({ action: 'set-roles', mainRole: '', secondaryRole: '' })).toBe(
-      'roles saved: flexible / none',
-    );
+  it('has nothing to say about a role save, because there is no longer one (M5.17)', () => {
+    // The action is retired: it answers 410 and the page prints the route's own sentence, so
+    // this file must not compose a receipt for a write that never happens.
+    expect(notice({ action: 'set-roles', mainRole: 'mid', secondaryRole: 'top' })).toBe('saved');
   });
 
   it('says both halves of a name save: what it is now, and whether the client may move it', () => {
@@ -53,7 +50,6 @@ describe('players', () => {
 
   it('says the same words the route says', () => {
     for (const sentence of [
-      'roles saved: ',
       'name cleared: it follows the Riot ID again',
       'name saved: ',
       'Discord id cleared',

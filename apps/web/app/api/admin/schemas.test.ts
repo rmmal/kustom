@@ -13,7 +13,10 @@ import { adminTokensRequestSchema } from './tokens/schema';
 const PLAYER = '11111111-1111-4111-8111-111111111111';
 
 describe('adminPlayersRequestSchema', () => {
-  it('clears a main role back to null from an empty form field', () => {
+  it('still parses a stale tab\u2019s role post, so the route can refuse it in words (M5.17)', () => {
+    // The action is retired and the handler answers 410. The variant stays parseable because a
+    // browser that has had the page open since before the deploy is the one caller left, and
+    // `that form was not valid` would tell them nothing true.
     const parsed = adminPlayersRequestSchema.parse({
       action: 'set-roles',
       playerId: PLAYER,
@@ -21,42 +24,14 @@ describe('adminPlayersRequestSchema', () => {
       secondaryRole: 'none',
     });
 
-    expect(parsed).toEqual({
-      action: 'set-roles',
-      playerId: PLAYER,
-      mainRole: null,
-      secondaryRole: null,
-    });
-  });
-
-  it('takes real nulls from a JSON caller', () => {
-    const parsed = adminPlayersRequestSchema.parse({
-      action: 'set-roles',
-      playerId: PLAYER,
-      mainRole: null,
-      secondaryRole: 'support',
-    });
-
-    expect(parsed).toMatchObject({ mainRole: null, secondaryRole: 'support' });
-  });
-
-  it('rejects a role that is not one of the five', () => {
-    const result = adminPlayersRequestSchema.safeParse({
-      action: 'set-roles',
-      playerId: PLAYER,
-      mainRole: 'carry',
-      secondaryRole: '',
-    });
-
-    expect(result.success).toBe(false);
+    expect(parsed).toMatchObject({ action: 'set-roles', playerId: PLAYER });
   });
 
   it('rejects a player id that is not a uuid', () => {
     const result = adminPlayersRequestSchema.safeParse({
-      action: 'set-roles',
+      action: 'set-name',
       playerId: 'puuid-hana',
-      mainRole: '',
-      secondaryRole: '',
+      displayName: 'Hana',
     });
 
     expect(result.success).toBe(false);
