@@ -528,37 +528,80 @@ if (stack === null) {
         expect(row.roles_inferred_at).not.toBeNull();
       }
 
-      // 1. The rebuild reads the same games and reaches the same pairs, so it writes no role
-      //    column at all — the same claim the rating columns make two describes up.
+      // 1. The rebuild reads the same games and reaches the same pairs, so this file's ten are
+      //    untouched — the same claim the rating columns make two describes up.
+      //
+      //    `rolesChanged` is **not** asserted here: the recompute covers every player in the
+      //    database (M5.17), and the local stack is shared with files that leave rows behind, so
+      //    the first run of any given day may legitimately stamp somebody else's leftovers. What
+      //    is asserted is this file's rows, and then that a second run moves nothing at all.
       const first = await rebuild();
       expect(first.ok).toBe(true);
       if (!first.ok) return;
-      expect(first.report.rolesChanged).toBe(0);
       expect(await roleRows()).toEqual(live);
 
-      // 2. From scratch. Wiped pairs, and the rebuild puts them back out of the games alone.
+      // 2. Idempotent: with everybody stamped, a second run writes nothing anywhere, so
+      //    `roles_inferred_at` does not creep forward.
+      const second = await rebuild();
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.report.rolesChanged).toBe(0);
+      expect(await roleRows()).toEqual(live);
+
+      // 3. From scratch. Wiped pairs, and the rebuild puts them back out of the games alone —
+      //    and moves exactly the ten rows that were wiped, because everybody else still agrees.
       await db
         .from('players')
         .update({ main_role: null, secondary_role: null, roles_counted: 0, roles_inferred_at: null })
         .in('id', playerIds);
 
-      const second = await rebuild();
-      expect(second.ok).toBe(true);
-      if (!second.ok) return;
-      expect(second.report.rolesChanged).toBe(10);
+      const third = await rebuild();
+      expect(third.ok).toBe(true);
+      if (!third.ok) return;
+      expect(third.report.rolesChanged).toBe(10);
 
       const rebuilt = await roleRows();
       expect(rebuilt.map((row) => [row.puuid, row.main_role, row.secondary_role, row.roles_counted])).toEqual(
         live.map((row) => [row.puuid, row.main_role, row.secondary_role, row.roles_counted]),
       );
 
-      // 3. Idempotent: a second run over an unchanged season writes nothing, so the stamp does
-      //    not creep forward either.
-      const third = await rebuild();
-      expect(third.ok).toBe(true);
-      if (!third.ok) return;
-      expect(third.report.rolesChanged).toBe(0);
+      const fourth = await rebuild();
+      expect(fourth.ok).toBe(true);
+      if (!fourth.ok) return;
+      expect(fourth.report.rolesChanged).toBe(0);
       expect(await roleRows()).toEqual(rebuilt);
+    });
+
+    it('replaces a hand-set pair on somebody who has never played a game', async () => {
+      // The M1-era row nothing else would ever visit: no game, no rating, two roles typed in by
+      // an admin in another era. The first recompute after this task is what clears them.
+      const idlePuuid = `it-${runId}-idle`;
+      const ids = await ensurePlayers(db, [{ puuid: idlePuuid }]);
+      const idleId = ids.get(idlePuuid) as string;
+      await db
+        .from('players')
+        .update({ main_role: 'support', secondary_role: 'top', roles_counted: 0, roles_inferred_at: null })
+        .eq('id', idleId);
+
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+
+      const { data } = await db
+        .from('players')
+        .select('main_role, secondary_role, roles_counted, roles_inferred_at')
+        .eq('id', idleId)
+        .single();
+      // Flexible, which is what the balancer already does with somebody it knows nothing about,
+      // and stamped, so the next run leaves the row alone.
+      expect(data).toMatchObject({ main_role: null, secondary_role: null, roles_counted: 0 });
+      expect(data?.roles_inferred_at).not.toBeNull();
+
+      const again = await rebuild();
+      expect(again.ok).toBe(true);
+      if (!again.ok) return;
+      expect(again.report.rolesChanged).toBe(0);
+
+      await db.from('players').delete().eq('id', idleId);
     });
   });
 

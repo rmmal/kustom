@@ -235,6 +235,19 @@ if (stack === null) {
       expect(onRole.length).toBe(2);
       expect(filled.length).toBe(8);
 
+      // One of the filled seats taps the role the split gave them (M3.6). The tap makes that
+      // role their main for the night, so the seat is on-role after all and the game counts —
+      // which is the whole way a player deliberately moves, as opposed to being filled.
+      const tappedSeat = seats.find((seat) => seat.puuid === filled[0]);
+      if (tappedSeat === undefined) throw new Error('no filled seat to tap');
+      const tapped = tappedSeat.puuid;
+      const { error: tapError } = await db
+        .from('lobby_members')
+        .update({ role_override: tappedSeat.role })
+        .eq('lobby_id', balanced.lobbyId)
+        .eq('player_id', playerIds[puuids.indexOf(tapped)] as string);
+      if (tapError) throw new Error(tapError.message);
+
       const response = await postGame(
         post({
           ...eogBody({
@@ -252,17 +265,23 @@ if (stack === null) {
       expect((await response.json()).rated).toBe(true);
 
       // The guard, on the row, written by the same update that claimed the rating columns.
+      const counted = new Set([...onRole, tapped]);
       const flags = await guardFlags(filledGameId);
       for (const puuid of onRole) expect([puuid, flags.get(puuid)]).toEqual([puuid, true]);
-      for (const puuid of filled) expect([puuid, flags.get(puuid)]).toEqual([puuid, false]);
+      // The tap wins over the stored pair: this seat was a fill a moment ago and is not one now.
+      expect([tapped, flags.get(tapped)]).toEqual([tapped, true]);
+      for (const puuid of filled.filter((puuid) => puuid !== tapped)) {
+        expect([puuid, flags.get(puuid)]).toEqual([puuid, false]);
+      }
 
       for (const row of await roleRows()) {
         const index = puuids.indexOf(row.puuid);
         // The hand-set `mid` is gone from all ten: the first recompute overwrites it.
         expect([row.puuid, row.main_role]).toEqual([row.puuid, ROLES_IN_ORDER[index % 5]]);
-        // Four counted games for the two the split put on their own role, three for the eight
-        // it filled — the fourth game happened to them and did not change who they are.
-        expect([row.puuid, row.roles_counted]).toEqual([row.puuid, onRole.includes(row.puuid) ? 4 : 3]);
+        // Four counted games for the two the split put on their own role and for the one who
+        // tapped, three for the seven it filled — that game happened to them and did not change
+        // who they are.
+        expect([row.puuid, row.roles_counted]).toEqual([row.puuid, counted.has(row.puuid) ? 4 : 3]);
       }
     });
   });

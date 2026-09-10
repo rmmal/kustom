@@ -30,8 +30,18 @@ import type { ServiceClient } from '../supabase';
 /** PostgREST's `max_rows`. Every select here pages; a group's history outgrows one page. */
 const PAGE_SIZE = 1000;
 
-/** Single-row updates in flight at once. Ten per game, a couple of dozen per rebuild. */
+/** Single-row updates in flight at once. Ten per game, the whole roster per rebuild. */
 const WRITE_CONCURRENCY = 10;
+
+/**
+ * Player ids per `in` list.
+ *
+ * The rebuild hands this function **every** `players.id`, so the id list is a URL that grows
+ * with the roster rather than with the game. A uuid is 38 characters inside the list, so 200 is
+ * about 7.5kB of query string — comfortably inside PostgREST's limit with the rest of the
+ * select, and the calls are made once per rebuild.
+ */
+const ID_CHUNK = 200;
 
 /** One participant, as much of them as the guard needs. */
 export interface RoleProfileRow {
@@ -199,12 +209,21 @@ export async function recomputeInferredRoles(
   return { changed: updates.length, considered: ids.length };
 }
 
+/** `[a, b, c, d]` in slices of `ID_CHUNK`, so an `in` list never outgrows a URL. */
+function chunked(ids: readonly string[]): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += ID_CHUNK) {
+    chunks.push(ids.slice(index, index + ID_CHUNK));
+  }
+  return chunks;
+}
+
 /**
  * Every rated game of these players, in the shape `inferRoles` takes.
  *
- * The player ids go in one `in` list, which is a URL: ten after a game, a couple of dozen after
- * a rebuild. It is the same shape `rating.ts` already builds and the same ceiling — a group
- * large enough to overflow it would have broken the rebuild's selects first.
+ * Chunked by id and paged inside each chunk: the rebuild asks about the whole roster, and
+ * PostgREST caps a response at `max_rows` (1000) — a silently truncated page here would be a
+ * wrong pair rather than an error.
  */
 async function selectRatedRoleGames(
   client: ServiceClient,
@@ -212,29 +231,33 @@ async function selectRatedRoleGames(
 ): Promise<Map<string, RoleGame[]>> {
   const byPlayer = new Map<string, RoleGame[]>();
 
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await client
-      .from('game_players')
-      .select('player_id, game_id, role, counts_for_role_inference, games!inner(started_at)')
-      .in('player_id', playerIds)
-      .not('mu_after', 'is', null)
-      .order('player_id', { ascending: true })
-      .order('game_id', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`roles: rated game select failed: ${error.message}`);
+  for (const chunk of chunked(playerIds)) {
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await client
+        .from('game_players')
+        .select('player_id, game_id, role, counts_for_role_inference, games!inner(started_at)')
+        .in('player_id', chunk)
+        .not('mu_after', 'is', null)
+        .order('player_id', { ascending: true })
+        .order('game_id', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw new Error(`roles: rated game select failed: ${error.message}`);
 
-    const rows = data ?? [];
-    for (const row of rows) {
-      const list = byPlayer.get(row.player_id) ?? [];
-      list.push({
-        role: row.role,
-        startedAt: row.games.started_at,
-        countsForInference: row.counts_for_role_inference,
-      });
-      byPlayer.set(row.player_id, list);
+      const rows = data ?? [];
+      for (const row of rows) {
+        const list = byPlayer.get(row.player_id) ?? [];
+        list.push({
+          role: row.role,
+          startedAt: row.games.started_at,
+          countsForInference: row.counts_for_role_inference,
+        });
+        byPlayer.set(row.player_id, list);
+      }
+      if (rows.length < PAGE_SIZE) break;
     }
-    if (rows.length < PAGE_SIZE) return byPlayer;
   }
+
+  return byPlayer;
 }
 
 interface StoredRoles {
@@ -248,21 +271,50 @@ async function selectStoredRoles(
   client: ServiceClient,
   playerIds: readonly string[],
 ): Promise<Map<string, StoredRoles>> {
-  const { data, error } = await client
-    .from('players')
-    .select('id, main_role, secondary_role, roles_counted, roles_inferred_at')
-    .in('id', playerIds);
-  if (error) throw new Error(`roles: stored role select failed: ${error.message}`);
+  const stored = new Map<string, StoredRoles>();
 
-  return new Map(
-    (data ?? []).map((row) => [
-      row.id,
-      {
+  for (const chunk of chunked(playerIds)) {
+    const { data, error } = await client
+      .from('players')
+      .select('id, main_role, secondary_role, roles_counted, roles_inferred_at')
+      .in('id', chunk);
+    if (error) throw new Error(`roles: stored role select failed: ${error.message}`);
+
+    for (const row of data ?? []) {
+      stored.set(row.id, {
         mainRole: row.main_role,
         secondaryRole: row.secondary_role,
         counted: row.roles_counted,
         inferredAt: row.roles_inferred_at,
-      },
-    ]),
-  );
+      });
+    }
+  }
+
+  return stored;
+}
+
+/**
+ * Every `players.id`, for the rebuild (M5.17).
+ *
+ * The rebuild recomputes **everybody**, not only the players with a game in the season it
+ * folded: an M1-era hand-set pair on somebody who has never played is exactly the row the
+ * brief's "overwritten by the first recompute" is about, and nothing else will ever visit it.
+ * They come out flexible with `roles_counted = 0`, which is what the balancer already does with
+ * them, and the second run writes nothing.
+ */
+export async function selectAllPlayerIds(client: ServiceClient): Promise<string[]> {
+  const ids: string[] = [];
+
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await client
+      .from('players')
+      .select('id')
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`roles: player id select failed: ${error.message}`);
+
+    const rows = data ?? [];
+    ids.push(...rows.map((row) => row.id));
+    if (rows.length < PAGE_SIZE) return ids;
+  }
 }
