@@ -55,7 +55,9 @@ const HELP = `smoke: hit every read-only LCU endpoint and save the raw responses
   --lockfile <p>    lockfile path for a non-default install
   --puuid <puuid>   also probe ranked-stats and summoner lookup for another player
   --riot-id N#TAG   also probe the alias lookup for another Riot ID
-  --game-id <id>    probe match-detail for this game instead of the newest completed custom in the history
+  --game-id <ids>   probe match-detail for this game instead of the newest completed custom in the history;
+                    comma-separated ids write the first as match-detail and the rest as match-detail--<id>
+                    overlays (the M5.18 timeline-roles cross-check reads them all)
   --out <dir>       fixtures root (default packages/lcu/fixtures)
   --live-port <n>   port of the in-game live data server (default 2999; tests point it at a dead port)
   --verbose         debug logging
@@ -198,12 +200,22 @@ async function main(): Promise<number> {
   const rows: Row[] = [];
   const envelopes: FixtureEnvelope[] = [];
   const params: Partial<Record<PathParam, string>> = {};
-  if (values['game-id']) {
-    params.gameId = values['game-id'];
+  const gameIds = (values['game-id'] ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+  if (gameIds[0] !== undefined) {
+    params.gameId = gameIds[0];
   }
 
   const probes: { endpoint: ReadEndpoint; suffix: string; overrides: Partial<Record<PathParam, string>> }[] =
     READ_ENDPOINTS.map((endpoint) => ({ endpoint, suffix: '', overrides: {} }));
+  const detailEndpoint = READ_ENDPOINTS.find((candidate) => candidate.id === 'match-detail');
+  if (detailEndpoint) {
+    for (const gameId of gameIds.slice(1)) {
+      probes.push({ endpoint: detailEndpoint, suffix: `--${gameId}`, overrides: { gameId } });
+    }
+  }
   if (values.puuid) {
     for (const id of ['ranked-stats-by-puuid', 'summoner-by-puuid', 'match-history']) {
       const endpoint = READ_ENDPOINTS.find((candidate) => candidate.id === id);

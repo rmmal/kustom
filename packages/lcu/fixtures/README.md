@@ -20,7 +20,10 @@ fixtures/
                                 the second human in the spectator slot), `--ws-cached` (ranked stats as pushed
                                 over the socket). Write the state as one or two words that name what the client
                                 was doing, never a date. An overlay taken from a WebSocket payload rather than a
-                                GET has `method: "WS"` and a `note` saying which event.
+                                GET has `method: "WS"` and a `note` saying which event. The one exception to
+                                "words": `match-detail--<gameId>.json`, written by `smoke --game-id a,b,c` for
+                                every id after the first, because a game's id is its name (M5.18: the
+                                `timeline-roles` cross-check reads every `match-detail*.json`).
     live-client-data.json       the in-game live data server (port 2999), only meaningful when captured mid-game
     ws-events.ndjson            one JSON object per line: { ts, topic, uri, eventType, data }
                                 or { ts, topic, uri, eventType, redacted: true } for sensitive URIs (no data)

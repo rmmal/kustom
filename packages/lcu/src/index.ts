@@ -70,6 +70,7 @@ export {
   isEogBot,
   isLobbyBot,
   type MapEogOptions,
+  type MapMatchDetailOptions,
   type MapRankOptions,
   mapEog,
   mapLobby,
@@ -80,6 +81,7 @@ export {
   nameFromSummoner,
   RANK_QUEUE,
   type RiotIdName,
+  type UnmappedTimelinePair,
 } from './mapper.js';
 export {
   type CommandLineCredentials,
@@ -199,6 +201,21 @@ export {
   topicForUri,
   unsubscribeMessage,
 } from './socket.js';
+export {
+  crossCheckTimelineRoles,
+  EOG_STATS_BLOCK_URI,
+  formatTimelineConfusion,
+  MATCH_TIMELINE_ROLES,
+  type MatchTimeline,
+  matchTimelineKey,
+  readTimelineEvidence,
+  roleFromMatchTimeline,
+  type TimelineConfusionRow,
+  type TimelineCrossCheck,
+  type TimelineEvidence,
+  type TimelineObservation,
+  timelinePairsSeen,
+} from './timelineRoles.js';
 export {
   DEFAULT_TLS_MODE,
   describeTlsMode,

@@ -45,6 +45,7 @@ import {
   mapMatchDetail,
   matchHistoryPagePath,
   readEndpoint,
+  type UnmappedTimelinePair,
 } from '@customs/lcu';
 import { z } from 'zod';
 import { type ApiClient, failureFields } from './api.js';
@@ -253,6 +254,8 @@ export class Backfill {
   private lastDetailAt = 0;
   private walkFailures: { begIndex: number; count: number } | null = null;
   private readonly loggedDrops = new Set<number>();
+  /** `timeline.lane+role` pairs already reported as unmapped (M5.18): one line per distinct pair per process. */
+  private readonly loggedTimelinePairs = new Set<string>();
   private noPlayerLogged = false;
   private readonly history: PassSummary[] = [];
 
@@ -793,7 +796,9 @@ export class Backfill {
       this.drop(gameId, `not a completed game (${detail.endOfGameResult})`, 'info');
       return 'dropped';
     }
-    const payload: CompanionGameEogPayloadInput = mapMatchDetail(detail);
+    const payload: CompanionGameEogPayloadInput = mapMatchDetail(detail, {
+      onUnmappedRole: (pair) => this.noteUnmappedRole(gameId, pair),
+    });
     if (payload.participants.length !== 10) {
       this.drop(gameId, `${payload.participants.length} participants, not ten`, 'info');
       return 'dropped';
@@ -818,6 +823,23 @@ export class Backfill {
     }
     // The queue said why (one line of its own); the id is tried again next pass.
     return 'refused';
+  }
+
+  /**
+   * A `timeline.lane`/`role` pair the verified table does not know: the participant is stored with `role: null`
+   * and the pair is logged once, with its values and the first game it was seen in, so the next fixture pass
+   * (`pnpm --filter @customs/lcu timeline-roles`) knows what to look for (M5.18).
+   */
+  private noteUnmappedRole(gameId: number, pair: UnmappedTimelinePair): void {
+    if (this.loggedTimelinePairs.has(pair.key)) {
+      return;
+    }
+    this.loggedTimelinePairs.add(pair.key);
+    this.logger.info('backfill: timeline pair has no verified role; stored as null', {
+      gameId,
+      lane: pair.lane,
+      role: pair.role,
+    });
   }
 
   private drop(gameId: number, reason: string, level: DropLevel): void {

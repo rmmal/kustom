@@ -460,6 +460,31 @@ describe('Backfill: the walk', () => {
     expect(restarted.backfill.passes[0]).toMatchObject({ end: 'done', fetched: 3, queued: 3 });
   });
 
+  it('logs each timeline.lane/role pair the table does not know once per process, not once per game (M5.18)', async () => {
+    const unknown = [FIXTURE_CUSTOMS[0] as number, FIXTURE_CUSTOMS[5] as number];
+    const h = await setup({
+      scanResponses: [scanOk(unknown)],
+      lcuRoutes: Object.fromEntries(unknown.map((id) => [detailRoute(id), detailFor(id)])),
+    });
+    await pass(h);
+
+    expect(h.gamePosts()).toHaveLength(2);
+    const lines = h.logger.lines.filter(
+      (line) => line.message === 'backfill: timeline pair has no verified role; stored as null',
+    );
+    // The fixture detail carries six distinct pairs across its ten participants; two games, still six lines.
+    const pairs = lines.map((line) => `${line.fields.lane}+${line.fields.role}`).sort();
+    expect(pairs).toEqual([
+      'BOTTOM+CARRY',
+      'BOTTOM+SOLO',
+      'BOTTOM+SUPPORT',
+      'JUNGLE+NONE',
+      'MIDDLE+SOLO',
+      'TOP+SOLO',
+    ]);
+    expect(lines.every((line) => line.level === 'info' && line.fields.gameId === unknown[0])).toBe(true);
+  });
+
   it('writes a cache file that parses, with tmp-and-rename (no .tmp left behind)', async () => {
     const h = await setup({ scanResponses: [scanOk([])] });
     await pass(h);

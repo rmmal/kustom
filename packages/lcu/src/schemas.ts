@@ -236,7 +236,13 @@ export const MatchParticipantStatsSchema = z.looseObject({
 });
 export type MatchParticipantStats = z.infer<typeof MatchParticipantStatsSchema>;
 
-/** Verified 16.17. `timeline.role`/`lane` are the server's guess (`SOLO`/`NONE`, `NONE`/`JUNGLE`), not reliable. */
+/**
+ * Verified 16.17. `timeline.lane`/`timeline.role` are the server's guess in the match-v4 vocabulary (lane
+ * `TOP`/`JUNGLE`/`MIDDLE`/`BOTTOM`/`NONE`, role `SOLO`/`NONE`/`CARRY`/`SUPPORT`/`DUO` seen on 16.17) and are
+ * wrong for 3 of the 10 participants of the one full custom in the fixtures; `roleFromMatchTimeline`
+ * (`timelineRoles.ts`, M5.18) maps a pair only once a live capture has proved it. `spell1Id`/`spell2Id` are
+ * summoner spells (11 is Smite), read only as evidence for that table, never by the mapper.
+ */
 export const MatchParticipantSchema = z.looseObject({
   participantId: z.number().int(),
   teamId: TeamIdSchema,

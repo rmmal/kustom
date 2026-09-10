@@ -32,6 +32,7 @@ import {
   type RankedStats,
 } from './schemas.js';
 import { scrubValue } from './scrub.js';
+import { matchTimelineKey, roleFromMatchTimeline } from './timelineRoles.js';
 
 /** A Riot ID as the companion knows it: from `current-summoner` or a `summoners/puuid/{puuid}` lookup. */
 export interface RiotIdName {
@@ -191,6 +192,22 @@ export function matchDetailWinningSide(detail: Pick<MatchDetail, 'teams'>): Side
   return winners.length === 1 && winner !== undefined ? winner.teamId : null;
 }
 
+/** A `timeline.lane` / `timeline.role` pair `MATCH_TIMELINE_ROLES` does not know, as the client spelled it. */
+export interface UnmappedTimelinePair {
+  readonly lane: string | null;
+  readonly role: string | null;
+  /** `matchTimelineKey(lane, role)`: the row a future fixture pass would add. */
+  readonly key: string;
+}
+
+export interface MapMatchDetailOptions {
+  /**
+   * Called once per participant whose pair mapped to null, with the values. The mapper never logs; the
+   * companion keeps a set and logs each distinct pair once, so the next fixture pass can add it.
+   */
+  readonly onUnmappedRole?: (pair: UnmappedTimelinePair) => void;
+}
+
 /**
  * `GET /lol-match-history/v1/games/{gameId}` -> the body of `POST /api/companion/game`, `phase: 'eog'`,
  * `source: 'backfill'` (M5.1). Same payload as `mapEog`, different rules, because the detail is a different
@@ -202,13 +219,19 @@ export function matchDetailWinningSide(detail: Pick<MatchDetail, 'teams'>): Side
  * - Participants are `participants[]` joined to `participantIdentities[]` on `participantId`; `side` is the
  *   participant's `teamId`; names come from `player.gameName`/`tagLine`. A participant with no identity row,
  *   or a placeholder puuid (a bot), is dropped before validation.
- * - `role` is `null` on every participant: the detail has no `detectedTeamPosition`, and `timeline.lane`/
- *   `role` is a different vocabulary nobody has verified a mapping for (`04-decisions.md`, 2026-09-09).
+ * - `role` is `timeline.lane` + `timeline.role` through `MATCH_TIMELINE_ROLES` (`timelineRoles.ts`, M5.18):
+ *   the detail has no `detectedTeamPosition`, and that pair is the server's guess in another vocabulary, so a
+ *   pair maps only once the fixtures have proved it against a live capture of the same game. A pair the table
+ *   does not know is `null` and is reported to `options.onUnmappedRole` (the companion logs each distinct pair
+ *   once). The table is empty on 16.17, so today every role is still `null` (`04-decisions.md`, 2026-09-10).
  * - Stats are the camelCase keys; `cs` is `totalMinionsKilled + neutralMinionsKilled`; `win` is `stats.win`.
  * - `raw` is the whole detail, scrubbed: it carries no chat credentials, but `scrubValue` is idempotent and
  *   `games.raw` is public-read, so this is not the place for an exception.
  */
-export function mapMatchDetail(detail: MatchDetail): CompanionGameEogPayloadInput {
+export function mapMatchDetail(
+  detail: MatchDetail,
+  options: MapMatchDetailOptions = {},
+): CompanionGameEogPayloadInput {
   const players = new Map(
     detail.participantIdentities.map((identity) => [identity.participantId, identity.player] as const),
   );
@@ -219,10 +242,18 @@ export function mapMatchDetail(detail: MatchDetail): CompanionGameEogPayloadInpu
       continue;
     }
     const stats: Record<string, unknown> = participant.stats;
+    const role = roleFromMatchTimeline(participant.timeline);
+    if (role === null) {
+      options.onUnmappedRole?.({
+        lane: participant.timeline?.lane ?? null,
+        role: participant.timeline?.role ?? null,
+        key: matchTimelineKey(participant.timeline?.lane, participant.timeline?.role),
+      });
+    }
     participants.push({
       puuid: player.puuid,
       side: participant.teamId,
-      role: null,
+      role,
       championId: participant.championId,
       kills: stat(stats, 'kills'),
       deaths: stat(stats, 'deaths'),
