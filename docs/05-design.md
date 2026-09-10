@@ -1320,7 +1320,7 @@ words below are fixed.
 | weekly / monthly post, awards field | `Awards`, then `**Most improved**`, `**Best off-role**`, `**Cursed duo**` with M5.4's winner lines verbatim | **new**, product 2026-09-10 (M5.10) — including the "nobody qualifies" sentence when nobody did |
 | awards, still running | `Awards are handed out when the week ends.` / `… when the month ends.` | **new**, product 2026-09-10 (M5.4) |
 | awards, section intro | `Three awards for the week. Nobody votes; the numbers pick.` / `… for the month. …` | **amended, product 2026-09-10 (M5.4)** — was `Three end-of-season awards.` |
-| an award on `/p/[puuid]` | `Most improved, week of 1 Sep.` / `Most improved, September.` | **amended, product 2026-09-10 (M5.4)** — was `Most improved, Season 1.` |
+| an award on `/p/[puuid]` | `Most improved, week of 1 Sep.` / `Most improved, September.` — and the same form for the other two awards: `Best off-role, September.`, `Cursed duo, week of 1 Sep.` | **amended, product 2026-09-10 (M5.4); the other two awards named, product 2026-09-11 (M5.20)** — was `Most improved, Season 1.`. All three read `<award label>, <calendar>.`: the label is interpolated from the award's own constant so this line cannot drift from `/stats` and the Monday post, and the calendar is the window's — `September` from `formatMonthName` on the two month windows, `week of 1 Sep` on the two week ones. A cursed-duo line prints on both halves' pages and names neither the partner nor the record; the full line is on `/stats`. No badge, no icon. See the M5.20 copy table |
 | `/stats` cap line | `Showing the most recent 2000 games.` | **amended, product 2026-09-10 (M5.4)** — was `… of this season.` |
 | seed line on `/p/[puuid]`, `All time` | `Seeded from Gold II at 1469, 37 games since.` — and at **zero games the clause is dropped**: `Seeded from Gold II at 1469.` | **amended, product 2026-09-10 (M5.15)** — the zero form is the web engineer's reading and it stands: acceptance check 5 forbids a bare `0` on the newest player's page in the same breath as `NaN`, and the record line above it already vanishes at zero for the same reason. The count goes through `gamesLabel`, so one game reads `, 1 game since.` |
 | seed line on `/p/[puuid]`, in a window | `Started the week at 1469, 6 games since.` on `This week` and `Last week` · `Started the month at 1469, 14 games since.` on `This month` and `Last month` · **no line at all** in a window the player has no counted game in | **amended, product 2026-09-10 (M5.15)** — product wrote one window sentence and the picker has four windows. `Started the week` on `Last month` names the wrong calendar, and every other window string on this page (the empty lines, the slot's ranges) already says `week` or `month` per kind, so the noun is interpolated off `WindowKind` and there is no fifth string. Nothing prints in an empty window because the chart's reference falls back to the player's **seed** there, and `Started the week at <seed>` would name a number that week never saw — the window's own empty sentence is already on the page and is the true one |
@@ -1403,7 +1403,75 @@ with the next touch of that file.
   it, and nothing on this page prints this 3 but the `W3` chips the sentence is about.
 
 **The per-player sections on `/p/[puuid]` (M5.20) are not in this table.** Their empty lines and section
-labels are unwritten copy, and they come to product before they ship, like these did.
+labels are unwritten copy, and they came to product before they shipped, like these did: they are the table
+below, ruled 2026-09-11, and the two rows of this page's own copy that ruling amends are in it too.
+
+#### Copy — the per-player sections on `/p/[puuid]` (M5.20, product 2026-09-11)
+
+The table above ends by saying these strings were not in it and would come to product before they shipped.
+This is that table. M5.20 is a rendering task, so most of what these sections say is imported and never
+re-worded — the window's five labels and five empty sentences, `By role`, `Streaks`, `Best together`,
+`Worst together`, `Longest win streak`, `Longest losing streak`, the cap line, `13W 15L`, `71%`, `W3`. Eight
+strings were left for product. **Seven keep and one is replaced.** They live as one constant each in
+`apps/web/lib/stats/copy.ts` under its own heading and never in `PlayerStats.tsx`, so this table has one code
+half like the two above it; a kept string is product's now — it is not "the engineer's, tolerated" — and the
+`(engineer, for product)` markers in `copy.ts` come out with the next touch of that file.
+
+| Where | String | Ruling |
+|---|---|---|
+| the card under `By role` | `By side` | **keep, product 2026-09-11 (M5.20)** — `By role` is a shipped, product-approved section name on this page and this is its twin: a preposition and the thing, so the two cards read as a pair and M5.8's card-title rule covers both without a new shape. The alternatives were a noun this product uses nowhere (`Side record`) or no card at all — and no card is not available, because the group's blue rate is `/stats`'s headline and is deliberately not repeated here, so this is the one place in the product where a side is a record rather than a team |
+| the two rows of that card | ~~`blue` / `red`~~ → `Blue` / `Red` | **replaced, product 2026-09-11 (M5.20)** — see below |
+| the card of the three best and three worst | `Partners` | **keep, product 2026-09-11 (M5.20)** — it is product's own noun for this list, out of the M5.4 brief (*"`/p/[puuid]` shows that player's three best and three worst partners"*), and it names a different object from `/stats`'s `Duos`: a row there is a pair (`Yuki and Theo`), a row here is one other person, read from the page owner's side of it. `Duos` over a column of single names would be the page asking the reader to do the subtraction. One thing, one name is not broken by two things having two names — and the two lists inside the card keep the pair page's own labels, `Best together` and `Worst together`, which are true of a partner as well as of a pair |
+| partners, nobody over the minimum | `Nobody has 5 games with them yet.` | **keep, product 2026-09-11 (M5.20)** — the page's other "not enough yet" lines in one shape: `Nobody has 5 games on jungle yet.` with the role swapped for the person, the `5` interpolated from the same constant the list filters on so the sentence and the bar cannot drift, and `yet` because it is a running count. **`them` is this page's pronoun and not a slip**: M3.26 settled that a player page is about somebody who is usually not the reader, and the third person makes one string true on your own page and on Yuki's |
+| the first row of `Streaks` | `Current streak` | **keep, product 2026-09-11 (M5.20)** — product's own words out of the brief (*"**Current streak**: the run ending at their most recent counted game, printed `W3` / `L2`"*), promoted to a label beside `Longest win streak` and `Longest losing streak` exactly as those two were, in the same sentence case. It does not collide with `/stats`'s `On a streak now`: that block is the list of everyone on three or more and needs a bar to exist, this row is one person's run and prints `W1` as readily as `W8`, so a shared string would be false on one of the two pages |
+| average game length, per player | `Average game 32 min.` | **keep, product 2026-09-11 (M5.20)** — the group's sentence with its count dropped and a stop in its place, which is this page's settled rule twice over: the meta line gives its games count up to M5.15's seed line, and the window slot prints its range half alone here, both because no page says one number twice. Whenever this line is drawn the player has a counted game in the window, so the seed line above it is already printing `, 37 games since.` and the count is on the page exactly once. **Never `0 min` and never `NaN`** — with no counted game the whole band is undrawn. **After ruling (a) below this is the same string as the group's**, so one function serves both pages and there is no second constant to drift from it |
+| an award won, all three of them | `Most improved, week of 1 Sep.` · `Best off-role, September.` · `Cursed duo, September.` | **keep, product 2026-09-11 (M5.20), and the board table's `an award on /p/[puuid]` row is amended to match** — the brief wrote the form once and with one award in it, but wrote it about *"a player who won **an award**"*, so the generalisation is the brief's own sentence read whole. The label is interpolated from the award's own constant (`MOST_IMPROVED`, `BEST_OFF_ROLE`, `CURSED_DUO`), which is what stops this page saying `Best off role` while `/stats` and the Monday post say `Best off-role`. A cursed-duo line prints on both halves' pages and names neither the partner nor the record on purpose: the award's full line, with the pair and the numbers in it, is on `/stats` and in the post, and this line's whole job is to say which award and which calendar. No badge, no icon, unchanged |
+| the no-role footnote, per player | `3 games are not in the role numbers — the client did not record who played where. Backfilled games never do.` — reused byte for byte, with this player's own count | **keep, product 2026-09-11 (M5.20)** — the M5.20 brief asked whether a per-player form was owed and the answer is no. Under a card that is already this player's numbers, a count with no possessive reads as theirs exactly as `13W 15L` does, and a second sentence for one fact is a second sentence to keep in step with the first: `gamesLabel`, the verb that follows it (`1 game is`), and everything after the dash, which is product's and unchanged. A player whose games are all backfilled gets this line as the whole of the card, and that is right — it is a sentence saying why there are no rows, not a card that failed to load |
+
+**Why `Blue` and `Red`, not `blue` and `red`.** Every side this product prints to a friend is capitalised: the
+teams embed's `Blue · 7695`, the result embed's `Blue`, `Blue was favored 54%.`, the team card's header, and
+`/stats`'s own `Blue wins 69% of the time.` one tab away. Roles are lower case in *every* surface, Discord
+included — `top` is the word's form and not a list convention — so taking the case off the role rows instead of
+off the word gives one thing two names on two adjacent pages, which is the defect that turned `standings` into
+`Leaderboard`. The reading that these are "the subject of a data row" is the right instinct applied to the
+wrong word: what makes `top` lower case is that it is `top` everywhere, and what makes this `Blue` is that it
+is `Blue` everywhere. The consequence for the dress is an existing rule and not a new one — a side is a name
+read as language, so Archivo like the names in every other list, and the mono lower-case exception stays the
+roles' alone.
+
+**The two questions the designer parked on the M5.20 row (2026-09-10), ruled.**
+
+**(a) The count comes out of both group statements on `/stats`.** All three of those numbers are the same
+number by construction — the slot, `Blue wins …` and `Average game …` are all `countedGames`' length, passed
+from one field — so the two `· 32 games` halves are not a second fact, not a denominator and not a caveat.
+They are the slot retyped, twice, a few lines under it. This document has already refused exactly this on the
+other page twice (the meta line's count beside the seed line's; the window slot's count beside it), and it is
+refused here at three. Were the statements ever folded over a smaller universe than the slot's — games with a
+stored duration, say — the count would be load-bearing and would stay; they are not, and the day one of them
+is, it prints its own denominator again and this row is amended.
+
+| Where | String | Ruling |
+|---|---|---|
+| `/stats`, the group's side rate | ~~`Blue wins 69% of the time · 32 games`~~ → `Blue wins 69% of the time.` | **amended, product 2026-09-11 (M5.20's copy questions)** — supersedes the M5.4 brief's *"printed with the count"* for this line. The full stop arrives with the count's departure: the trailing ` · 32 games` is what made this a legend rather than a sentence, and the card's third line has been a stopped sentence since M5.4 (`12 players played.`) |
+| `/stats`, the group's average game | ~~`Average game 35 min · 32 games`~~ → `Average game 35 min.` | **amended, product 2026-09-11 (M5.20's copy questions)** — same ruling, same stop; it is now byte for byte the per-player line above, one function on two pages, which is the answer to "why does the group's average say `· 32 games` and mine does not" being that neither does |
+
+The card becomes three parallel stopped sentences — `Blue wins 69% of the time.` / `Average game 35 min.` /
+`12 players played.` — which is what M5.8 drew it as. **Nothing else moves.** The slot keeps
+`SEPTEMBER · 32 GAMES` byte for byte, because M5.10's Monday post is that same string; the cap line is
+untouched; no number changes. **The code half is not M5.20's**, whose out-of-scope forbids touching `/stats`,
+so it ships as its own task with the two call sites, the two signatures and `StatsView`'s tests in it.
+
+**(b) An empty window says its sentence and nothing else.** Silence is right, and the reason is that the page
+is not silent: the picker is on the screen, above the sentence, five links with the chosen one marked, and it
+is the same control on a full window and an empty one. A line that appears only when the page is empty is a
+second navigation that exists only in the failure state, and it would name windows the reader can already see
+and tap. It would also have to know something this page did not read — the nearest window with games is four
+more reads or one unbounded one, on the single page whose read is already capped — and `All time` settles it:
+a group with no games at all has no nearer window to point at, so the pointer's own fallback is silence, on
+exactly the screen it was proposed to rescue. A line that is right on some windows and absent on the rest is
+worse than a page that behaves the same way five times. **The empty sentence and the picker are the whole
+answer**, which is what the board pages already do and what M5.8 drew for this one. If the group ever wants a
+"take me to the last week we played" control it is a feature with a decision row, not a copy fix.
 
 ### `/stats` — the window's page (M5.8, designer 2026-09-10)
 

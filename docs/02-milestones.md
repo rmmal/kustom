@@ -3390,14 +3390,14 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     >    one per role, each a ranked list of the players with ≥5 rows at that role: `1  Rami · 12W 5L · 71%`.
     > 2. **Win rate by side.** Per player: their rows on side 100 and on side 200, same 5-row minimum for the
     >    percentage. Group-wide **is** meaningful and is the headline of the section: blue wins ÷ counted
-    >    games, printed with the count (`Blue wins 53% of the time · 214 games`).
+    >    games, printed (the count came out on 2026-09-11, M5.22; the slot carries it) (`Blue wins 53% of the time · 214 games`).
     > 3. **Duo pairing.** A pair `{A, B}` is credited with a game when both have a counted row in it **on the
     >    same side**. Numerator = games where that side won; denominator = games together. **Minimum 5 games
     >    together** to appear at all. `/stats` shows the five best and the five worst qualifying pairs, sorted
     >    by the tie rule below; `/p/[puuid]` shows that player's three best and three worst partners. The full
     >    190-pair table is not a page anybody reads.
     > 4. **Average game length.** Arithmetic mean of `duration_s` over counted games, rounded to the nearest
-    >    minute, printed with the count it is over (`Average game 32 min · 214 games`). Per player: the mean
+    >    minute, printed (the count came out on 2026-09-11, M5.22; the slot carries it) it is over (`Average game 32 min · 214 games`). Per player: the mean
     >    over their counted games. Zero games → the empty line, never `NaN` and never `0 min`.
     > 5. **Streaks.** Order a player's counted rows by their game's `started_at` ascending, `lcu_game_id`
     >    ascending as the tie-break — the rebuild's ordering, so the streak and the rating history tell the
@@ -4326,6 +4326,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
 
 - [ ] **M5.20** The per-player stats sections on `/p/[puuid]`: their role record, their side record, their partners, their streaks, their average game length, and the award line. *(owner: web-engineer; after **M5.8**)* **Copy questions for product with this task (designer, 2026-09-10):** the window's game count prints three times in one band on `/stats` (the slot line and both group statements); and an empty window offers no way onward, so decide whether a line points at the nearest window with games or silence is right.
 - [ ] **M5.21** One streak, one window. Reviewer, 2026-09-11: the leaderboard row's streak is folded from rated rows over the season's last 200 games (`STREAK_GAME_WINDOW` in `lib/board/load.ts`, sorted by `Date.parse(startedAt)` with no `lcu_game_id` tie-break), while `/stats` and the player page fold counted games over up to 2000 ordered by `started_at, lcu_game_id`; a player whose last game is older than the group's last 200 shows no streak on the board and a real one on their page, and a backfilled game awaiting rebuild is in one and not the other. Make the board row read its streak from the same stats fold over the same window (the rail included), delete `STREAK_GAME_WINDOW`, and keep the rated-vs-counted seam documented. Owner: `web-engineer`, after M5.20. **Acceptance:** `playerStats.integration.test.ts`'s streak-equality case holds for a player whose last game is 250 games back; `grep STREAK_GAME_WINDOW apps/web` is empty.
+- [ ] **M5.22** The count leaves the two `/stats` group statements (product, 2026-09-11): `Blue wins 69% of the time.` and `Average game 35 min.` with no ` · 32 games` half, since the slot above prints the same number; `blueWinLine` and `averageGameLine` lose their `games` argument and gain the stop; `playerAverageGameLine` is deleted and the player page calls `averageGameLine`. Owner: `web-engineer`, lands as its own commit on the M5.20 branch (lead widened the scope by one clause). **Acceptance:** the count appears exactly once in the `/stats` header band (test); one average-game string in `lib/stats/copy.ts`; the slot unchanged.
 
     > **Split out of M5.4 (product, 2026-09-10).** M5.4 shipped `/stats`, the awards and every pure
     > function these sections need; it did not render them on the player page. This task is the rendering,
