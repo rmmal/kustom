@@ -1,6 +1,7 @@
 import type { Role, Side } from '@customs/core';
 import { gamesLabel, LEADERBOARD_LABEL, SETTLING_SENTENCE_SHORT } from '../board/copy';
 import { inLaneOrder } from '../laneOrder';
+import { type FieldLine, fieldValue, guardEmbed, KEEP_LAST_STANDING } from './limits';
 
 /**
  * The Discord embeds, as pure functions (M3.1 teams, M3.3 result).
@@ -91,6 +92,17 @@ export interface Embed {
 /** The body of a webhook POST. One embed; we never post content or mentions. */
 export interface WebhookPayload {
   embeds: Embed[];
+}
+
+/**
+ * The one exit from this file (M4.12).
+ *
+ * Every builder returns through here, so Discord's limits are applied once, in `limits.ts`,
+ * on the assembled embed — where the 6000-character total can be seen at all. Below the limits
+ * it is the identity, which is why no snapshot in this directory moved when it landed.
+ */
+function payload(embed: Embed): WebhookPayload {
+  return { embeds: [guardEmbed(embed)] };
 }
 
 export interface TeamsPlayer {
@@ -248,7 +260,10 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
   const fields: EmbedField[] = [];
 
   if (input.sitOut !== null && input.sitOut.names.length > 0) {
-    fields.push({ name: 'Sitting out', value: sitOutLine(input.sitOut.names, input.sitOut.reason) });
+    fields.push({
+      name: 'Sitting out',
+      value: fieldValue([sitOutLine(input.sitOut.names, input.sitOut.reason)]),
+    });
   }
   // The `Seats` field is on every teams embed, because the side line is (`05-design.md`,
   // "Teams embed", designer 2026-09-11: "the side line is the last line of `Seats`… it always
@@ -256,35 +271,40 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
   // act, and it is still the line that has to happen before anybody can play — and the side
   // line closes the block, because it is addressed to all ten. Order is specific, then general;
   // there is no `Sides` field, which would be a heading over one sentence about seats.
+  //
+  // **The side line outranks the move lines** (M4.12). Eleven around with escapable Riot IDs is
+  // ten `Swap:` lines of up to 144 characters each, which is over the 1024-character field limit
+  // and a 400 on the whole post. So the move lines are droppable and the side line is not: the
+  // field loses its lowest `Swap:` lines to a single `…`, and the sentence addressed to all ten
+  // is the last line standing.
   fields.push({
     name: 'Seats',
-    value: [...input.seats.map(seatLine), sideLine(input.switchSideEnabled)].join('\n'),
+    value: fieldValue([
+      ...input.seats.map(seatLine),
+      { text: sideLine(input.switchSideEnabled), keep: KEEP_LAST_STANDING },
+    ]),
   });
 
   fields.push(
-    { name: `Blue · ${sumRatings(blue)}`, value: blue.map(teamsLine).join('\n'), inline: true },
-    { name: `Red · ${sumRatings(red)}`, value: red.map(teamsLine).join('\n'), inline: true },
+    { name: `Blue · ${sumRatings(blue)}`, value: fieldValue(blue.map(teamsLine)), inline: true },
+    { name: `Red · ${sumRatings(red)}`, value: fieldValue(red.map(teamsLine)), inline: true },
   );
 
   const lobby = lobbyFieldValue(input.lobby);
-  if (lobby !== null) fields.push({ name: 'Lobby', value: lobby });
+  if (lobby !== null) fields.push({ name: 'Lobby', value: fieldValue([lobby]) });
 
-  return {
-    embeds: [
-      {
-        color: ACCENT_COLOR,
-        title: teamsTitle(input.promoted),
-        ...(input.url === undefined ? {} : { url: input.url }),
-        description: input.explanation,
-        fields,
-        // With no url the title is not a link, so the footer must not promise one
-        // (`05-design.md`): telling a friend to tap something that is not there is worse than
-        // saying nothing.
-        footer: { text: teamsFooter(input.url) },
-        timestamp: input.timestamp,
-      },
-    ],
-  };
+  return payload({
+    color: ACCENT_COLOR,
+    title: teamsTitle(input.promoted),
+    ...(input.url === undefined ? {} : { url: input.url }),
+    description: input.explanation,
+    fields,
+    // With no url the title is not a link, so the footer must not promise one
+    // (`05-design.md`): telling a friend to tap something that is not there is worse than
+    // saying nothing.
+    footer: { text: teamsFooter(input.url) },
+    timestamp: input.timestamp,
+  });
 }
 
 /**
@@ -302,22 +322,18 @@ export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
     .filter((clause) => clause !== null)
     .join(' ');
 
-  return {
-    embeds: [
-      {
-        color: input.winningSide === 100 ? BLUE_COLOR : RED_COLOR,
-        title: `${winner} wins · ${formatDuration(input.durationS)}`,
-        ...(input.url === undefined ? {} : { url: input.url }),
-        ...(description.length > 0 ? { description } : {}),
-        fields: [
-          { name: 'Blue', value: inLaneOrder(input.blue).map(resultLine).join('\n'), inline: true },
-          { name: 'Red', value: inLaneOrder(input.red).map(resultLine).join('\n'), inline: true },
-        ],
-        footer: { text: resultFooter(input.gameNumber) },
-        timestamp: input.timestamp,
-      },
+  return payload({
+    color: input.winningSide === 100 ? BLUE_COLOR : RED_COLOR,
+    title: `${winner} wins · ${formatDuration(input.durationS)}`,
+    ...(input.url === undefined ? {} : { url: input.url }),
+    ...(description.length > 0 ? { description } : {}),
+    fields: [
+      { name: 'Blue', value: fieldValue(inLaneOrder(input.blue).map(resultLine)), inline: true },
+      { name: 'Red', value: fieldValue(inLaneOrder(input.red).map(resultLine)), inline: true },
     ],
-  };
+    footer: { text: resultFooter(input.gameNumber) },
+    timestamp: input.timestamp,
+  });
 }
 
 /**
@@ -346,23 +362,26 @@ export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
 export function leaderboardEmbed(input: LeaderboardEmbedInput): WebhookPayload {
   const entries = input.entries.slice(0, TOP_N);
 
-  return {
-    embeds: [
-      {
-        color: ACCENT_COLOR,
-        title: `${input.windowLabel} · ${LEADERBOARD_LABEL.toLowerCase()}`,
-        ...(input.url === undefined ? {} : { url: input.url }),
-        fields: [
-          {
-            name: leaderboardFieldName(entries.length),
-            value: entries.map(leaderboardLine).join('\n'),
-          },
-        ],
-        footer: { text: SETTLING_SENTENCE_SHORT },
-        timestamp: input.timestamp,
-      },
-    ],
-  };
+  return payload({
+    color: ACCENT_COLOR,
+    title: `${input.windowLabel} · ${LEADERBOARD_LABEL.toLowerCase()}`,
+    ...(input.url === undefined ? {} : { url: input.url }),
+    fields: [{ name: leaderboardFieldName(entries.length), value: boardValue(entries) }],
+    footer: { text: SETTLING_SENTENCE_SHORT },
+    timestamp: input.timestamp,
+  });
+}
+
+/**
+ * The board's field value: ten ranked lines, cut from the **bottom** if ten escaped 32-character
+ * names do not fit in 1024 (M4.12).
+ *
+ * Every line is one rank, so the drop order is the rank order reversed and the field keeps its
+ * top rows — which is the only sensible thing a list ordered by Proven can lose. `…` under the
+ * last row it kept says the rest are on the page the title links to.
+ */
+function boardValue(entries: readonly LeaderboardEntry[]): string {
+  return fieldValue(entries.map(leaderboardLine));
 }
 
 /** `` `1` Lena · 1548 · 41 games ``. The rank is in code, like a role, so the column reads. */
@@ -431,30 +450,38 @@ export function windowSummaryEmbed(input: WindowSummaryEmbedInput): WebhookPaylo
   const entries = input.entries.slice(0, TOP_N);
   const awards = input.awards ?? [];
 
-  return {
-    embeds: [
-      {
-        color: ACCENT_COLOR,
-        title: `${input.windowLabel} · ${LEADERBOARD_LABEL.toLowerCase()}`,
-        ...(input.url === undefined ? {} : { url: input.url }),
-        description: input.description,
-        fields: [
-          {
-            name: leaderboardFieldName(entries.length),
-            value: entries.map(leaderboardLine).join('\n'),
-          },
-          ...(awards.length === 0 ? [] : [{ name: AWARDS_FIELD, value: awards.map(awardLine).join('\n') }]),
-        ],
-        footer: { text: SETTLING_SENTENCE_SHORT },
-        timestamp: input.timestamp,
-      },
+  return payload({
+    color: ACCENT_COLOR,
+    title: `${input.windowLabel} · ${LEADERBOARD_LABEL.toLowerCase()}`,
+    ...(input.url === undefined ? {} : { url: input.url }),
+    description: input.description,
+    fields: [
+      { name: leaderboardFieldName(entries.length), value: boardValue(entries) },
+      ...(awards.length === 0 ? [] : [{ name: AWARDS_FIELD, value: fieldValue(awards.flatMap(awardLines)) }]),
     ],
-  };
+    footer: { text: SETTLING_SENTENCE_SHORT },
+    timestamp: input.timestamp,
+  });
 }
 
 /** `**Most improved** Nadia · +212 · 1266 → 1478`. The label is bold; the rest is quoted. */
 function awardLine(award: WindowAward): string {
   return `**${award.label}** ${award.line}`;
+}
+
+/**
+ * An award as ranked lines: **the winner's first line is a keeper, the tie's rest are not**
+ * (M4.12).
+ *
+ * A ten-way tie arrives as one `line` with nine newlines in it and can push the block past 1024
+ * on its own. Dropping from the bottom of a tie leaves every label present with its bold head
+ * and its first winner — three awards, three answers — and one `…` where the other names were.
+ * Losing a whole award to a tie in the one above it would be the wrong three lines to lose.
+ */
+function awardLines(award: WindowAward): FieldLine[] {
+  return awardLine(award)
+    .split('\n')
+    .map((text, index) => (index === 0 ? { text, keep: KEEP_LAST_STANDING } : text));
 }
 
 /**
