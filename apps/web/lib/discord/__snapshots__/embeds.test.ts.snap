@@ -96,6 +96,10 @@ exports[`teamsEmbed, the worked example > matches the layout in 05-design.md 1`]
       "description": "Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and Omar, gap 170.",
       "fields": [
         {
+          "name": "Seats",
+          "value": "Move to your side in the lobby.",
+        },
+        {
           "inline": true,
           "name": "Blue · 7695",
           "value": "\`top\` Hana · 1434

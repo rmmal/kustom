@@ -1,5 +1,6 @@
 import { type Assignment, displayRating, isOffRole, type Role } from '@customs/core';
 import type { SideValue } from '@customs/db';
+import { SWITCH_SIDE_ENABLED } from '../commands/gate';
 import type { PoolMember, SeatMove } from '../ingest/selection';
 import { displayDelta } from '../ratingDisplay';
 import type { ServiceClient } from '../supabase';
@@ -47,12 +48,24 @@ export interface EmbedContext {
   /** The tonight page, or `undefined` when there is no honest URL to post (M3.1). */
   url?: string | undefined;
   timestamp: string;
+  /**
+   * M4.3's gate, for the teams embed's side line. Left out in production, where the value is
+   * {@link SWITCH_SIDE_ENABLED} read at post time: the same flag that decides whether a
+   * `switch_side` row is ever queued decides which sentence the message carries, so the embed
+   * cannot promise a switch the server does not make. Tests pass it to see the other line.
+   */
+  switchSideEnabled?: boolean | undefined;
 }
 
 export type NameLookup = ReadonlyMap<string, PlayerName>;
 
 /**
  * The teams embed input. Pure: the same source and the same names give the same object.
+ *
+ * The one thing it reads that is not an argument is {@link SWITCH_SIDE_ENABLED}, a compile-time
+ * table of booleans and not an environment variable, and any test that cares passes
+ * `context.switchSideEnabled` instead. It is read here rather than in `post.ts` so that both
+ * posts — the balance and the reroll — get the same answer from one place.
  *
  * Throws when the chosen split names a player who is not in `playing` — that cannot happen
  * (both come out of one balance) and a lobby hook that throws is one log line, which is a
@@ -94,6 +107,7 @@ export function buildTeamsInput(
             reason: sitOutReason(source),
           },
     seats: source.seatMoves.map((move) => toSeatLine(move, names)),
+    switchSideEnabled: context.switchSideEnabled ?? SWITCH_SIDE_ENABLED,
     lobby: { name: source.lobbyName, password: source.lobbyPassword },
     promoted: source.promoted,
     url: context.url,

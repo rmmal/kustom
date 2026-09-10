@@ -309,31 +309,21 @@ export function missedInviteSentence(name: string, password: string | null): str
 }
 
 /* ---------------------------------------------------------------------------
- * The side line, under the team cards (M4.3's copy, M4.7 (b)'s placement).
+ * The side line, under the team cards (M4.3's copy, M4.7 (b)'s placement, and the two rows in
+ * `05-design.md`'s copy table of 2026-09-11).
  *
- * **Product's two sentences, fixed in the M4.2 and M4.3 briefs** (`02-milestones.md`, and the
- * decision of 2026-09-09 that gated the auto switch). They are not in `05-design.md`'s copy
- * table, which was written before M4.3 existed; the words below are quoted from the brief
- * character for character and the table is the designer's to catch up with.
+ * **One definition, in `lib/discord/embeds.ts`**, re-exported here so the page keeps importing
+ * its copy from its own copy file. The page and the teams embed print the identical two
+ * sentences — the embed's is the last line of the `Seats` field — and the two shipped as two
+ * spellings of the same words for a day, on two branches. This is the direction that already
+ * existed for {@link NAMELESS_PLAYER}: the embed module is where a string both surfaces print
+ * lives, because it is the module with no Next, no DOM and no page in front of it.
  *
- * Which one prints is not a copy decision: it is the verification gate
- * (`COMMAND_KIND_ENABLED.switch_side`), read where the line is drawn.
+ * `SIDE_LINE_MANUAL` is the gate-off sentence, `SIDE_LINE_AUTO` the gate-on one, and
+ * `sideLine(enabled)` picks. Which one prints is not a copy decision: it is the verification
+ * gate (`COMMAND_KIND_ENABLED.switch_side`), read where the line is drawn. The words are pinned
+ * character for character — by code point, em dash and all — in `lib/discord/embeds.test.ts`,
+ * and again from this side in `app/_tonight/SideLine.test.tsx`.
  * ------------------------------------------------------------------------- */
 
-/**
- * The gate is **off** — no `switch_side` row is ever queued, so nobody is moved by us and the
- * only thing that can put you on your side is you.
- */
-export const SIDE_LINE_MANUAL = 'Move to your side in the lobby.';
-
-/**
- * The gate is **on**. It still ends with `move yourself`, because a companion that is closed,
- * offline, or looking at a side that already holds five cannot move anybody — and the page has
- * no way to know which of the ten that is true for (M4.3, "the bounce").
- */
-export const SIDE_LINE_AUTO = "You'll be moved to your side — if not, move yourself.";
-
-/** One of the two, by the gate. Never a third sentence, and never both. */
-export function sideLine(switchSideEnabled: boolean): string {
-  return switchSideEnabled ? SIDE_LINE_AUTO : SIDE_LINE_MANUAL;
-}
+export { SIDE_LINE_AUTO, SIDE_LINE_MANUAL, sideLine } from '../discord/embeds';

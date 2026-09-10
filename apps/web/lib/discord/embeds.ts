@@ -38,6 +38,40 @@ export const NAMELESS_PLAYER = 'Someone';
 /** `05-design.md`: truncate a display name at 32 characters with an ellipsis. */
 const MAX_NAME_LENGTH = 32;
 
+/* ---------------------------------------------------------------------------
+ * The side line (M4.3's copy, M4.7 (b)'s placement; `05-design.md`, "Teams embed", and the
+ * tonight-page copy table's two rows of 2026-09-11).
+ *
+ * Product's two sentences, fixed in the M4.2 and M4.3 briefs and in the 2026-09-09 decision row
+ * that gated the auto switch. They are quoted from the brief character for character — em dash
+ * U+2014, ASCII apostrophe — and `embeds.test.ts` pins both by code point.
+ *
+ * **One definition, and this is it.** The tonight page prints the same two sentences under the
+ * team cards, and `lib/tonight/copy.ts` re-exports these three so the page keeps importing its
+ * copy from its own copy file. That file already imports {@link NAMELESS_PLAYER} from here,
+ * which is the same direction and the same reason: a string two surfaces print lives in the
+ * module with no Next and no DOM in front of it (`04-decisions.md`, 2026-09-11).
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The gate is **off** — no `switch_side` row is queued for anybody, so the only thing that can
+ * put a player on their side is the player.
+ */
+export const SIDE_LINE_MANUAL = 'Move to your side in the lobby.';
+
+/**
+ * The gate is **on**. It still ends with `move yourself`, because a companion that is closed,
+ * offline, or looking at a side that already holds five moves nobody (M4.3, "the bounce") — and
+ * the embed is posted at the moment of balancing, before any companion has polled, so it can
+ * only ever say what is about to happen.
+ */
+export const SIDE_LINE_AUTO = "You'll be moved to your side — if not, move yourself.";
+
+/** One of the two, by the gate. Never a third sentence, never both, never per-person. */
+export function sideLine(switchSideEnabled: boolean): string {
+  return switchSideEnabled ? SIDE_LINE_AUTO : SIDE_LINE_MANUAL;
+}
+
 export interface EmbedField {
   name: string;
   value: string;
@@ -96,6 +130,13 @@ export interface TeamsEmbedInput {
   sitOut: { names: readonly PlayerName[]; reason: SitOutReason } | null;
   /** Only when somebody has to move, which is not the same question. */
   seats: readonly SeatLine[];
+  /**
+   * M4.3's gate (`lib/commands/gate.ts`, read at post time by `buildTeamsInput`). It decides
+   * **which** of the two side sentences the `Seats` field ends with, never whether there is
+   * one. Required rather than optional: a caller that forgot it would quietly promise a switch
+   * nobody queued.
+   */
+  switchSideEnabled: boolean;
   lobby: { name: string | null; password: string | null };
   /**
    * Which of the lobby's stored splits this post is, and how many the lobby has (M3.2).
@@ -191,7 +232,8 @@ export function leaderboardFieldName(lines: number): string {
 
 /**
  * The teams embed: two columns with role and display rating, the explanation verbatim, the
- * sit-out copy when somebody sits, and the lobby name and password so a straggler can get in.
+ * sit-out copy when somebody sits, the side line, and the lobby name and password so a
+ * straggler can get in.
  */
 export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
   const blue = inLaneOrder(input.blue);
@@ -201,16 +243,23 @@ export function teamsEmbed(input: TeamsEmbedInput): WebhookPayload {
   // is the one line in the message that has to happen before anybody can play, and behind ten
   // rating lines plus a wrapped explanation it was landing below the fold on a phone. Discord
   // groups only *consecutive* inline fields, so a block field in front of Blue and Red does not
-  // break their pairing, and on a ten-person night neither field exists and the embed is
-  // byte-identical to what shipped.
+  // break their pairing. `Sitting out` is still only there when somebody sits; `Seats` is now
+  // always there, because M4.3's side line lives in it.
   const fields: EmbedField[] = [];
 
   if (input.sitOut !== null && input.sitOut.names.length > 0) {
     fields.push({ name: 'Sitting out', value: sitOutLine(input.sitOut.names, input.sitOut.reason) });
   }
-  if (input.seats.length > 0) {
-    fields.push({ name: 'Seats', value: input.seats.map(seatLine).join('\n') });
-  }
+  // The `Seats` field is on every teams embed, because the side line is (`05-design.md`,
+  // "Teams embed", designer 2026-09-11: "the side line is the last line of `Seats`… it always
+  // prints"). The moves keep the top of the field — a `Swap:` line names two people who must
+  // act, and it is still the line that has to happen before anybody can play — and the side
+  // line closes the block, because it is addressed to all ten. Order is specific, then general;
+  // there is no `Sides` field, which would be a heading over one sentence about seats.
+  fields.push({
+    name: 'Seats',
+    value: [...input.seats.map(seatLine), sideLine(input.switchSideEnabled)].join('\n'),
+  });
 
   fields.push(
     { name: `Blue · ${sumRatings(blue)}`, value: blue.map(teamsLine).join('\n'), inline: true },

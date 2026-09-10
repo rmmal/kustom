@@ -475,7 +475,9 @@ if (stack === null) {
       expect(fields['Sitting out']).toBe(
         'Sitting out: Player0 — nobody has sat out before, so somebody had to be first.',
       );
-      expect(fields.Seats).toBe('Swap: Player0 out, Player10 in.');
+      // The move, then M4.3's side line — the gate is off, so the message tells them to move
+      // themselves and no `switch_side` row exists to do it for them.
+      expect(fields.Seats).toBe('Swap: Player0 out, Player10 in.\nMove to your side in the lobby.');
 
       // The ten in the two side fields are the other ten, and the sitter is in neither.
       const lines = teamLines(0);
@@ -524,7 +526,7 @@ if (stack === null) {
 
       const fields = fieldsOf(2);
       expect(fields['Sitting out']).toBe('Sitting out: Player1 — most games tonight.');
-      expect(fields.Seats).toBe('Swap: Player1 out, Player10 in.');
+      expect(fields.Seats).toBe('Swap: Player1 out, Player10 in.\nMove to your side in the lobby.');
     });
   });
 
