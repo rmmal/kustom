@@ -776,10 +776,11 @@ can act on; "an admin can" is).
 
 | Where | String | Status |
 |---|---|---|
-| control heading, `t-xs` `dim` above the five role words | `Your role tonight` | product 2026-09-09 (brief) — shipped verbatim, kept |
-| under the control, once | `The bot tries for this one. If the teams need it, you can still end up somewhere else.` | product 2026-09-09 (brief) — shipped verbatim, kept |
-| the control, from `balanced` on | `Saved for the next game. Teams are already set.` | product 2026-09-09 (brief) — shipped verbatim, kept |
-| signed out, on the control that starts the Discord round trip | `Sign in with Discord to pick your role.` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| control heading, `t-xs` `dim` above the five role words, on the viewer's own control | `Your role tonight · <name>`, and plain `Your role tonight` when that player has no display name yet | **product 2026-09-10 (M3.6, designer's review)** — the name is added; `· ` is the rack header's separator. Never `· Someone`. The tonight page draws this control for the viewer alone, so there is no second heading to keep it off; if the admin role tap on `/admin/players` (M3.25) ever grows a heading, that page's rows carry their own names and this one is not it |
+| under the control, `open` — the state's one hint | `The bot tries for this one. If the teams need it, you can still end up somewhere else.` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| under the control, `balanced` and `in_game` — the state's one hint | `Teams are already set. A role you pick now is what the bot tries for in the next game.` | **product 2026-09-10 (M3.6, designer's review)** — replaces `Saved for the next game. Teams are already set.`, which was written to stand next to the preference sentence and now stands alone. **M3.6's acceptance check 3 quotes the old words and needs the same edit** |
+| signed out, the card's body sentence | `Sign in with Discord to pick your role.` | product 2026-09-09 (brief) — kept, and it is now the sentence rather than the button, per the designer's card |
+| signed out, the button under it | `Sign in with Discord` | **product 2026-09-10 (M3.6, designer's review)** — new. A button is named for what pressing it does; the reason to press it is the sentence above |
 | above the list, signed in with no player | `Which one of these is you? Pick yourself once and the page knows you from now on.` | product 2026-09-09 (brief) — shipped verbatim, kept |
 | on every row of that list | `That's me` | product 2026-09-09 (brief) — shipped verbatim, kept. Straight apostrophe |
 | signed in with no player and no lobby to pick out of | `Signed in. Open the page while the lobby is up and you can pick yourself out of it.` | product 2026-09-09 (brief) — shipped verbatim, kept |
@@ -794,7 +795,7 @@ can act on; "an admin can" is).
 | `That's me` on somebody who is not in tonight's lobby (403) | `You can only pick somebody who is in tonight's lobby.` | **product 2026-09-10 (M3.6)** — replaces `Only somebody in tonight’s lobby can be picked.`, curly apostrophe and all |
 | `That's me` or a role tap naming a PUUID no player has (404) | `No player with that id.` | engineer 2026-09-10 — **kept as is**: the page cannot produce this request, so it is the only string here no friend can reach. If it ever becomes reachable it comes back to this table |
 
-**Why the eight changed.** Each is the rule above, applied.
+**Why the eight changed** (and, from 2026-09-10, the three the designer's review moved). Each is the rule above, applied.
 
 - **No rows.** Three of the eight said `row` — `That is not your row`, `there is no row to set`. `lobby_members`
   is a table this product deliberately never shows anybody: the whole design is that the lobby is read, not
@@ -812,14 +813,30 @@ can act on; "an admin can" is).
   they already tapped `That's me`, and the thing they want to know is whether it can be fixed. Both go in.
   `Someone is already linked to that player.` is not touched: it is product's from the brief and is pinned by
   M3.6's acceptance check 3.
+- **`Saved for the next game.` was a receipt on a card that nobody had tapped.** With the hints stacked it
+  followed the preference sentence and read as the answer to a tap; as the state's only hint it is the first
+  thing a friend sees when they open the page after the teams are posted, having tapped nothing — and it
+  tells them a role was saved for them. The replacement is a rule instead of a receipt, true before and after
+  a tap, and it keeps the limiter the stacked sentence used to supply from the line above it: `the bot tries
+  for` is the same verb the `open` hint uses, so the two states speak one vocabulary. The receipt itself is
+  unchanged and is not a sentence — the role word turns `brand`, as the brief settled.
+- **A button is a label, not a sentence.** `Sign in with Discord to pick your role.` is the reason; `Sign in
+  with Discord` is the act. Splitting them is the designer's card, and it costs one new string.
+- **The heading names you, because the phone gets passed around.** A friend hands the phone over so somebody
+  can see the teams, that person taps a role, and it lands on the first friend's row with no way to tell from
+  the screen. `Your role tonight · Hana` is the whole fix and it costs a micro-label six characters. It is
+  suppressed rather than filled with `Someone` when there is no name: a heading that says `· Someone` answers
+  the question with the word that caused it.
 - **Rendered strings use the ASCII apostrophe.** `Only somebody in tonight’s lobby can be picked.` was the one
   friend-facing string in the app with a curly `’`, against `That's me` and `Names fill in after someone's
   first game.` two files away. Curly apostrophes stay in comments and test names, where they are prose.
   Passive voice went with it: it is a friend tapping, so the sentence says `You can only pick`.
 
-Nothing in the control's own copy moved. The brief's eight strings shipped byte for byte, `SET_ROLES_LINK`
-is the table above this one finally rendering, and no new string was invented for a state the brief already
-settled.
+Of the control's own copy, six of the brief's eight strings stand byte for byte and `SET_ROLES_LINK` is the
+table above this one finally rendering. The two that moved on 2026-09-10 moved because the designer's review
+changed what stands beside them — a card with one hint per state, and a button under a sentence — not because
+product changed its mind about what the control means. Nothing here promises more than the balancer does,
+which is the one rule the whole block exists to keep.
 
 ### What changes on the leaderboard and the player page (M3.5)
 

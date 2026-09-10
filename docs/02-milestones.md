@@ -2167,7 +2167,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >    eyeballing the teams.
     > 2. Tap `jungle` again: the override is `null` and the row shows the profile's roles again.
     > 3. Tap a role while the lobby is `balanced`: 200, the override is stored, **no new Discord message and
-    >    no change to `splits`**, and the control shows `Saved for the next game. Teams are already set.`
+    >    no change to `splits`**, and the control shows `Teams are already set. A role you pick now is what the bot tries for in the next game.` (product's 2026-09-10 rewording; the copy table in `05-design.md` is the source)
     > 4. Finish that game and let the companion open the night's next cycle: the new `lobby_members` row for
     >    that player carries the same `role_override`, with no second tap, and the next balance uses it.
     > 5. The first lobby of the next night (past 06:00 local) carries no override for anybody.
