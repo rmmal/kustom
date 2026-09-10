@@ -18,10 +18,10 @@ import {
   LONGEST_LOSS,
   LONGEST_WIN,
   NO_DUOS,
-  NOBODY_ON_A_RUN,
+  NOBODY_ON_A_STREAK,
   noRoleEntries,
   noRoleFootnote,
-  ON_A_RUN,
+  ON_A_STREAK,
   pairLabel,
   percentLabel,
   playersLine,
@@ -74,46 +74,76 @@ export function StatsView({ stats }: StatsViewProps) {
    */
   const empty = stats.range === null;
 
+  /**
+   * **A running window's awards are one line, and it lives in the header** (the designer,
+   * 2026-09-10): `Awards are handed out when the month ends.` under the slot, as a hint. A card
+   * with a header bar and one grey sentence in it is a card promising something it has not got,
+   * and on `This month` — the page's own default — it was the first thing under the picker.
+   *
+   * `All time` has no awards at all, so it has no line either.
+   */
+  const pending = stats.awards?.kind === 'running' ? stats.awards.line : null;
+
   return (
     <main className="cn-page">
-      <header className="cn-strip">
+      {/*
+       * The hairline under the strip closes a header over content. An empty window has none, so
+       * the rule would be a line under nothing (the designer, 2026-09-10).
+       */}
+      <header className={empty ? 'cn-strip cn-strip-bare' : 'cn-strip'}>
         <h1 className="cn-strip-title">
           {WINDOW_LABELS[stats.window]} <span className="cn-strip-sub">{STATS_LABEL}</span>
         </h1>
         {/* The same control, in the same slot, as the two board pages. `This month` by default. */}
         <WindowPicker path="/stats" selected={stats.window} />
 
-        {empty ? (
-          <p className="cn-empty">{WINDOW_EMPTY[stats.window]}</p>
-        ) : (
+        {empty ? null : (
           <p className="cn-num cn-window-line">{windowSlotLine(stats.range as string, stats.games)}</p>
         )}
+
+        {pending === null ? null : <p className="cn-hint">{pending}</p>}
 
         {/* Nothing drops silently: over the cap the page says which games it is showing. */}
         {stats.capped ? <p className="cn-hint">{capLine(stats.cap)}</p> : null}
       </header>
 
-      {empty ? null : (
+      {empty ? (
+        /*
+         * The window's own sentence, **in the body and not in the strip** (the designer): it is
+         * the page's one block, not a caption on the header, and at `t-base` in `text` it reads
+         * as the answer rather than as a footnote to the picker.
+         */
+        <section className="cn-block">
+          <p className="cn-stats-answer">{WINDOW_EMPTY[stats.window]}</p>
+        </section>
+      ) : (
         <>
           <Awards awards={stats.awards} />
 
           {/*
-           * The two group numbers, and who was there. Statements, not cards: they are one line
-           * each and a card around a sentence is furniture.
+           * The window's three facts, in one card (the designer, 2026-09-10): they are one
+           * subject — what the whole group did — and three bare sentences between two cards read
+           * as a gap rather than as a block. No header bar: they name themselves.
            */}
-          <section className="cn-block cn-stats-lines">
-            {stats.blueWinRate === null ? null : (
-              <p className="cn-stats-line">{blueWinLine(stats.blueWinRate, stats.games)}</p>
-            )}
-            {stats.averageMinutes === null ? null : (
-              <p className="cn-stats-line">{averageGameLine(stats.averageMinutes, stats.games)}</p>
-            )}
-            <p className="cn-stats-line">{playersLine(stats.players)}</p>
+          <section className="cn-block">
+            <section className="cn-card cn-stats-lines">
+              {stats.blueWinRate === null ? null : (
+                <p className="cn-stats-line">{blueWinLine(stats.blueWinRate, stats.games)}</p>
+              )}
+              {stats.averageMinutes === null ? null : (
+                <p className="cn-stats-line">{averageGameLine(stats.averageMinutes, stats.games)}</p>
+              )}
+              <p className="cn-stats-line">{playersLine(stats.players)}</p>
+            </section>
           </section>
 
           <Roles roles={stats.roles} noRoleGames={stats.noRoleGames} />
           <Duos best={stats.bestDuos} worst={stats.worstDuos} />
-          <Streaks longestWin={stats.longestWin} longestLoss={stats.longestLoss} onARun={stats.onARun} />
+          <Streaks
+            longestWin={stats.longestWin}
+            longestLoss={stats.longestLoss}
+            onAStreak={stats.onAStreak}
+          />
         </>
       )}
     </main>
@@ -129,36 +159,51 @@ export function StatsView({ stats }: StatsViewProps) {
  * adds the heading and the layout and not one word.
  */
 function Awards({ awards }: { awards: StatsViewModel['awards'] }) {
-  if (awards === null) return null;
+  /**
+   * **Only a closed window draws a card here** (the designer, 2026-09-10). `All time` has no
+   * awards at all, and a running window's one line is a hint in the header strip — printed by
+   * the page above, not by a card with a header bar and nothing under it.
+   */
+  if (awards === null || awards.kind === 'running') return null;
+
+  /**
+   * **The `brand` edge is the team card's, and it means the same thing**: something was won
+   * here. It goes on only when at least one of the three has a winner, so a month where nobody
+   * cleared a minimum is three sentences in a plain card and not a lit one.
+   */
+  const won = awards.blocks.some((block) => block.won);
 
   return (
     <section className="cn-block">
-      <section className="cn-card cn-list-card">
+      <section className={won ? 'cn-card cn-list-card cn-awards-won' : 'cn-card cn-list-card'}>
         <header className="cn-card-head cn-list-head">
-          <h2 className="cn-num cn-list-title">{AWARDS_HEADING}</h2>
+          <h2 className="cn-board-title">{AWARDS_HEADING}</h2>
         </header>
-        {awards.kind === 'running' ? (
-          <p className="cn-stats-empty">{awards.line}</p>
-        ) : (
-          <div className="cn-awards">
-            <p className="cn-stats-intro">{awards.intro}</p>
-            {awards.blocks.map((block) => (
-              <Award key={block.label} block={block} />
-            ))}
-          </div>
-        )}
+        <div className="cn-awards">
+          <p className="cn-stats-intro">{awards.intro}</p>
+          {awards.blocks.map((block) => (
+            <Award key={block.label} block={block} />
+          ))}
+        </div>
       </section>
     </section>
   );
 }
 
+/**
+ * One award: who won it, in the size the page reads first, with the label above and the rule
+ * under it (the designer, 2026-09-10).
+ *
+ * The order is deliberate — **the winner outranks the label and the rule outranks nothing**: a
+ * reader arrives for the name, and the bar it was won over is what they check second.
+ */
 function Award({ block }: { block: AwardBlock }) {
   return (
     <div className="cn-award">
       <p className="cn-award-label">{block.label}</p>
       {block.lines.map((line) => (
-        <p key={line} className={block.won ? 'cn-award-line' : 'cn-award-line cn-award-none'}>
-          {line}
+        <p key={line.key} className={block.won ? 'cn-award-line' : 'cn-award-line cn-award-none'}>
+          {line.text}
         </p>
       ))}
       <p className="cn-award-rule">{block.rule}</p>
@@ -177,12 +222,12 @@ function Roles({ roles, noRoleGames }: { roles: RoleBlock[]; noRoleGames: number
     <section className="cn-block">
       <section className="cn-card cn-list-card">
         <header className="cn-card-head cn-list-head">
-          <h2 className="cn-num cn-list-title">{ROLE_RECORD_HEADING}</h2>
+          <h2 className="cn-board-title">{ROLE_RECORD_HEADING}</h2>
         </header>
         {roles.map((block) => (
           <div key={block.role} className="cn-role-block">
             <p className="cn-num cn-lineup-role">
-              <RoleIcon role={block.role} size={20} />
+              <RoleIcon role={block.role} size={16} />
               {block.role}
             </p>
             {block.entries.length === 0 ? (
@@ -216,7 +261,7 @@ function Duos({ best, worst }: { best: DuoRecord[]; worst: DuoRecord[] }) {
     <section className="cn-block">
       <section className="cn-card cn-list-card">
         <header className="cn-card-head cn-list-head">
-          <h2 className="cn-num cn-list-title">{DUOS_HEADING}</h2>
+          <h2 className="cn-board-title">{DUOS_HEADING}</h2>
         </header>
         <DuoList title={BEST_TOGETHER} pairs={best} />
         <DuoList title={WORST_TOGETHER} pairs={worst} />
@@ -250,37 +295,38 @@ function DuoList({ title, pairs }: { title: string; pairs: DuoRecord[] }) {
 }
 
 /**
- * The window's longest run of each kind with everybody holding it, then anyone on three or more
- * right now. `W3` and `L2` are the leaderboard row's own form, from the same helper.
+ * Three blocks of the same shape (the designer, 2026-09-10): the two the window holds, then
+ * anyone on a streak right now. Each is a group label over 44px rows — name left, `W10` right in
+ * mono — so a record two people share is two rows and not a list inside a sentence.
+ *
+ * `W3` and `L2` are the leaderboard row's own form, from the same helper.
  */
 function Streaks({
   longestWin,
   longestLoss,
-  onARun,
+  onAStreak,
 }: {
   longestWin: StreakHolders | null;
   longestLoss: StreakHolders | null;
-  onARun: PlayerStreaks[];
+  onAStreak: PlayerStreaks[];
 }) {
   return (
     <section className="cn-block">
       <section className="cn-card cn-list-card">
         <header className="cn-card-head cn-list-head">
-          <h2 className="cn-num cn-list-title">{STREAKS_HEADING}</h2>
+          <h2 className="cn-board-title">{STREAKS_HEADING}</h2>
         </header>
 
-        <div className="cn-role-block">
-          <Longest title={LONGEST_WIN} kind="W" holders={longestWin} />
-          <Longest title={LONGEST_LOSS} kind="L" holders={longestLoss} />
-        </div>
+        <Longest title={LONGEST_WIN} kind="W" holders={longestWin} />
+        <Longest title={LONGEST_LOSS} kind="L" holders={longestLoss} />
 
         <div className="cn-role-block">
-          <p className="cn-stats-subtitle">{ON_A_RUN}</p>
-          {onARun.length === 0 ? (
-            <p className="cn-stats-empty">{NOBODY_ON_A_RUN}</p>
+          <p className="cn-stats-subtitle">{ON_A_STREAK}</p>
+          {onAStreak.length === 0 ? (
+            <p className="cn-stats-empty">{NOBODY_ON_A_STREAK}</p>
           ) : (
             <ul className="cn-records">
-              {onARun.map((streak) => (
+              {onAStreak.map((streak) => (
                 <li key={streak.puuid} className="cn-record cn-stats-duo">
                   <PlayerName player={streak} />
                   <span className="cn-num cn-record-wl">
@@ -305,14 +351,22 @@ function Longest({
   kind: 'W' | 'L';
   holders: StreakHolders | null;
 }) {
+  // Nothing to name: a window with no counted game draws no section at all, so this is only
+  // ever null on a kind nobody managed — which cannot happen while a game has a winner.
   if (holders === null) return null;
 
   return (
-    <p className="cn-stats-line">
-      <span className="cn-stats-subtitle">{title}</span>{' '}
-      <span className="cn-num">{formatStreak({ kind, length: holders.length })}</span>{' '}
-      <span>{holders.holders.map((ref) => renderWebName(ref.name)).join(', ')}</span>
-    </p>
+    <div className="cn-role-block">
+      <p className="cn-stats-subtitle">{title}</p>
+      <ul className="cn-records">
+        {holders.holders.map((ref) => (
+          <li key={ref.puuid} className="cn-record cn-stats-duo">
+            <PlayerName player={ref} />
+            <span className="cn-num cn-record-wl">{formatStreak({ kind, length: holders.length })}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

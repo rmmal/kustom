@@ -138,6 +138,10 @@ async function loadGames(client: PublicClient, range: WindowRange, limit: number
       .from('games')
       .select('id, started_at, duration_s, winning_side, lcu_game_id')
       .order('started_at', { ascending: false })
+      // **The rebuild's tie-break, in the query** (`lib/ingest/rebuild.ts`): two games that
+      // share an instant have no order without it, and an unordered pair straddling a page
+      // boundary is a game read twice and a game not read at all.
+      .order('lcu_game_id', { ascending: false })
       .range(from, to);
     query = withRange(query, 'started_at', range);
 

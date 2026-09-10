@@ -298,7 +298,10 @@ async function loadWindowAwards(
     // A closed window always has the three; `running` and `null` belong to windows this
     // function is never called for (`ClosedWindow` is `last-week` or `last-month`).
     if (stats.awards === null || stats.awards.kind !== 'closed') return [];
-    return stats.awards.blocks.map((block) => ({ label: block.label, line: block.lines.join('\n') }));
+    return stats.awards.blocks.map((block) => ({
+      label: block.label,
+      line: block.lines.map((line) => line.text).join('\n'),
+    }));
   } catch (error) {
     console.error(`discord: reading ${window.kind} awards failed`, error);
     return [];

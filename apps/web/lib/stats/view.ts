@@ -10,7 +10,7 @@ import {
   duoRecords,
   longestStreak,
   noRoleGames,
-  onARun,
+  onAStreak,
   playerStreaks,
   playersWhoPlayed,
   roleBlocks,
@@ -82,7 +82,7 @@ export function statsView(input: StatsInput): StatsView {
     worstDuos: [...duos].sort(compareDuosWorst).slice(0, DUOS_SHOWN),
     longestWin: longestStreak(streaks, 'W'),
     longestLoss: longestStreak(streaks, 'L'),
-    onARun: onARun(streaks),
+    onAStreak: onAStreak(streaks),
     awards: awardsView(input.window, counted, players, input.awardRender ?? WEB_AWARD_RENDER),
   };
 }

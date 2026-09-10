@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FILLER, rosterFor, statsGame, tenPlayerGame } from '../testing/statsFixtures';
+import { NOBODY_ON_A_STREAK, ON_A_STREAK, ON_A_STREAK_GAMES } from './copy';
 import {
   averageGameMinutes,
   blueWinRate,
@@ -8,14 +9,14 @@ import {
   duoRecords,
   longestStreak,
   noRoleGames,
-  onARun,
+  onAStreak,
   playerRoleRecords,
   playerSideRecords,
   playerStreaks,
   playersWhoPlayed,
   roleBlocks,
 } from './fold';
-import type { DuoRecord, StatsGame } from './types';
+import type { DuoRecord, PlayerStreaks, StatsGame } from './types';
 
 /**
  * The numbers on `/stats` (M5.4), as arithmetic over hand-built games.
@@ -363,7 +364,7 @@ describe('streaks', () => {
     expect(longestStreak([], 'W')).toBeNull();
   });
 
-  it('lists anyone on three or more right now, longest first', () => {
+  it('lists anyone on a streak of three or more right now, longest first', () => {
     const blue = ['rami', 'iris', 'omar', 'hana', 'theo'];
     const red = ['yuki', 'nadia', 'karim', 'lena', 'bilal'];
     const games = countedGames([
@@ -375,7 +376,7 @@ describe('streaks', () => {
         statsGame({ at: `2026-09-02T1${index}:00:00Z`, blue, red, winner: 200 }),
       ),
     ]);
-    const running = onARun(playerStreaks(games, rosterFor(games)));
+    const running = onAStreak(playerStreaks(games, rosterFor(games)));
 
     // Red's run is `L3` then `W2`, so nobody is on three: the quiet-week answer, and the one
     // the page prints its `Nobody is on a run of three or more.` line for.
@@ -387,7 +388,7 @@ describe('streaks', () => {
       ),
     ]);
     expect(
-      onARun(playerStreaks(longer, rosterFor(longer))).map((streak) => [
+      onAStreak(playerStreaks(longer, rosterFor(longer))).map((streak: PlayerStreaks) => [
         streak.name,
         streak.current?.kind,
         streak.current?.length,
@@ -404,5 +405,27 @@ describe('streaks', () => {
       ['Theo', 'W', 3],
       ['Yuki', 'L', 3],
     ]);
+  });
+});
+
+describe('the copy product ruled on (2026-09-10)', () => {
+  /**
+   * `On a streak now`, not `On a run now`: the card is `Streaks`, the two labels above it end in
+   * `streak` and the rows print `W3`. One thing, one name.
+   */
+  it('calls a streak a streak, in the label and in the sentence', () => {
+    expect(ON_A_STREAK).toBe('On a streak now');
+    expect(ON_A_STREAK).not.toContain('run');
+    expect(NOBODY_ON_A_STREAK).toBe('Nobody is on a streak of 3 or more.');
+    expect(NOBODY_ON_A_STREAK).not.toContain('run');
+  });
+
+  /**
+   * **The digit is the constant the block filters on.** Lowering the constant has to change the
+   * sentence, or the page says three while the list shows two.
+   */
+  it('prints the same number the block is filtered on', () => {
+    expect(ON_A_STREAK_GAMES).toBe(3);
+    expect(NOBODY_ON_A_STREAK).toContain(`of ${ON_A_STREAK_GAMES} or more`);
   });
 });

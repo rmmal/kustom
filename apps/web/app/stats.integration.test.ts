@@ -49,11 +49,12 @@ if (stack === null) {
   const runId = randomUUID().slice(0, 8);
 
   /**
-   * Wednesday 2026-06-10, 21:00 Cairo — the board integration file's own instant, and for the
-   * same reason: **last week** is then Monday 1 June to Monday 8 June and never contains "now",
-   * so the fixture is the same week on every day of the year.
+   * Wednesday 2026-05-13, 21:00 Cairo. **Last week** is then Monday 4 May to Monday 11 May: a
+   * week in the past, so it never contains "now" and the fixture is the same week whatever day
+   * the suite runs on, and **a different week from the one `board.integration.test.ts` seeds**
+   * (1 to 8 June), because these files share one database and both count games by window.
    */
-  const NOW = new Date('2026-06-10T18:00:00Z');
+  const NOW = new Date('2026-05-13T18:00:00Z');
   const LAST_WEEK = { window: 'last-week', now: NOW, timeZone: 'Africa/Cairo' } as const;
 
   /** Blue's five and red's five, in lane order, for a week of eight games. */
@@ -100,8 +101,8 @@ if (stack === null) {
         .insert({
           lcu_game_id: Number(`77${runIdNumber()}${index}`),
           season_id: seasonId,
-          // Monday the 1st through the 6th, inside last week's Monday-06:00 boundaries.
-          started_at: `2026-06-0${1 + Math.floor(index / 2)}T${index % 2 === 0 ? '19' : '21'}:00:00Z`,
+          // Monday the 4th through Thursday the 7th, inside last week's Monday-06:00 bounds.
+          started_at: `2026-05-0${4 + Math.floor(index / 2)}T${index % 2 === 0 ? '19' : '21'}:00:00Z`,
           // The seventh game is 300 seconds exactly, which the fold's gate refuses, so it is
           // in the database and in no number on the page.
           duration_s: index === 6 ? 300 : 1_800,
@@ -164,7 +165,7 @@ if (stack === null) {
       // Eight games in the week, minus the 300-second one and the nine-player one.
       expect(stats.games).toBe(6);
       expect(stats.players).toBe(10);
-      expect(stats.range).toBe('Monday 1 Jun to Sunday 7 Jun');
+      expect(stats.range).toBe('Monday 4 May to Sunday 10 May');
     });
 
     it('is the group s two numbers over exactly those games', async () => {
@@ -203,9 +204,9 @@ if (stack === null) {
       expect(stats.awards?.kind).toBe('closed');
       const blocks = stats.awards?.kind === 'closed' ? stats.awards.blocks : [];
       expect(blocks.map((block) => block.label)).toEqual(['Most improved', 'Best off-role', 'Cursed duo']);
-      expect(blocks[0]?.lines).toEqual(['St0 · +212 · 1266 → 1478']);
+      expect(blocks[0]?.lines.map((line) => line.text)).toEqual(['St0 · +212 · 1266 → 1478']);
       // `St6`'s main is top and they played jungle all week: six off-role games, one win.
-      expect(blocks[1]?.lines).toEqual(['St6 · 1W 5L · 17% · their main is top']);
+      expect(blocks[1]?.lines.map((line) => line.text)).toEqual(['St6 · 1W 5L · 17% · their main is top']);
       expect(blocks[1]?.note).toBe('Players with no main role are not in this one — every role is theirs.');
     });
 
@@ -242,7 +243,7 @@ if (stack === null) {
       const html = renderToStaticMarkup(createElement(StatsView, { stats }));
       const text = html.replace(/<[^>]*>/g, ' ');
 
-      expect(text).toContain('Monday 1 Jun to Sunday 7 Jun · 6 games');
+      expect(text).toContain('Monday 4 May to Sunday 10 May · 6 games');
       expect(text).toContain('Blue wins 83% of the time · 6 games');
       expect(text).toContain('Average game 30 min · 6 games');
       expect(text).toContain('St0 · +212 · 1266 → 1478');
@@ -255,7 +256,7 @@ if (stack === null) {
       // A week with no games at all: the fixture's week is the one before this one.
       const quiet = await loadStats(anon, {
         ...LAST_WEEK,
-        now: new Date('2026-06-17T18:00:00Z'),
+        now: new Date('2026-05-20T18:00:00Z'),
       });
       const html = renderToStaticMarkup(createElement(StatsView, { stats: quiet }));
 

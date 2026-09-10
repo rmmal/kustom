@@ -121,14 +121,14 @@ describe('the three awards of a closed week', () => {
     const [improved] = blocksOf('last-week');
 
     expect(improved?.won).toBe(true);
-    expect(improved?.lines).toEqual(['Nadia · +212 · 1266 → 1478']);
+    expect(improved?.lines.map((line) => line.text)).toEqual(['Nadia · +212 · 1266 → 1478']);
   });
 
   it('gives best off-role the best record away from a main, and names the main', () => {
     const offRole = blocksOf('last-week')[1];
 
     expect(offRole?.won).toBe(true);
-    expect(offRole?.lines).toEqual(['Omar · 9W 3L · 75% · their main is top']);
+    expect(offRole?.lines.map((line) => line.text)).toEqual(['Omar · 9W 3L · 75% · their main is top']);
     // Everybody else in this week is flexible, so the line under it is true and prints.
     expect(offRole?.note).toBe('Players with no main role are not in this one — every role is theirs.');
   });
@@ -138,7 +138,7 @@ describe('the three awards of a closed week', () => {
 
     // Three wins in fourteen games together: `round(3 / 14 * 100)`.
     expect(cursed?.won).toBe(true);
-    expect(cursed?.lines).toEqual(['Theo and Yuki · 3W 11L · 21%']);
+    expect(cursed?.lines.map((line) => line.text)).toEqual(['Theo and Yuki · 3W 11L · 21%']);
   });
 
   it('drops the flexible note when everybody in the window has a main', () => {
@@ -169,7 +169,9 @@ describe('the minimums, and what they say when nobody clears them', () => {
     const blocks = blocksOf('last-month');
 
     expect(blocks.map((block) => block.won)).toEqual([false, true, true]);
-    expect(blocks[0]?.lines).toEqual(['Nobody played 15 games this month.']);
+    expect(blocks[0]?.lines.map((line) => line.text)).toEqual(['Nobody played 15 games this month.']);
+    // A line about nobody is keyed on that, not on words that move with the minimum.
+    expect(blocks[0]?.lines.map((line) => line.key)).toEqual(['nobody']);
   });
 
   it('says nobody spent games off their main, and nobody played together', () => {
@@ -180,10 +182,10 @@ describe('the minimums, and what they say when nobody clears them', () => {
     ]);
     const blocks = awardBlocks(games, rosterFor(games), 'week');
 
-    expect(blocks[1]?.lines).toEqual([
+    expect(blocks[1]?.lines.map((line) => line.text)).toEqual([
       'Nobody spent 4 games off their main. That is the balancer doing its job.',
     ]);
-    expect(blocks[2]?.lines).toEqual(['No pair played 4 games together this week.']);
+    expect(blocks[2]?.lines.map((line) => line.text)).toEqual(['No pair played 4 games together this week.']);
     expect(blocks.every((block) => block.won)).toBe(false);
   });
 
@@ -211,7 +213,7 @@ describe('the minimums, and what they say when nobody clears them', () => {
     const fourteen = climber(14);
     expect(awardBlocks(fourteen, rosterFor(fourteen), 'month')[0]?.won).toBe(false);
     const fifteen = climber(15);
-    expect(awardBlocks(fifteen, rosterFor(fifteen), 'month')[0]?.lines).toEqual([
+    expect(awardBlocks(fifteen, rosterFor(fifteen), 'month')[0]?.lines.map((line) => line.text)).toEqual([
       'Nadia · +212 · 1266 → 1478',
     ]);
 
@@ -246,6 +248,46 @@ describe('the minimums, and what they say when nobody clears them', () => {
     expect(awardBlocks(eight, rosterFor(eight), 'month')[2]?.won).toBe(true);
   });
 
+  /**
+   * The cursed duo's own tie (acceptance 8): two pairs on the same record over the same number
+   * of games together are **both named**, one line each, keyed on the pair and not on the words.
+   */
+  it('names both pairs of a tied cursed duo', () => {
+    // Two pairs, four games each, both 1W 3L: {yuki, theo} on blue and {iris, omar} on red, in
+    // four games they do not share, so no third pair reaches the week's minimum with them.
+    // Eight seats nobody else fills twice: only the two named pairs reach four games together,
+    // so the tie is between them and not between them and half the filler bench.
+    const spares = (game: number) => Array.from({ length: 8 }, (_, seat) => `s${game}x${seat}`);
+    const games = countedGames([
+      ...Array.from({ length: 4 }, (_, index) =>
+        statsGame({
+          at: `2026-09-01T1${index}:00:00Z`,
+          blue: ['yuki', 'theo', ...spares(index).slice(0, 3)],
+          red: spares(index).slice(3, 8),
+          winner: index === 0 ? 100 : 200,
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        statsGame({
+          at: `2026-09-02T1${index}:00:00Z`,
+          blue: spares(index + 4).slice(3, 8),
+          red: ['iris', 'omar', ...spares(index + 4).slice(0, 3)],
+          winner: index === 0 ? 200 : 100,
+        }),
+      ),
+    ]);
+
+    const cursed = awardBlocks(games, rosterFor(games), 'week')[2];
+
+    expect(cursed?.won).toBe(true);
+    expect(cursed?.lines.map((line) => line.text)).toEqual([
+      'Iris and Omar · 1W 3L · 25%',
+      'Theo and Yuki · 1W 3L · 25%',
+    ]);
+    // Keyed on the two people, so two lines that read alike are still two rows.
+    expect(cursed?.lines.map((line) => line.key)).toEqual(['u-iris|u-omar', 'u-theo|u-yuki']);
+  });
+
   /** Tied on climb and on games: **both are named**, and neither is picked by a coin toss. */
   it('names both winners of a tied climb', () => {
     const games = countedGames(
@@ -261,10 +303,12 @@ describe('the minimums, and what they say when nobody clears them', () => {
       ),
     );
 
-    expect(awardBlocks(games, rosterFor(games), 'week')[0]?.lines).toEqual([
+    const improved = awardBlocks(games, rosterFor(games), 'week')[0];
+    expect(improved?.lines.map((line) => line.text)).toEqual([
       'Nadia · +212 · 1266 → 1478',
       'Omar · +212 · 1266 → 1478',
     ]);
+    expect(improved?.lines.map((line) => line.key)).toEqual(['u-nadia', 'u-omar']);
   });
 
   /** More games breaks a tie on the climb before anybody is named twice. */
@@ -287,7 +331,9 @@ describe('the minimums, and what they say when nobody clears them', () => {
       }),
     ]);
 
-    expect(awardBlocks(games, rosterFor(games), 'week')[0]?.lines).toEqual(['Omar · +212 · 1266 → 1478']);
+    expect(awardBlocks(games, rosterFor(games), 'week')[0]?.lines.map((line) => line.text)).toEqual([
+      'Omar · +212 · 1266 → 1478',
+    ]);
   });
 });
 
@@ -314,11 +360,15 @@ describe('the two renderings of one award', () => {
     );
     const players = rosterFor(games);
 
-    expect(awardBlocks(games, players, 'week')[0]?.lines).toEqual(['Na_dia · +212 · 1266 → 1478']);
-    // The same words, with the underscore escaped so a name cannot italicise the message.
-    expect(awardBlocks(games, players, 'week', { name: renderName, delta: formatDelta })[0]?.lines).toEqual([
-      'Na\\_dia · +212 · 1266 → 1478',
+    expect(awardBlocks(games, players, 'week')[0]?.lines.map((line) => line.text)).toEqual([
+      'Na_dia · +212 · 1266 → 1478',
     ]);
+    // The same words, with the underscore escaped so a name cannot italicise the message.
+    expect(
+      awardBlocks(games, players, 'week', { name: renderName, delta: formatDelta })[0]?.lines.map(
+        (line) => line.text,
+      ),
+    ).toEqual(['Na\\_dia · +212 · 1266 → 1478']);
   });
 });
 

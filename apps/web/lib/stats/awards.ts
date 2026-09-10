@@ -25,7 +25,15 @@ import {
   pairLabel,
 } from './copy';
 import { compareDuosWorst, compareRecords, duoRecords, winRate } from './fold';
-import type { AwardBlock, AwardsView, PlayerRef, StatsGame, StatsPlayer, StatsRecord } from './types';
+import type {
+  AwardBlock,
+  AwardLine,
+  AwardsView,
+  PlayerRef,
+  StatsGame,
+  StatsPlayer,
+  StatsRecord,
+} from './types';
 
 /**
  * The three awards a closed window hands out (M5.4): most improved, best off-role, cursed duo.
@@ -184,7 +192,7 @@ function mostImproved(
   const rule = mostImprovedRule(minimum);
 
   if (eligible.length === 0) {
-    return block(MOST_IMPROVED, rule, [mostImprovedNobody(minimum, period)], false);
+    return block(MOST_IMPROVED, rule, [nobody(mostImprovedNobody(minimum, period))], false);
   }
 
   // Ties: more games wins; still tied, **both are named**. Nothing after that separates them,
@@ -197,9 +205,10 @@ function mostImproved(
   return block(
     MOST_IMPROVED,
     rule,
-    winners.map((climb) =>
-      mostImprovedLine(render.name(climb.name), render.delta(climb.delta), climb.from, climb.to),
-    ),
+    winners.map((climb) => ({
+      key: climb.puuid,
+      text: mostImprovedLine(render.name(climb.name), render.delta(climb.delta), climb.from, climb.to),
+    })),
     true,
   );
 }
@@ -281,20 +290,23 @@ function bestOffRole(
   const note = anyFlexible ? NO_MAIN_ROLE_NOTE : null;
 
   if (winner === undefined) {
-    return block(BEST_OFF_ROLE, rule, [bestOffRoleNobody(minimum)], false, note);
+    return block(BEST_OFF_ROLE, rule, [nobody(bestOffRoleNobody(minimum))], false, note);
   }
 
   return block(
     BEST_OFF_ROLE,
     rule,
     [
-      bestOffRoleLine(
-        render.name(winner.name),
-        winner.wins,
-        winner.losses,
-        winner.winRate as number,
-        winner.mainRole,
-      ),
+      {
+        key: winner.puuid,
+        text: bestOffRoleLine(
+          render.name(winner.name),
+          winner.wins,
+          winner.losses,
+          winner.winRate as number,
+          winner.mainRole,
+        ),
+      },
     ],
     true,
     note,
@@ -319,7 +331,7 @@ function cursedDuo(
   const worst = pairs[0];
 
   if (worst === undefined) {
-    return block(CURSED_DUO, rule, [cursedDuoNobody(minimum, period)], false);
+    return block(CURSED_DUO, rule, [nobody(cursedDuoNobody(minimum, period))], false);
   }
 
   // Ties: more games together; still tied, **both pairs are named**.
@@ -328,22 +340,31 @@ function cursedDuo(
   return block(
     CURSED_DUO,
     rule,
-    tied.map((pair) =>
-      cursedDuoLine(
+    tied.map((pair) => ({
+      key: `${pair.players[0].puuid}|${pair.players[1].puuid}`,
+      text: cursedDuoLine(
         pairLabel(render.name(pair.players[0].name), render.name(pair.players[1].name)),
         pair.wins,
         pair.losses,
         pair.winRate,
       ),
-    ),
+    })),
     true,
   );
+}
+
+/**
+ * The sentence an award nobody won prints. **One key, and it is not the sentence**: the line is
+ * about nobody, so it is keyed on that rather than on words that change with the minimum.
+ */
+function nobody(text: string): AwardLine {
+  return { key: 'nobody', text };
 }
 
 function block(
   label: string,
   rule: string,
-  lines: string[],
+  lines: AwardLine[],
   won: boolean,
   note: string | null = null,
 ): AwardBlock {

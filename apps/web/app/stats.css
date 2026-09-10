@@ -15,11 +15,20 @@
  */
 
 /* ---------------------------------------------------------------------------
- * The group's statements: two sentences and a count, under the strip.
+ * The group's three statements, in one card under the strip.
  * ------------------------------------------------------------------------- */
 
+/*
+ * One card, no header bar (the designer, 2026-09-10): the three lines are one subject — what the
+ * whole group did this window — and as bare paragraphs between two cards they read as the gap
+ * between them rather than as a block. They name themselves, so a legend would be a fourth line
+ * saying what the three already say.
+ */
 .cn-stats-lines {
+  display: flex;
+  flex-direction: column;
   gap: var(--cn-sp-2);
+  padding: var(--cn-sp-3);
 }
 
 .cn-stats-line {
@@ -28,11 +37,25 @@
   color: var(--cn-text);
 }
 
-/* A section's own sub-heading inside a card — `Best together`, `Longest win streak`. */
+/*
+ * A section's own sub-heading inside a card — `Best together`, `Longest win streak`,
+ * `On a streak now`. **`dim`** (the designer, 2026-09-10): the card's title above it is the
+ * heading, and two levels of `text` at 600 inside one card is two headings arguing.
+ */
 .cn-stats-subtitle {
   margin: 0;
   font-size: var(--cn-t-sm);
   font-weight: 600;
+  color: var(--cn-dim);
+}
+
+/*
+ * The empty window's whole answer, in the body under a strip with no rule under it: `t-base` in
+ * `text`, because it is the page's one block and not a caption on the header (the designer).
+ */
+.cn-stats-answer {
+  margin: 0;
+  font-size: var(--cn-t-base);
   color: var(--cn-text);
 }
 
@@ -126,35 +149,53 @@
   padding: var(--cn-sp-3);
 }
 
+/*
+ * **The team card's `brand` edge, meaning the same thing**: something was won here (the
+ * designer, 2026-09-10). It goes on only when at least one of the three has a winner, so a month
+ * where nobody cleared a minimum is a plain card with three sentences in it — the mark is the
+ * receipt of a result, not a decoration on a heading.
+ */
+.cn-awards-won {
+  border-color: var(--cn-brand);
+}
+
 .cn-award {
   display: flex;
   flex-direction: column;
   gap: var(--cn-sp-1);
 }
 
-/* The label names the award; the line under it is the award. */
+/*
+ * **The label is a caption and the winner is the line** (the designer, 2026-09-10): a reader
+ * arrives for the name, so `Most improved` is the quiet half and `Nadia · +212 · 1266 → 1478` is
+ * the loud one. Reversed — which the first build shipped — the block read as three headings with
+ * three grey subtitles.
+ */
 .cn-award-label {
   margin: 0;
   font-size: var(--cn-t-sm);
   font-weight: 600;
-  color: var(--cn-text);
+  color: var(--cn-dim);
 }
 
 .cn-award-line {
   margin: 0;
-  font-size: var(--cn-t-md);
+  font-size: var(--cn-t-lg);
+  font-weight: 600;
   color: var(--cn-text);
+  overflow-wrap: anywhere;
 }
 
-/* Nobody won it: the sentence is the answer, and it is not a winner's size. */
+/* Nobody won it: the sentence is the answer, and an answer is not a winner's size. */
 .cn-award-none {
   font-size: var(--cn-t-base);
+  font-weight: 400;
   color: var(--cn-dim);
 }
 
 /* The rule it was won under, and the flexible note: the quietest thing in the block. */
 .cn-award-rule {
   margin: 0;
-  font-size: var(--cn-t-sm);
+  font-size: var(--cn-t-xs);
   color: var(--cn-dim);
 }

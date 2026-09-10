@@ -193,7 +193,7 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
         <section className="cn-block">
           <section className="cn-card cn-list-card">
             <header className="cn-card-head cn-list-head">
-              <h2 className="cn-num cn-list-title">{ROLE_RECORD_HEADING}</h2>
+              <h2 className="cn-board-title">{ROLE_RECORD_HEADING}</h2>
             </header>
             <ul className="cn-records">
               {player.roles.map((record) => (
@@ -212,7 +212,7 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
         <section className="cn-block">
           <section className="cn-card cn-list-card">
             <header className="cn-card-head cn-list-head">
-              <h2 className="cn-num cn-list-title">{RECENT_GAMES_HEADING}</h2>
+              <h2 className="cn-board-title">{RECENT_GAMES_HEADING}</h2>
               {/* Right-aligned over the column of ratings, the same legend the seat rack
                   carries over its own (the designer's M3.5 review). */}
               <span className="cn-num cn-legend">{RECENT_RATING_LEGEND}</span>

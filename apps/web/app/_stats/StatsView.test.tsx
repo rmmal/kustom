@@ -118,11 +118,31 @@ describe('a window with nothing in it', () => {
     expect(screen.queryByText('Awards')).not.toBeInTheDocument();
     expect(screen.queryByText(/Blue wins/)).not.toBeInTheDocument();
   });
+
+  /**
+   * The sentence is **the page's block**, not a caption inside the header, and the strip drops
+   * its hairline because there is nothing under it to close over (the designer, 2026-09-10).
+   */
+  it('puts the sentence in the body and takes the rule off the strip', () => {
+    const { container } = draw(view([], { window: 'last-week' }));
+
+    expect(container.querySelector('.cn-strip')).toHaveClass('cn-strip-bare');
+    expect(container.querySelector('.cn-strip')?.textContent).not.toContain('No games last week.');
+    expect(container.querySelector('.cn-stats-answer')?.textContent).toBe('No games last week.');
+    // No slot line either: `· 0 games` is a thing no reader needs told twice.
+    expect(container.querySelector('.cn-window-line')).not.toBeInTheDocument();
+  });
 });
 
 describe('the group numbers', () => {
   it('are blue s rate and the average game, each with the count they are over', () => {
-    draw(view(busyMonth()));
+    const { container } = draw(view(busyMonth()));
+
+    // One card, no header bar: three lines about one subject (the designer, 2026-09-10).
+    const card = container.querySelector('.cn-stats-lines');
+    expect(card).toHaveClass('cn-card');
+    expect(card?.querySelector('.cn-card-head')).toBeNull();
+    expect([...(card?.querySelectorAll('.cn-stats-line') ?? [])]).toHaveLength(3);
 
     // Five of seven, and every game 1800 seconds.
     expect(screen.getByText('Blue wins 71% of the time · 7 games')).toBeInTheDocument();
@@ -194,10 +214,20 @@ describe('duos and streaks', () => {
     );
     expect(worst?.textContent).toContain('2W 5L · 29%');
 
-    // Blue's five opened with five wins; red's five then took three.
-    expect(screen.getByText('Longest win streak').parentElement?.textContent).toContain('W5');
-    expect(screen.getByText('Longest losing streak').parentElement?.textContent).toContain('L5');
-    expect(screen.getByText('On a run now')).toBeInTheDocument();
+    /**
+     * The two longest are blocks like `On a streak now` (the designer, 2026-09-10): a label,
+     * then one 44px row per holder — five people share `W5` here, so five rows print.
+     */
+    const longest = [...container.querySelectorAll('.cn-role-block')].find((block) =>
+      block.textContent?.startsWith('Longest win streak'),
+    );
+    expect(longest?.querySelectorAll('.cn-record')).toHaveLength(5);
+    expect(longest?.textContent).toContain('W5');
+    const losing = [...container.querySelectorAll('.cn-role-block')].find((block) =>
+      block.textContent?.startsWith('Longest losing streak'),
+    );
+    expect(losing?.textContent).toContain('L5');
+    expect(screen.getByText('On a streak now')).toBeInTheDocument();
   });
 
   it('says nobody is on a run when nobody is', () => {
@@ -210,18 +240,25 @@ describe('duos and streaks', () => {
     ];
     draw(view(games));
 
-    expect(screen.getByText('Nobody is on a run of three or more.')).toBeInTheDocument();
+    expect(screen.getByText('Nobody is on a streak of 3 or more.')).toBeInTheDocument();
     expect(screen.getAllByText('No pair has 5 games together yet.')).toHaveLength(2);
   });
 });
 
 describe('the awards block', () => {
-  it('is one line on a window that is still running', () => {
-    draw(view(busyMonth()));
+  /**
+   * A running window has **no card**: one line in the header strip, under the slot, because a
+   * card with a header bar and one grey sentence in it promises something it has not got — and
+   * on `This month`, the page's default, it was the first thing under the picker.
+   */
+  it('is one line in the header on a window that is still running', () => {
+    const { container } = draw(view(busyMonth()));
 
-    expect(screen.getByText('Awards')).toBeInTheDocument();
-    expect(screen.getByText('Awards are handed out when the month ends.')).toBeInTheDocument();
+    const strip = container.querySelector('.cn-strip');
+    expect(strip?.textContent).toContain('Awards are handed out when the month ends.');
+    expect(screen.queryByText('Awards')).not.toBeInTheDocument();
     expect(screen.queryByText('Most improved')).not.toBeInTheDocument();
+    expect(container.querySelector('.cn-awards')).toBeNull();
   });
 
   it('is three statements on a window that has closed', () => {
@@ -241,6 +278,21 @@ describe('the awards block', () => {
     expect(screen.getByText('No pair played 8 games together this month.')).toBeInTheDocument();
   });
 
+  /**
+   * The `brand` edge is the team card's mark and means the same thing: something was won here.
+   * A window where nobody cleared a minimum is a plain card with three sentences in it.
+   */
+  it('lights the card only when somebody won something', () => {
+    const nobody = draw(view(busyMonth(), { window: 'last-month' }));
+    expect(nobody.container.querySelector('.cn-awards-won')).toBeNull();
+    nobody.unmount();
+
+    // Twenty games of the same ten: the month's minimums are cleared and the card is lit.
+    const { container } = draw(view([...busyMonth(), ...busyMonth()], { window: 'last-month' }));
+    expect(container.querySelector('.cn-awards-won')).not.toBeNull();
+    expect(screen.getByText('Most improved')).toBeInTheDocument();
+  });
+
   /** `All time` has no awards block at all: a window that never closes has no last night. */
   it('is absent entirely on all time', () => {
     draw(view(busyMonth(), { window: 'all-time' }));
@@ -249,6 +301,27 @@ describe('the awards block', () => {
     expect(screen.queryByText(/Awards are handed out/)).not.toBeInTheDocument();
     // The rest of the page is unchanged.
     expect(screen.getByText('Blue wins 71% of the time · 7 games')).toBeInTheDocument();
+  });
+});
+
+describe('the card titles', () => {
+  /**
+   * A card title is language, so it is Archivo (`.cn-board-title`) — the same swap `/p/[puuid]`
+   * takes in this commit. The mono micro-label is for legends.
+   */
+  it('are Archivo, not the mono micro-label', () => {
+    const { container } = draw(view(busyMonth(), { window: 'last-month' }));
+
+    expect([...container.querySelectorAll('h2')].map((node) => node.textContent)).toEqual([
+      'Awards',
+      'By role',
+      'Duos',
+      'Streaks',
+    ]);
+    for (const heading of container.querySelectorAll('h2')) {
+      expect(heading).toHaveClass('cn-board-title');
+      expect(heading).not.toHaveClass('cn-num');
+    }
   });
 });
 

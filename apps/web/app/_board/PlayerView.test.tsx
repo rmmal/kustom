@@ -435,15 +435,19 @@ describe('the Floodlit rank order down the page (M3.19)', () => {
   /**
    * v1 set the name and both section headings at the same `t-lg` 600 and put the numbers below
    * all three, which made the largest type on a page about a person the words `By role`.
+   *
+   * The two card titles are `.cn-board-title` since M5.4 (the designer, 2026-09-10): **a card
+   * title is language, so it is Archivo** — the rule the rail's `Top of the board` already
+   * followed — and the mono micro-label is kept for legends. One rule, both pages.
    */
-  it('is the name in the display cut, the two numbers above it, the headings as micro-labels', () => {
+  it('is the name in the display cut, the two numbers above it, the card titles in Archivo', () => {
     const { container } = draw();
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveClass('cn-display');
     expect(container.querySelector('.cn-number-primary .cn-number-value')?.textContent).toBe('882');
     expect([...container.querySelectorAll('h2')].map((node) => node.className)).toEqual([
-      'cn-num cn-list-title',
-      'cn-num cn-list-title',
+      'cn-board-title',
+      'cn-board-title',
     ]);
   });
 

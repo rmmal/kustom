@@ -3,7 +3,7 @@ import { currentStreak } from '../board/streak';
 import { gateGame } from '../ingest/fold';
 import { LANE_ORDER } from '../laneOrder';
 import { renderWebName } from '../tonight/copy';
-import { MIN_DUO_GAMES, MIN_RECORD_GAMES, ON_A_RUN_GAMES } from './copy';
+import { MIN_DUO_GAMES, MIN_RECORD_GAMES, ON_A_STREAK_GAMES } from './copy';
 import type {
   DuoRecord,
   PlayerRef,
@@ -421,8 +421,8 @@ export function longestStreak(streaks: readonly PlayerStreaks[], kind: 'W' | 'L'
   };
 }
 
-/** Anyone on a run of three or more right now, longest first, then by name. */
-export function onARun(streaks: readonly PlayerStreaks[], minimum = ON_A_RUN_GAMES): PlayerStreaks[] {
+/** Anyone on a streak of three or more right now, longest first, then by name. */
+export function onAStreak(streaks: readonly PlayerStreaks[], minimum = ON_A_STREAK_GAMES): PlayerStreaks[] {
   return streaks
     .filter((streak) => (streak.current?.length ?? 0) >= minimum)
     .sort((a, b) => (b.current?.length ?? 0) - (a.current?.length ?? 0) || compareByName(a, b));

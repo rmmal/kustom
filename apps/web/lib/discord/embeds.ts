@@ -324,15 +324,15 @@ function leaderboardLine(entry: LeaderboardEntry, index: number): string {
 /**
  * One award line of the closed window's post (M5.4, M5.10).
  *
- * **A seam, deliberately empty for now.** The awards are M5.4's — most improved, best
- * off-role, cursed duo — and M5.4 has not shipped: this type is the shape the post will take
- * them in, and `windowSummaryEmbed` prints an `Awards` field only when it is given some. The
- * weekly post therefore ships as the closed window's board alone, and the day M5.4 lands, the
- * loader hands three of these over and nothing else about the post changes.
+ * **Filled since M5.4 landed**: `lib/discord/post.ts` reads the closed window through
+ * `loadStats` and hands three of these over, computed by the same pure functions the page
+ * prints. `windowSummaryEmbed` still prints the field only when it is given some, which is what
+ * keeps a failed stats read a post of the board alone rather than no post at all.
  *
  * The line is **quoted from the awards, never re-derived here** — including the sentence an
  * award nobody won prints (`Nobody played 6 games this week.`), so the block always has three
- * lines and the group can see the bar it missed.
+ * labels and the group can see the bar it missed. A tie carries its winners as one string with
+ * a newline in it, so the bold label prints once and the second name hangs under the first.
  */
 export interface WindowAward {
   /** `Most improved`. Rendered bold, at the front of the line. */

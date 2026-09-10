@@ -8,9 +8,11 @@ import { gamesLabel, RATING_LABEL, winLossLabel } from '../board/copy';
  * post, and one of them saying `Cursed duo` while the other said `Worst duo` is a bug nobody
  * would find until somebody won it.
  *
- * **Product's strings are quoted; the ones this file invented are marked `(engineer)`** and are
- * listed for product in the M5.4 report. Every one of them is a "not enough yet" line, which
- * the brief asks for by name and does not write out.
+ * **Every string here is product's**, including the seven the brief did not write: they were
+ * written against the brief's "print a not-enough-yet line here", ruled on 2026-09-10 and are
+ * now a table of their own in `05-design.md` ("Copy — `/stats`, the strings the brief did not
+ * write"). Five were kept as written, two were replaced — `On a streak now` and `Nobody is on a
+ * streak of 3 or more.` — and the page's own noun for a run is **streak**, everywhere.
  *
  * The window's own words — the five labels, the empty sentences, the slot — are the board's and
  * are imported, never retyped: `/stats` mounts the same picker and prints the same slot.
@@ -41,8 +43,13 @@ export const MIN_RECORD_GAMES = 5;
 /** How many games together before a pair is worth looking at. The award's bar is higher. */
 export const MIN_DUO_GAMES = 5;
 
-/** A run worth naming on the page: three (product's brief, `/stats` section 6). */
-export const ON_A_RUN_GAMES = 3;
+/**
+ * A streak worth naming on the page: three (product's brief, `/stats` section 6).
+ *
+ * **The sentence below interpolates it**, so a change here changes the line the page prints and
+ * cannot leave the words and the filter saying two different numbers.
+ */
+export const ON_A_STREAK_GAMES = 3;
 
 /* ---------------------------------------------------------------------------
  * The group's two numbers, and the cap.
@@ -65,12 +72,12 @@ export function averageGameLine(minutes: number, games: number): string {
 }
 
 /**
- * `12 players played.` **(engineer)** — the third fact product's page order asks the header for
- * ("the window's name and the dates it covers, counted games, players who played") and the only
- * one the slot's pinned line has no room for.
+ * `12 players played.` (product, 2026-09-10) — the third fact the brief's page order asks the
+ * header for, and the one the slot's pinned line has no room for.
  *
- * It sits with the two group statements rather than in the slot, because the slot is a fixed
- * string (`05-design.md`'s copy table) and this is a sentence about the same window.
+ * It sits with the two group statements rather than in the slot, because the slot is fixed byte
+ * for byte by M5.10's post. The zero case never renders: an empty window prints its own sentence
+ * and draws no card.
  */
 export function playersLine(players: number): string {
   return players === 1 ? '1 player played.' : `${players} players played.`;
@@ -94,16 +101,21 @@ export function capLine(cap: number): string {
  * `12 games are not in the role numbers — the client did not record who played where.
  * Backfilled games never do.` (product), under the role section and **only above zero**.
  *
- * The count goes through `gamesLabel` and the verb follows it, so a single game reads
- * `1 game is not in the role numbers` rather than product's plural against a count of one —
- * the same rule every other count on these pages follows.
+ * The count goes through `gamesLabel` and **the verb follows it** — `1 game is not in the role
+ * numbers` — which product ruled on 2026-09-10: the brief wrote the plural only, and everything
+ * after the dash is theirs, unchanged.
  */
 export function noRoleFootnote(games: number): string {
   const verb = games === 1 ? 'is' : 'are';
   return `${gamesLabel(games)} ${verb} not in the role numbers — the client did not record who played where. Backfilled games never do.`;
 }
 
-/** `Nobody has 5 games on jungle yet.` **(engineer)** — the brief asks for the line, not the words. */
+/**
+ * `Nobody has 5 games on jungle yet.` (product, 2026-09-10).
+ *
+ * The role in the app's own lower-case word, and the `5` from the constant the list filters on,
+ * so the sentence and the bar cannot drift. `yet`, because it is a running count.
+ */
 export function noRoleEntries(role: RoleValue): string {
   return `Nobody has ${MIN_RECORD_GAMES} games on ${role} yet.`;
 }
@@ -117,7 +129,11 @@ export const DUOS_HEADING = 'Duos';
 export const BEST_TOGETHER = 'Best together';
 export const WORST_TOGETHER = 'Worst together';
 
-/** `No pair has 5 games together yet.` **(engineer)** */
+/**
+ * `No pair has 5 games together yet.` (product, 2026-09-10) — deliberately the award's own noun
+ * with the browsing table's number in it, so a reader who meets both lines reads one rule at two
+ * bars rather than two rules.
+ */
 export const NO_DUOS = `No pair has ${MIN_DUO_GAMES} games together yet.` as const;
 
 /** How many of each list the page prints: the five best and the five worst (product). */
@@ -130,15 +146,29 @@ export function pairLabel(a: string, b: string): string {
 
 export const STREAKS_HEADING = 'Streaks';
 
-/** The two the window holds, with their holders. **(engineer)** */
+/**
+ * The two the window holds, with their holders (product, 2026-09-10): the brief's own words,
+ * promoted to labels. `losing`, not `loss` — it is the streak a person is on, not a column head.
+ */
 export const LONGEST_WIN = 'Longest win streak';
 export const LONGEST_LOSS = 'Longest losing streak';
 
-/** Anyone on three or more right now. **(engineer)** */
-export const ON_A_RUN = 'On a run now';
+/**
+ * Anyone on three or more right now (product, 2026-09-10, replacing `On a run now`).
+ *
+ * **`streak`, not `run`**: the card above it is `Streaks`, the two labels above it end in
+ * `streak`, and the leaderboard row prints `W3`. One thing, one name — the rule that turned
+ * `standings` into `Leaderboard`.
+ */
+export const ON_A_STREAK = 'On a streak now';
 
-/** **(engineer)** — the quiet week's answer for the third block of the streaks section. */
-export const NOBODY_ON_A_RUN = 'Nobody is on a run of three or more.';
+/**
+ * The quiet week's answer for that block (product, 2026-09-10, replacing `Nobody is on a run of
+ * three or more.`). The digit is {@link ON_A_STREAK_GAMES}, interpolated: spelled out it can
+ * drift from the list it is about, and the page's other two "not enough yet" lines already
+ * print their minimum as a digit.
+ */
+export const NOBODY_ON_A_STREAK = `Nobody is on a streak of ${ON_A_STREAK_GAMES} or more.` as const;
 
 /** `71%`. The one place a rate becomes words, so every list prints it the same way. */
 export function percentLabel(percent: number): string {
@@ -217,9 +247,9 @@ export function bestOffRoleRule(minimum: number): string {
 /**
  * `Omar · 9W 3L · 75% · their main is top`.
  *
- * **`their`, where product wrote `his`** (engineer): the database knows a PUUID and a display
- * name and nothing else, so a possessive per player is a fact this product does not have. Every
- * other word of the line is product's. Listed for product with the invented strings.
+ * **`their`, and product's copy table supersedes the brief's `his`** (2026-09-10): the database
+ * holds a PUUID, a name that can change between two page loads, and no pronoun. It is the same
+ * pronoun the board pages settled on for the same reason (M3.26).
  */
 export function bestOffRoleLine(
   name: string,

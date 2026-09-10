@@ -123,6 +123,16 @@ export interface StreakHolders {
  * these three lines in the channel and then opens the page to argue with them, and two
  * renderings of one award is a bug nobody would find until the argument.
  */
+export interface AwardLine {
+  /**
+   * Who the line is about: a winner's puuid, a pair's two joined, or `nobody` for the sentence
+   * an award nobody won prints. **The React key of the line**, so a page that names two tied
+   * winners keys them on the people and not on the sentence they happen to share.
+   */
+  key: string;
+  text: string;
+}
+
 export interface AwardBlock {
   /** `Most improved`. Bold at the front of the line in Discord, a label on the page. */
   label: string;
@@ -132,7 +142,7 @@ export interface AwardBlock {
    * One line per winner — two when the tie rule names two — or exactly one "nobody qualifies"
    * sentence. Never empty.
    */
-  lines: string[];
+  lines: AwardLine[];
   /** False when {@link lines} is the "nobody qualifies" sentence. */
   won: boolean;
   /** `Players with no main role are not in this one — every role is theirs.` */
@@ -176,7 +186,7 @@ export interface StatsView {
   worstDuos: DuoRecord[];
   longestWin: StreakHolders | null;
   longestLoss: StreakHolders | null;
-  /** Anyone whose current run is three or longer, longest first. */
-  onARun: PlayerStreaks[];
+  /** Anyone whose current streak is three or longer, longest first. */
+  onAStreak: PlayerStreaks[];
   awards: AwardsView | null;
 }

@@ -65,6 +65,7 @@ if (stack === null) {
   const EMPTY_MONDAY = new Date('2025-07-14T07:00:00Z'); // 10:00 Cairo, Monday 14 July
   const FLAKY_MONDAY = new Date('2025-05-12T07:00:00Z'); // 10:00 Cairo, Monday 12 May
   const FIRST_OF_MONTH = new Date('2025-11-01T12:00:00Z'); // Saturday 1 November, after 06:00
+  const AWARDS_MONDAY = new Date('2025-03-10T07:00:00Z'); // 09:00 Cairo, Monday 10 March
 
   const windowsTouched: ClosedWindow[] = [
     closedWindow('last-week', MONDAY, TIME_ZONE),
@@ -72,6 +73,7 @@ if (stack === null) {
     closedWindow('last-week', FLAKY_MONDAY, TIME_ZONE),
     closedWindow('last-week', FIRST_OF_MONTH, TIME_ZONE),
     closedWindow('last-month', FIRST_OF_MONTH, TIME_ZONE),
+    closedWindow('last-week', AWARDS_MONDAY, TIME_ZONE),
   ];
 
   let playerIds: string[] = [];
@@ -157,6 +159,55 @@ if (stack === null) {
     if (playersError) throw new Error(`seeding a scoreboard: ${playersError.message}`);
   }
 
+  /**
+   * A week with enough in it to hand out awards (M5.4): six games, the same ten, the sides
+   * rotating so the pairs and the roles vary the way a real week does.
+   *
+   * `Window0` climbs `1266 → 1478` — `mu` 21.1 to 24.6333, the numbers the pages would have
+   * printed — and everybody else stands still, so most improved has exactly one winner.
+   * `Window1`'s main is top and they play jungle all week, which is the off-role award.
+   */
+  async function seedAwardsGame(startedAt: Date, index: number): Promise<void> {
+    const lcuGameId = Math.floor(Math.random() * 1_000_000_000) + 7_000_000_000;
+    gameIds.push(lcuGameId);
+    const { data, error } = await db
+      .from('games')
+      .insert({
+        lcu_game_id: lcuGameId,
+        season_id: seasonId,
+        started_at: startedAt.toISOString(),
+        duration_s: 1_800,
+        winning_side: index % 2 === 0 ? 100 : 200,
+        source: 'eog',
+        raw: { gameId: lcuGameId },
+      })
+      .select('id')
+      .single();
+    if (error) throw new Error(`seeding an awards game: ${error.message}`);
+
+    const lanes = ['top', 'jungle', 'mid', 'adc', 'support'] as const;
+    // The ten, rotated one seat per game: a different five a side every night.
+    const order = [...playerIds.slice(index % 10), ...playerIds.slice(0, index % 10)];
+
+    const { error: playersError } = await db.from('game_players').insert(
+      order.map((playerId, seat) => ({
+        game_id: data.id,
+        player_id: playerId,
+        side: seat < 5 ? 100 : 200,
+        // `Window1` is on jungle every game, whatever seat the rotation gives them.
+        role: playerId === playerIds[1] ? ('jungle' as const) : (lanes[seat % 5] as (typeof lanes)[number]),
+        kills: 3,
+        deaths: 3,
+        assists: 3,
+        mu_before: playerId === playerIds[0] ? (index === 0 ? 21.1 : 24.4) : 25,
+        sigma_before: 8.333,
+        mu_after: playerId === playerIds[0] ? (index === 5 ? 24.6333333 : 24.4) : 25,
+        sigma_after: 8.1,
+      })),
+    );
+    if (playersError) throw new Error(`seeding an awards scoreboard: ${playersError.message}`);
+  }
+
   /** The embed of the last post, or undefined. */
   function embedOf(index: number): Record<string, unknown> | undefined {
     const embeds = posts[index]?.embeds as Record<string, unknown>[] | undefined;
@@ -211,6 +262,16 @@ if (stack === null) {
     await seedGame(new Date('2025-09-05T19:00:00Z'));
     await seedGame(new Date('2025-05-07T19:00:00Z'));
     await seedGame(new Date('2025-10-22T19:00:00Z'));
+
+    // Six games in the week that closed on `AWARDS_MONDAY`, Tuesday to Sunday.
+    for (let index = 0; index < 6; index += 1) {
+      await seedAwardsGame(new Date(`2025-03-0${4 + index}T19:00:00Z`), index);
+    }
+    // One main role in that week, so the off-role award has somebody to consider.
+    await db
+      .from('players')
+      .update({ main_role: 'top' })
+      .eq('id', playerIds[1] as string);
   });
 
   afterAll(async () => {
@@ -273,6 +334,45 @@ if (stack === null) {
       const lines = String(fields[0]?.value ?? '').split('\n');
       expect(lines).toHaveLength(10);
       expect(lines[0]).toContain('· 2 games');
+    });
+  });
+
+  /**
+   * **The awards field is M5.4's three lines, quoted** (M5.10): the post the group reads on a
+   * Monday and the page they open a tap later are the same words, and an award nobody won still
+   * prints its sentence, so the block always has three labels and the bar they missed is on
+   * screen.
+   */
+  describe('the awards under the board', () => {
+    it('prints all three, computed from the week it just posted', async () => {
+      const posted = await callAt(AWARDS_MONDAY);
+      expect(posted.posted).toEqual(['last-week']);
+
+      const embed = embedOf(0);
+      expect(embed?.description).toBe('Monday 3 Mar to Sunday 9 Mar · 6 games');
+
+      const fields = (embed?.fields ?? []) as { name: string; value: string }[];
+      expect(fields).toHaveLength(2);
+      expect(fields[1]?.name).toBe('Awards');
+
+      const lines = String(fields[1]?.value ?? '').split('\n');
+      const labelled = lines.filter((line) => line.startsWith('**'));
+      expect(labelled.map((line) => line.slice(0, line.indexOf('**', 2) + 2))).toEqual([
+        '**Most improved**',
+        '**Best off-role**',
+        '**Cursed duo**',
+      ]);
+
+      // Window0 is the only player whose rating moved: `round(24.6333 * 60) - round(21.1 * 60)`.
+      expect(labelled[0]).toBe('**Most improved** Window0 · +212 · 1266 → 1478');
+      // Window1's main is top and they played jungle in all six.
+      expect(labelled[1]).toMatch(/^\*\*Best off-role\*\* Window1 · \d+W \d+L · \d+% · their main is top$/);
+      // Whoever it is, the pair line is a pair and a record — or the sentence nobody won it.
+      expect(labelled[2]).toMatch(
+        /^\*\*Cursed duo\*\* (.+ and .+ · \d+W \d+L · \d+%|No pair played 4 games together this week\.)$/,
+      );
+      // ASCII in a message that gets copy-pasted: U+2212 stays on the web (05-design.md).
+      expect(fields[1]?.value).not.toContain('−');
     });
   });
 
