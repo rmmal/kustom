@@ -179,7 +179,11 @@ async function windowRows(client: PublicClient, seasonId: string, range: WindowR
   const byPlayer = new Map<string, { row: PlayerGameRow; game: SeasonGame }[]>();
   for (const row of rows) {
     const game = byGame.get(row.gameId);
-    if (game === undefined || row.muAfter === null || row.muBefore === null) continue;
+    // All three or none: the fold writes `mu_before`, `mu_after` and `sigma_after` together, and
+    // a row missing any of them is an unrated game — which counts nowhere on a board.
+    if (game === undefined || row.muBefore === null || row.muAfter === null || row.sigmaAfter === null) {
+      continue;
+    }
     const played = byPlayer.get(row.playerId) ?? [];
     played.push({ row, game });
     byPlayer.set(row.playerId, played);
