@@ -117,10 +117,13 @@ export interface TonightSnapshot {
    * render and the line would change under the reader (05-design.md, "The status strip").
    */
   nightLabel: string;
-  /** False prints `NO_ACTIVE_SEASON_MESSAGE`, the same sentence `/admin` and the API use. */
+  /**
+   * False prints `NO_ACTIVE_SEASON_TONIGHT_MESSAGE` — tonight's games are not being saved.
+   *
+   * **The name that went with it is gone** (M5.12): the slug is the night alone, so nothing on
+   * this page reads a season's name and the snapshot no longer carries one.
+   */
   seasonActive: boolean;
-  /** The active season's name, for the slug line. `null` when none is active. */
-  seasonName: string | null;
 }
 
 /**

@@ -151,14 +151,15 @@ function StatusStrip({
 }) {
   return (
     <header className="cn-strip">
-      {/* The line that tells a friend from WhatsApp what they are looking at and when.
-          Formatted on the server, in one locale and the configured timezone. With no active
-          season it is the date alone. */}
-      <p className="cn-num cn-slug">
-        {snapshot.seasonName === null
-          ? snapshot.nightLabel
-          : `${snapshot.nightLabel} · ${snapshot.seasonName}`}
-      </p>
+      {/*
+       * The line that tells a friend from WhatsApp what they are looking at and when: **the
+       * night, and nothing else** (M5.12, product 2026-09-10). It carried `· Season 1` until
+       * seasons left the friend-facing vocabulary — on the deployment that exists it read
+       * `TUESDAY 9 SEPTEMBER · GAMESD`, which is the user's own season name shouted at twenty
+       * people who never chose it. Formatted on the server, in one locale and the configured
+       * timezone.
+       */}
+      <p className="cn-num cn-slug">{snapshot.nightLabel}</p>
 
       <p className="cn-headline-row">
         {header.count === null ? null : <span className="cn-display cn-count">{header.count}</span>}

@@ -104,6 +104,8 @@
   gap: var(--cn-sp-2);
   /* One step off the heading, not two: the picker belongs to it (the designer, 2026-09-10). */
   margin-top: var(--cn-sp-4);
+  /* And the slot sits one smaller step under the chips, inside the same strip. */
+  margin-bottom: var(--cn-sp-3);
 }
 
 .cn-window {
@@ -142,6 +144,22 @@
 .cn-window:active {
   background: var(--cn-pressed);
   transform: scale(0.985);
+}
+
+/*
+ * The slot under the picker: the window's dates and its game count, or — when there is nothing
+ * to count — the window's empty sentence (`.cn-empty`, which keeps its sentence case).
+ *
+ * **Dressed exactly like the tonight page's slug**, and for the same reason: it is the line
+ * that says what you are looking at and when, so the two pages say it the same way. Sentence
+ * case in the DOM, upper-cased here — a date is not shouted, it is set as a label.
+ */
+.cn-window-line {
+  margin: 0;
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cn-dim);
 }
 
 /*

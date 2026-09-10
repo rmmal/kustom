@@ -96,7 +96,15 @@ describe('the rating history chart', () => {
 
   it('says one line instead of a chart for a player with no games', () => {
     const { container } = draw(
-      workedPlayer('Hana', { games: 0, wins: 0, losses: 0, history: [], roles: [], recent: [] }),
+      workedPlayer('Hana', {
+        games: 0,
+        wins: 0,
+        losses: 0,
+        range: null,
+        history: [],
+        roles: [],
+        recent: [],
+      }),
     );
 
     expect(screen.getByText(WINDOW_EMPTY['all-time'])).toBeInTheDocument();
@@ -281,6 +289,7 @@ describe('a window on the player page', () => {
     games: 6,
     wins: 4,
     losses: 2,
+    range: 'Monday 1 Sep to Sunday 7 Sep',
     reference: 1_376,
     history: [1_376, 1_402, 1_434],
     roles: [{ role: 'top', games: 6, wins: 4, losses: 2 }],
@@ -295,6 +304,19 @@ describe('a window on the player page', () => {
       'href',
       `/p/${workedPuuid('Hana')}?window=all-time`,
     );
+  });
+
+  /**
+   * **The range half alone** (product, 2026-09-10): the record under the two numbers already
+   * says `6 games · 4W 2L`, and no page says one number twice.
+   */
+  it("prints the window's dates in the strip, with no count beside them", () => {
+    const { container } = draw(week);
+    const line = container.querySelector('.cn-window-line');
+
+    expect(line?.textContent).toBe('Monday 1 Sep to Sunday 7 Sep');
+    expect(line?.parentElement).toHaveClass('cn-strip');
+    expect(line?.textContent).not.toContain('games');
   });
 
   it('counts the window games in the record, not a whole history', () => {
@@ -323,6 +345,7 @@ describe('a window on the player page', () => {
         games: 0,
         wins: 0,
         losses: 0,
+        range: null,
         history: [],
         roles: [],
         recent: [],
@@ -350,6 +373,7 @@ describe('a window on the player page', () => {
         games: 0,
         wins: 0,
         losses: 0,
+        range: null,
         history: [],
         roles: [],
         recent: [],

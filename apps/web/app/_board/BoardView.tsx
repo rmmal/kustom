@@ -1,4 +1,4 @@
-import { LEADERBOARD_LABEL, WINDOW_EMPTY, WINDOW_LABELS } from '@/lib/board/copy';
+import { LEADERBOARD_LABEL, WINDOW_EMPTY, WINDOW_LABELS, windowSlotLine } from '@/lib/board/copy';
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
 import { isNameless } from '@/lib/tonight/copy';
 import { BoardCard } from '../_leaderboard/BoardCard';
@@ -26,15 +26,21 @@ export interface BoardViewProps {
 }
 
 export function BoardView({ board, viewerPuuid }: BoardViewProps) {
-  const settling = board.rows.some((row) => row.settling);
+  // Only about rows that are on the screen: with an empty window nothing is drawn for the
+  // sentence to explain, and it is a note under a column, not a note about the product.
+  const settling = board.range !== null && board.rows.some((row) => row.settling);
   const nameless = board.rows.some((row) => isNameless(row.name));
   /**
-   * **A window with nothing in it.** On `All time` the board still lists everybody the
-   * database knows, seeded from rank, so "no games" there is a board whose every row reads
-   * `0 games` — the same test the shipped page made. In a window, membership *is* the games,
-   * so an empty window is no rows at all.
+   * **A window with nothing in it**, counted by the loader rather than guessed from the rows:
+   * in a window membership *is* the games, and on `All time` the board still lists everybody
+   * the database knows, seeded from rank, so a row count would say "played" for a board of
+   * `0 games` rows.
+   *
+   * When it is empty the slot prints the window's sentence and **no card is drawn at all**
+   * (product, 2026-09-10) — which is how "never a blank card" and "never say it twice" are
+   * both true.
    */
-  const noGamesYet = board.rows.length === 0 || board.rows.every((row) => row.games === 0);
+  const empty = board.range === null;
 
   return (
     <main className="cn-page">
@@ -53,18 +59,22 @@ export function BoardView({ board, viewerPuuid }: BoardViewProps) {
         {/*
          * **The strip's one line about the window**, under the chips and above the hairline
          * (the designer, 2026-09-10). Not an empty page and not a spinner: one sentence, in
-         * `dim`, and — on `All time` — the seeded rows below it, so a friend who has not played
-         * yet can still find themselves.
+         * `dim`, over a board that is simply not drawn — the sentence is the whole answer.
          *
-         * This is a **slot**, not a place for one string: the window's date range
-         * (`Monday 1 Sep to Sunday 7 Sep`) lands here too when product writes it, and the two
-         * never print together — a window with no games has no range worth naming.
+         * One **slot**, two strings, never both: the window's dates and its game count
+         * (`Monday 1 Sep to Sunday 7 Sep · 14 games`) when there is something to count, and
+         * the window's own empty sentence when there is not. `· 0 games` is a thing no reader
+         * needs told twice.
          */}
-        {noGamesYet ? <p className="cn-empty">{WINDOW_EMPTY[board.window]}</p> : null}
+        {empty ? (
+          <p className="cn-empty">{WINDOW_EMPTY[board.window]}</p>
+        ) : (
+          <p className="cn-num cn-window-line">{windowSlotLine(board.range as string, board.games)}</p>
+        )}
       </header>
 
       <section className="cn-block">
-        {board.rows.length === 0 ? null : <BoardCard rows={board.rows} viewerPuuid={viewerPuuid} />}
+        {empty || board.rows.length === 0 ? null : <BoardCard rows={board.rows} viewerPuuid={viewerPuuid} />}
 
         {/*
          * Once per page, **under the board** and never once per row (M3.8, moved below the card

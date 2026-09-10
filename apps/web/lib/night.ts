@@ -357,3 +357,83 @@ export function closedWindow(
   const end = range.end as Date;
   return { kind, start, end, key: start.toISOString() };
 }
+
+/* ---------------------------------------------------------------------------
+ * Naming a window out loud (M5.12's slot, M5.10's post description).
+ *
+ * The three formatters below are the only place a window's dates become words. `05-design.md`'s
+ * board copy table fixes the strings; **the week form is M5.10's post description byte for
+ * byte**, which is the whole reason it is exported from here rather than assembled twice.
+ * ------------------------------------------------------------------------- */
+
+const rangeDayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * `Monday 1 Sep`: one end of a week, in the fixed locale and the configured zone.
+ *
+ * Same three-letter month cut as {@link formatDayMonth} and for the same reason — `en-GB`'s
+ * short month is `Sept` on current ICU and three letters everywhere else, so one range a year
+ * would be a character longer than the other fifty-one.
+ */
+function formatWeekday(instant: Date, timeZone: string): string {
+  const cached = rangeDayFormatters.get(timeZone);
+  const formatter =
+    cached ??
+    new Intl.DateTimeFormat(DISPLAY_LOCALE, { timeZone, weekday: 'long', day: 'numeric', month: 'short' });
+  if (cached === undefined) rangeDayFormatters.set(timeZone, formatter);
+
+  const parts = formatter.formatToParts(instant);
+  const read = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${read('weekday')} ${read('day')} ${read('month').slice(0, 3)}`;
+}
+
+/**
+ * `Monday 1 Sep to Sunday 7 Sep`: a week, named by its first and **last night**.
+ *
+ * `end` is the window's exclusive boundary — the next Monday 06:00 — and the last day named is
+ * the night before it, because that Sunday's games run past midnight into the Monday morning
+ * this window ends on. Naming the boundary itself would print a Monday nobody played on.
+ *
+ * The month prints on both ends (`Monday 29 Sep to Sunday 5 Oct`) rather than only when it
+ * changes: a range with one month in it reads as a range with a missing half.
+ */
+export function formatWeekRange(start: Date, end: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): string {
+  const lastNight = boundaryOf(addDays(dateOfBoundary(end, timeZone), -1), timeZone);
+  return `${formatWeekday(start, timeZone)} to ${formatWeekday(lastNight, timeZone)}`;
+}
+
+const monthNameFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * `September`: a month, by its name and nothing else (product, 2026-09-10). A day range would
+ * spell out what a calendar already says, and no year, because a month window is always this
+ * one or the one before it.
+ */
+export function formatMonthName(instant: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): string {
+  const cached = monthNameFormatters.get(timeZone);
+  const formatter = cached ?? new Intl.DateTimeFormat(DISPLAY_LOCALE, { timeZone, month: 'long' });
+  if (cached === undefined) monthNameFormatters.set(timeZone, formatter);
+  return formatter.format(instant);
+}
+
+const dayMonthYearFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * `8 Sep 2025`: a date that can be years old, for `All time`'s `Since …`.
+ *
+ * The only window form that carries a year, because it is the only one that can reach one.
+ * Same month cut as the others.
+ */
+export function formatDayMonthYear(instant: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): string {
+  const cached = dayMonthYearFormatters.get(timeZone);
+  const formatter =
+    cached ??
+    new Intl.DateTimeFormat(DISPLAY_LOCALE, { timeZone, day: 'numeric', month: 'short', year: 'numeric' });
+  if (cached === undefined) dayMonthYearFormatters.set(timeZone, formatter);
+
+  const parts = formatter.formatToParts(instant);
+  const read = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${read('day')} ${read('month').slice(0, 3)} ${read('year')}`;
+}

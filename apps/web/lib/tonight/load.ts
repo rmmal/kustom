@@ -66,7 +66,6 @@ export async function loadTonight(
     nightStart,
     nightLabel: options.nightLabel ?? formatNightLabel(options.nightStart, options.timeZone),
     seasonActive: seasonId !== null,
-    seasonName: season?.name ?? null,
     lobby: lobbyRow === null ? null : await loadLobby(client, lobbyRow, seasonId),
   };
 }

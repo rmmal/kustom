@@ -103,6 +103,31 @@ export const WINDOW_LABELS: Readonly<Record<WindowKind, string>> = {
 };
 
 /**
+ * `Monday 1 Sep to Sunday 7 Sep · 14 games`: the line under the picker (M5.12, the designer's
+ * slot; `05-design.md`'s copy table, product 2026-09-10).
+ *
+ * The range half is `lib/night.ts`'s — **and the week form is M5.10's post description byte for
+ * byte**, so the Monday post and the page a tap later say the same words. The count is the
+ * window's counted games and goes through {@link gamesLabel}, so a one-game week never reads
+ * `1 games`.
+ *
+ * Sentence case here; the stylesheet upper-cases it, exactly as the tonight page's slug line is
+ * a readable date in the DOM and a `SLUG` on the screen.
+ */
+export function windowSlotLine(range: string, games: number): string {
+  return `${range} · ${gamesLabel(games)}`;
+}
+
+/**
+ * `Since 8 Sep 2025`: `All time`'s range half, from the group's first counted game — or, on a
+ * person's page, from theirs. The only window form that carries a year, because it is the only
+ * one that can reach one.
+ */
+export function sinceLabel(day: string): string {
+  return `Since ${day}`;
+}
+
+/**
  * The picker's accessible name — the noun product uses for the control in `00-product.md`
  * ("time windows the same board is read through"), because a `<nav>` landmark with five links
  * in it and no name is announced as "navigation" beside the one that says `Leaderboard`.

@@ -10,7 +10,12 @@ import {
 } from '@/lib/board/copy';
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
 import { WINDOW_ORDER } from '@/lib/board/window';
-import { workedBoard, workedBoardRows, workedWindowBoard } from '@/lib/testing/boardFixtures';
+import {
+  emptyWindowBoard,
+  workedBoard,
+  workedBoardRows,
+  workedWindowBoard,
+} from '@/lib/testing/boardFixtures';
 import { workedPuuid } from '@/lib/testing/workedExample';
 import { NAMELESS_HINT } from '@/lib/tonight/copy';
 import { BoardView } from './BoardView';
@@ -146,7 +151,7 @@ describe('the still-settling marker (M3.8)', () => {
       losses: 15,
       settling: false,
     }));
-    draw({ window: 'all-time', rows: settled });
+    draw(workedBoard({ rows: settled }));
 
     expect(screen.queryByText(SETTLING_CHIP)).not.toBeInTheDocument();
     expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
@@ -156,7 +161,7 @@ describe('the still-settling marker (M3.8)', () => {
 describe('a player with no name (M3.10)', () => {
   it('is `Someone`, with one line under the list and never a puuid', () => {
     const [first, ...rest] = workedBoardRows();
-    draw({ window: 'all-time', rows: [{ ...(first as (typeof rest)[number]), name: null }, ...rest] });
+    draw(workedBoard({ rows: [{ ...(first as (typeof rest)[number]), name: null }, ...rest] }));
 
     expect(screen.getByText('Someone')).toBeInTheDocument();
     expect(screen.getAllByText(NAMELESS_HINT)).toHaveLength(1);
@@ -171,14 +176,15 @@ describe('a player with no name (M3.10)', () => {
    */
   it('gives each `Someone` link its rank, out loud and only out loud', () => {
     const [first, second, ...rest] = workedBoardRows();
-    draw({
-      window: 'all-time',
-      rows: [
-        { ...(first as (typeof rest)[number]), name: null },
-        { ...(second as (typeof rest)[number]), name: null },
-        ...rest,
-      ],
-    });
+    draw(
+      workedBoard({
+        rows: [
+          { ...(first as (typeof rest)[number]), name: null },
+          { ...(second as (typeof rest)[number]), name: null },
+          ...rest,
+        ],
+      }),
+    );
 
     expect(screen.getByRole('link', { name: 'Someone, rank 1' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Someone, rank 2' })).toBeInTheDocument();
@@ -197,7 +203,13 @@ describe('a player with no name (M3.10)', () => {
 });
 
 describe('the empty states', () => {
-  it('is a heading, the sentence and one line when all time has no games yet', () => {
+  /**
+   * **The sentence, and no card under it** (product, 2026-09-10). The page used to print the
+   * rank-seeded rows below the line so a friend who had not played could find themselves; with
+   * the sentence in the header's slot that board was ten names against ten `0 games`, which is
+   * the same list the nightly post refuses to send. One answer, in one place.
+   */
+  it('is a heading and one sentence when nothing has been played at all', () => {
     const seeded = workedBoardRows().map((row) => ({
       ...row,
       games: 0,
@@ -206,13 +218,15 @@ describe('the empty states', () => {
       streak: null,
       settling: true,
     }));
-    draw({ window: 'all-time', rows: seeded });
+    draw(workedBoard({ rows: seeded, range: null, games: 0 }));
 
     expect(screen.getByText(WINDOW_EMPTY['all-time'])).toBeInTheDocument();
-    expect(screen.getByText(SETTLING_SENTENCE)).toBeInTheDocument();
-    // Not an empty page: a friend seeded last night still finds themselves, with `0 games`.
-    expect(rows()).toHaveLength(10);
-    expect(rows()[0]?.querySelector('.cn-row-meta')?.textContent).toContain('0 games');
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(document.querySelector('.cn-board-card')).not.toBeInTheDocument();
+    // And never `· 0 games` beside it: the slot holds the sentence instead of the range.
+    expect(document.body.textContent).not.toContain('· 0 games');
+    // Nothing is drawn for the settling note to explain either.
+    expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
   });
 
   /**
@@ -223,7 +237,7 @@ describe('the empty states', () => {
    */
   it('prints its own sentence for each of the five, with no card under it', () => {
     for (const window of WINDOW_ORDER) {
-      const { unmount } = draw({ window, rows: [] });
+      const { unmount } = draw(emptyWindowBoard(window));
 
       expect(screen.getByText(WINDOW_EMPTY[window])).toBeInTheDocument();
       expect(screen.queryAllByRole('listitem')).toHaveLength(0);
@@ -234,7 +248,7 @@ describe('the empty states', () => {
 
   /** The word `season` is gone from the friend-facing vocabulary with M5.12 and M5.14. */
   it('never says season, and never sends a reader looking for an admin', () => {
-    draw({ window: 'this-week', rows: [] });
+    draw(emptyWindowBoard('this-week'));
 
     expect(document.body.textContent?.toLowerCase()).not.toContain('season');
     expect(document.body.textContent).not.toContain('Start a season on the Seasons page.');
@@ -242,7 +256,7 @@ describe('the empty states', () => {
 
   it('has a heading in every window, and it is the window beside `Leaderboard`', () => {
     for (const window of WINDOW_ORDER) {
-      const { unmount, container } = draw({ window, rows: [] });
+      const { unmount, container } = draw(emptyWindowBoard(window));
 
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
         `${WINDOW_LABELS[window]} Leaderboard`,
@@ -304,6 +318,31 @@ describe('the window picker', () => {
       expect(link).not.toHaveAttribute('aria-current');
       expect(link).not.toHaveClass('cn-window-on');
     }
+  });
+
+  /**
+   * The slot under the chips (the designer, 2026-09-10): what the window covers and how many
+   * games are in it — **or** the window's empty sentence, never both and never `· 0 games`.
+   */
+  it("prints the window's dates and its game count, inside the strip", () => {
+    const { container } = draw(workedWindowBoard('last-week'));
+    const line = container.querySelector('.cn-window-line');
+
+    expect(line?.textContent).toBe('Monday 1 Sep to Sunday 7 Sep · 6 games');
+    // In the header, under the picker, and there is only one of it.
+    expect(line?.parentElement).toHaveClass('cn-strip');
+    expect(line?.previousElementSibling).toHaveClass('cn-windows');
+    expect(container.querySelectorAll('.cn-window-line')).toHaveLength(1);
+    // Sentence case in the DOM; the stylesheet upper-cases it, like the tonight page's slug.
+    expect(line?.textContent).not.toBe(line?.textContent?.toUpperCase());
+  });
+
+  it('shows the empty sentence in the same slot instead, never both', () => {
+    const { container } = draw(emptyWindowBoard('last-week'));
+
+    expect(container.querySelector('.cn-window-line')).not.toBeInTheDocument();
+    expect(screen.getByText(WINDOW_EMPTY['last-week'])).toBeInTheDocument();
+    expect(screen.getByText(WINDOW_EMPTY['last-week']).parentElement).toHaveClass('cn-strip');
   });
 
   it('works with no JavaScript: every option is a real href, not a button', () => {
