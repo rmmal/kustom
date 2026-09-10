@@ -178,10 +178,11 @@ export function percentLabel(percent: number): string {
 /* ---------------------------------------------------------------------------
  * The per-player sections on `/p/[puuid]` (M5.20).
  *
- * **These eight strings are unwritten copy and are with product** (M5.20 acceptance 9;
- * `05-design.md`, "The per-player sections on `/p/[puuid]` (M5.20) are not in this table"). They
- * are here rather than in a component so that the table product writes has one code half, the
- * way the two above it do — nothing below may be re-typed into `PlayerStats.tsx`.
+ * **Every string here is product's** (ruled 2026-09-11; `05-design.md`, "Copy — the per-player
+ * sections on `/p/[puuid]`"). Eight were written against the brief's "print a not-enough-yet
+ * line here": seven kept as written and became product's, and one was replaced — `blue` / `red`
+ * are `Blue` / `Red`. This file is that table's code half, the way it is for the two above it,
+ * and nothing below may be re-typed into `PlayerStats.tsx`.
  *
  * Everything these sections say that product **has** already written is imported and not
  * re-worded: the window's five labels and five empty sentences, `By role`, `Streaks`,
@@ -190,7 +191,7 @@ export function percentLabel(percent: number): string {
  * ------------------------------------------------------------------------- */
 
 /**
- * `By side` — the card under `By role` on a person's page (**engineer, for product**).
+ * `By side` — the card under `By role` on a person's page (product, 2026-09-11).
  *
  * The group's blue rate is `/stats`'s headline and is not repeated here, so this card is the
  * one place in the product where a side is a record rather than a colour on a team, and it
@@ -199,26 +200,31 @@ export function percentLabel(percent: number): string {
 export const SIDE_RECORD_HEADING = 'By side';
 
 /**
- * `blue` and `red` as the two rows of that card (**engineer, for product**).
+ * `Blue` and `Red` as the two rows of that card (product, 2026-09-11, replacing the lower-case
+ * `blue` / `red` this file shipped first).
  *
- * Lower case, and the register roles are printed in everywhere on this page (`top`, `jungle`):
- * they are the subject of a data row, not a heading, and the product's own nouns for `100` and
- * `200`. The colour is not the mark — a row tinted blue in a list of two would be the tonight
- * page's team card meaning something else.
+ * **Capitalised, because every side this product prints to a friend is**: the teams embed's
+ * `Blue · 7695`, the result's `Blue was favored 54%.`, the team card's header, and `/stats`'s
+ * own `Blue wins 69% of the time.` one tab away. Roles are lower case in every surface — `top`
+ * is the word's form, not a list convention — so the mono lower-case exception stays theirs
+ * alone, and a side is **a name read as language and set in Archivo** like the names in every
+ * other list. The colour is still not the mark: a row tinted blue would be the tonight page's
+ * team card meaning something else.
  */
-export const SIDE_LABELS: Readonly<Record<100 | 200, string>> = { 100: 'blue', 200: 'red' };
+export const SIDE_LABELS: Readonly<Record<100 | 200, string>> = { 100: 'Blue', 200: 'Red' };
 
 /**
- * `Partners` — the card of the three best and three worst (**engineer, for product**).
+ * `Partners` — the card of the three best and three worst (product, 2026-09-11).
  *
  * `/stats` calls its own section `Duos` because every row there is a pair of other people; each
  * row here is **one** other person, read from the page owner's side of it, and `Duos` over a
- * list of single names would be the page asking the reader to do the subtraction.
+ * list of single names would be the page asking the reader to do the subtraction. Two things
+ * with two names is not the `Leaderboard` rule broken.
  */
 export const PARTNERS_HEADING = 'Partners';
 
 /**
- * Nobody has reached the five (**engineer, for product**).
+ * Nobody has reached the five (product, 2026-09-11).
  *
  * The shape of the page's other two "not enough yet" lines, with the minimum as a digit and
  * `yet` because it is a running count. `them`, third person, is this page's own pronoun
@@ -227,15 +233,18 @@ export const PARTNERS_HEADING = 'Partners';
 export const NO_PARTNERS = `Nobody has ${MIN_DUO_GAMES} games with them yet.` as const;
 
 /**
- * The first row of `Streaks` on a person's page (**engineer, for product**): the run ending at
- * their most recent counted game, product's own name for it in the M5.4 brief ("**Current
- * streak**: the run ending at their most recent counted game, printed `W3` / `L2`"), promoted
- * to a label beside {@link LONGEST_WIN} and {@link LONGEST_LOSS}, which are already labels.
+ * The first row of `Streaks` on a person's page (product, 2026-09-11): the run ending at their
+ * most recent counted game, product's own name for it in the M5.4 brief ("**Current streak**:
+ * the run ending at their most recent counted game, printed `W3` / `L2`"), promoted to a label
+ * beside {@link LONGEST_WIN} and {@link LONGEST_LOSS}, which are already labels.
+ *
+ * It does not collide with {@link ON_A_STREAK}: that block is everyone on three or more and
+ * needs a bar to exist, this row is one person's run and prints `W1` as readily as `W8`.
  */
 export const CURRENT_STREAK = 'Current streak';
 
 /**
- * `Average game 32 min.` (**engineer, for product**) — the mean over **their** counted games.
+ * `Average game 32 min.` (product, 2026-09-11) — the mean over **their** counted games.
  *
  * The group's line carries the count it is over (`· 214 games`) because nothing else on
  * `/stats` says it. On this page M5.15's seed line already ends `, 37 games since.`, and no

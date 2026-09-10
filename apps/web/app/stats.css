@@ -119,14 +119,19 @@
 }
 
 /*
- * A side as the subject of a row (M5.20, `/p/[puuid]`): `blue`, `red`. The role word's own
- * register — mono, lower case, `dim`, tracked — without `.cn-lineup-role`'s icon slot, because
- * a side has no mark in this product and the row would be a role row with a hole in it.
+ * A side as the subject of a row (M5.20, `/p/[puuid]`): `Blue`, `Red`.
+ *
+ * **Archivo, in `text`, like a name** (product, 2026-09-11): a side is a word this product
+ * capitalises on every surface a friend reads, so it is language and not a token — the mono
+ * lower-case register belongs to the roles alone, and `.cn-lineup-role` is a role and its icon.
+ * No tint and no colour: that mark means "which team" on the tonight page.
  */
 .cn-stats-side {
-  font-size: var(--cn-t-xs);
-  letter-spacing: 0.06em;
-  color: var(--cn-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cn-text);
 }
 
 /* Mono, `dim`, and never `brand`: rank 1 on this page is not the top of the board. */

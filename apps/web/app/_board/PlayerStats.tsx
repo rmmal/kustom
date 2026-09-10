@@ -160,12 +160,13 @@ function Sides({ sides }: { sides: PlayerSideRecord[] }) {
           {sides.map(({ side, record }) => (
             <li key={side} className="cn-record cn-stats-duo">
               {/*
-               * Lower case and mono, the register a role word is printed in beside it — and
-               * **not `.cn-lineup-role`**, which is a role and always carries its icon. There
-               * is no icon for a side in this product, and a coloured chip here would be the
-               * tonight page's team card meaning something else.
+               * **A name read as language, so Archivo** (product, 2026-09-11): every side this
+               * product prints to a friend is capitalised, and the mono lower-case exception is
+               * the roles' alone — which is also why this is not `.cn-lineup-role`, a role and
+               * its icon. No tint: a coloured row here would be the tonight page's team card
+               * meaning something else.
                */}
-              <span className="cn-num cn-stats-side">{SIDE_LABELS[side]}</span>
+              <span className="cn-stats-side">{SIDE_LABELS[side]}</span>
               <Record record={record} />
             </li>
           ))}

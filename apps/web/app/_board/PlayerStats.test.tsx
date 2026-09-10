@@ -88,15 +88,20 @@ describe('by side', () => {
     const { container } = draw();
 
     expect(screen.getByText(SIDE_RECORD_HEADING)).toBeInTheDocument();
-    expect(rowsOf(container, 1)).toEqual(['blue12W 9L · 57%', 'red3W 1L']);
+    expect(rowsOf(container, 1)).toEqual(['Blue12W 9L · 57%', 'Red3W 1L']);
   });
 
-  /** A side is a word in a row, not a colour: the tonight page's tint means something else. */
-  it('draws a side as a word with no colour and no icon', () => {
+  /**
+   * A side is a **name**, not a token and not a colour (product, 2026-09-11): capitalised like
+   * every other side this product prints, in Archivo like every other name in a list — so no
+   * `.cn-num`, which is the mono class — and with no tint, which means "which team" elsewhere.
+   */
+  it('draws a side as a capitalised name, in Archivo, with no colour and no icon', () => {
     const { container } = draw();
 
     const side = container.querySelector('.cn-stats-side');
-    expect(side?.textContent).toBe('blue');
+    expect(side?.textContent).toBe('Blue');
+    expect(side).not.toHaveClass('cn-num');
     expect(side?.querySelector('svg')).toBeNull();
     expect(container.querySelector('.cn-game-blue')).toBeNull();
   });
