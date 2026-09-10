@@ -1267,6 +1267,66 @@ read.
 **Light.** `dim` on light `surface` is 6.36 and the captions hold. Nothing in this section is light-specific
 and there is no second threshold.
 
+#### The per-player sections on `/p/[puuid]` (M5.20, designer 2026-09-11)
+
+The M5.4 brief put them "below the rating chart"; M5.8 drew `/stats`, and this is that recipe read for one
+person instead of for twenty. Five rulings, no new token, and no word product has not already fixed.
+
+**1. The order down the page stands.** Rating card (the two numbers, the record, the seed line, the chart, the
+settling sentence), the award line, `By role` and its footnote, `By side`, `Partners`, `Streaks`, the mean-game
+line, `Recent games`, the explanation strip. Everything the page asserts *about* a person comes before
+everything that *happened* to them, and the explanation strip keeps the last word because it is the one line
+that says why any of it moved. At 390 that is two and a half screens before `Recent games`, so nothing
+collapses, nothing folds behind a tap and no section moves. The band is four cards and two bare sentences; a
+fifth card is the thing to resist.
+
+**2. The award line is a statement, not a caption.** `Most improved, September.` sits between the rating card
+and `By role`, in the flow and not inside the card — the card is M5.15's, and this belongs to the window band
+under it. `t-base`, `text`, **weight 600**, no badge, no icon, no colour (product). The weight is the whole
+ruling: at 400 it is the seed line's dress forty pixels below the seed line, and the page's only honour reads
+as a second caption. `t-lg` stays `/stats`', where three winner lines with numbers in them are the page's
+headline and the name leads each one; here the `<h1>` is already the name.
+
+**3. `By side` keeps its card, and the two names take the two colours.** Two rows are not too few for a card:
+it is `By role`'s twin one row above, with the same record shape and the same five-row minimum, and one line
+holding two records is a table squeezed into a sentence at 390. `Blue` and `Red` are **Archivo, capitalised, at
+the row's `t-sm`** — product's ruling in the copy table above, and the dress follows the word: a side is a name
+read as language, like the partner names in the card below it, and the mono lower-case exception stays the
+roles' alone. They print in `--cn-blue` and `--cn-red` rather than `dim`, because this is the one card in the
+product where a side is the subject of a row rather than a team, so the colour is the content — and this same
+page already paints a game block's leading rule by side. It is not the team card's mark: no tint, no border,
+no chip, two words. Contrast is 6.2 and 6.4 on dark `surface`, 6.1 and 6.2 on light, both clear of the 4.5
+this size asks for.
+
+**4. No name is in both partner lists.** `Theo · 6W 4L · 60%` under `Best together` and again under
+`Worst together` is the fold showing through, and it is the first thing a reader points at. With N qualifying
+partners: `Best together` takes the top `min(3, N)`, `Worst together` takes what is left from the bottom
+(`min(3, N − 3)`), and at N ≤ 3 the card draws `Best together` alone — a ranked list of everyone who qualifies,
+best first, which is exactly what the label claims. With nothing qualifying the card prints
+`Nobody has 5 games with them yet.` **once**, with neither group label over it: one fact, one sentence. No new
+string, and the minimum does not move.
+
+**5. The mean game is a line, not a card.** `Average game 34 min.` in a bordered card of its own is M5.8's
+rule 3 read backwards — that rule gives three orphan sentences a body and says in the same breath that one
+sentence does not need one. It prints in the flow under `Streaks`, `t-base` in `text`, the dress
+`.cn-stats-answer` already carries.
+
+**Roles are M5.8's exception, unchanged, and at the size `/stats` prints them:** mono, lower case, **16px**
+icon and word. A role is one object across two pages, and this one must not print it larger than the page
+beside it.
+
+**The empty window ships as built.** The window's sentence goes in the slot where the range would be, in
+`dim`, the same place and the same dress `/leaderboard` gives it — the board is one tap away and two pages say
+one thing one way. (`/stats` says the same sentence in the body under a bare strip; bringing those two into
+line is queued as its own task and does not touch this page.) The rating card stays, and the strip keeps its
+hairline, because a card does follow it: **M5.8's rule 6 is a `/stats` rule**, where the window is the whole
+subject. Here the subject is a person, their two numbers are current rather than the window's, and a page
+about somebody that prints no number about them is a page that failed. Everything windowed — the record line,
+the seed line, the chart and all six sections — is undrawn, which is the rule this page already follows.
+
+**Light.** Nothing here is light-specific. The two side colours are the only new ink and both hold above 6:1
+on white; `dim`, the group labels and the card header bars are unchanged.
+
 #### Copy — the board pages, final (product 2026-09-09)
 
 Every word `/leaderboard` and `/p/[puuid]` say, in one table, the same way the tonight page's strings are
