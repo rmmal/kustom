@@ -1405,6 +1405,79 @@ with the next touch of that file.
 **The per-player sections on `/p/[puuid]` (M5.20) are not in this table.** Their empty lines and section
 labels are unwritten copy, and they come to product before they ship, like these did.
 
+### `/stats` — the window's page (M5.8, designer 2026-09-10)
+
+Four cards down one 44rem column, no rail, nothing to press, opened at work on a Monday morning rather than in
+a dark room at 21:00. M5.4's plain layout is the right skeleton and this changes six things about it. Every one
+of them is a recipe this product already ships; none is a new token, and no product string moves, splits or
+re-orders.
+
+**1. Two heading levels, and no third.**
+
+- **Card title**, in the card's `raise` header bar: Archivo `t-sm` 600 `text` — `.cn-board-title`, the shell's
+  card-title rule. `Awards`, `By role`, `Duos`, `Streaks`.
+- **Group label**, opening a block inside a card: Archivo `t-sm` 600 `dim` — `Best together`,
+  `Worst together`, `On a streak now`, `Longest win streak`, `Longest losing streak`. Roles are the exception
+  they always are: mono, lower case, icon at **16px** and word, unchanged.
+
+The M5.4 build has this upside down — `.cn-list-title` is mono `t-xs` `dim`, so a card's own name is the
+quietest text inside it and the sub-head is the loudest. Mono micro-labels on this page are legends and data
+(`10W 8L · 56%`, `W10`, `top`), never the name of a section. `/p/[puuid]`'s `By role` and `Recent games` take
+the same swap: two pages, one rule.
+
+**2. The awards card is the page's headline, and it is drawn only when there are awards.**
+
+- **Closed window.** Label Archivo `t-sm` 600 `dim`; the winner line `t-lg` 600 `text`; the "nobody qualifies"
+  line stays `t-base` `dim`; the rule and the no-main-role note drop to `t-xs` `dim`. The winner line is **the
+  biggest language in the product outside a result headline** — three of them, and the name leads each one, so
+  size alone makes the person the headline. It wraps to two lines at 390 on the longest award and that is fine:
+  a statement wraps, a table does not.
+- **The line is one string.** `Sara · +153 · 1314 → 1467` comes from `lib/stats/copy.ts` and the same string
+  goes in the Monday Discord post. It is never split into cells, never re-set in mono, never re-ordered. The
+  number-in-a-sentence rule applies: it is all Archivo.
+- **The card takes the winner's ring** — `border-color: var(--cn-brand)`, the identical mark and meaning as the
+  result's winning team card (`.cn-team-won`) — **and only when at least one of the three was won.** Three
+  "nobody qualifies" sentences behind an amber border is a lie. This ring and the chosen window chip are the
+  page's only amber; that is the one-lamp rule holding on a page with no live state.
+- **Running window: no card.** `Awards are handed out when the month ends.` is a `.cn-hint` in the header
+  strip, under the slot line. A bordered card holding one 14px grey line is the 449px-of-empty-card failure in
+  miniature, and on `This month` — the default — it is the first thing anybody sees.
+- **`All time`: nothing at all**, unchanged.
+
+**3. The group's three statements get a body.** The blue win rate, the average game and `12 players played.` go
+in one card: `surface`, 1px `line`, `lit`, **no header bar**, `sp-3` padding, `t-base` `text`, `sp-2` between
+lines. Three sentences alone on the ink between two cards read as something that failed to load. (One sentence
+does not need a card — the tonight page's sit-out strip is one sentence in one. Three orphans do.)
+
+**4. A streak is a row, not a sentence.** `Longest win streak W10 Nadia` reads label-number-name and parses as a
+person called W10. The two longest become blocks in the shape the third already has:
+
+```
+Streaks
+  Longest win streak
+  Nadia                              W10
+  Longest losing streak
+  Rami                                L6
+  On a streak now
+  Deniz                               W8
+```
+
+Group label, then one row per holder, name left, streak right in mono — a tie prints two rows with the same
+number, which is also how the page says "they are tied" without a word for it.
+
+**5. The rank column stays.** Mono `t-xs` `dim`, 1.5rem, restarting at 1 in every role block, **never `brand`**:
+rank 1 here is not the top of the board and must not borrow the board's mark. Without the column a five-name
+list is a set rather than a ranking, and which of the five is the best jungler this month is the argument this
+page exists to start.
+
+**6. An empty window is a sentence, and nothing is drawn over it.** `.cn-strip`'s hairline appears only when a
+section follows it; on an empty window the window's own sentence sits under the strip as the page's one block,
+`t-base` in `text`. A full-width rule with a thousand pixels of ink under it is the strongest "this page broke"
+signal the shell can produce, and it is drawn on the one screen that has the least to say.
+
+**What does not change:** the 44rem column with no rail (this page has nothing per-night to put in one), the
+picker and its slot, the order down the page, the 44px rows, and every word.
+
 ### `tokens.css`, v2 — the file to write
 
 ```css
