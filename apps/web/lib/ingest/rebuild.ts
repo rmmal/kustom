@@ -2,6 +2,7 @@ import { type Rating, seedFromRank } from '@customs/core';
 import type { RatingInsert, SideValue } from '@customs/db';
 import type { ServiceClient } from '../supabase';
 import { type FoldPlayer, type FoldSkipReason, foldGame, gateGame } from './fold';
+import { recomputeInferredRoles } from './roles';
 
 /**
  * The rating rebuild (M5.2): fold every rated-eligible game of a season, in `started_at` order,
@@ -116,6 +117,12 @@ export interface RebuildReport {
   ratingRowsChanged: number;
   /** Players with at least one rated game in the season. */
   playersWritten: number;
+  /**
+   * Players whose inferred pair moved (M5.17). Zero on a second run of an unchanged season,
+   * which is the same idempotency the rating columns have: a recompute that agrees with what is
+   * stored writes nothing, so `roles_inferred_at` does not creep forward every run.
+   */
+  rolesChanged: number;
   /**
    * The biggest move this rebuild made to a `mu` that was **already stored**. A player who had
    * no `ratings` row is not a move of any size — they are counted in `firstRatings` instead,
@@ -345,6 +352,7 @@ export async function rebuildRatings(
     gamePlayerRowsChanged: changedRows.length,
     ratingRowsChanged: ratingInserts.length,
     playersWritten: played.size,
+    rolesChanged: 0,
     largestMuChange,
     firstRatings,
     orphanRatings: orphans.length,
@@ -364,6 +372,20 @@ export async function rebuildRatings(
     await pruneRatings(client, season.id, orphans);
     report.prunedRatings = orphans.length;
   }
+
+  // ---- Inferred roles (M5.17) ----------------------------------------------------------
+  //
+  // Everybody with a game in this season, not only the players whose ratings moved: a game that
+  // stopped qualifying above just lost its rating columns, and the player it belonged to has
+  // one counted game fewer than they did a second ago. `recomputeInferredRoles` writes only the
+  // rows that actually move, so a second run of an unchanged season changes nothing here either.
+  //
+  // After the writes, because it reads `mu_after` to decide which games count, and that column
+  // is what the two calls above have just settled.
+  const roles = await recomputeInferredRoles(client, [...new Set(rows.map((row) => row.playerId))], {
+    now,
+  });
+  report.rolesChanged = roles.changed;
 
   // ---- Fence ---------------------------------------------------------------------------
   const drift = await fenceDrift(client, season.id, games, byGame);
@@ -630,6 +652,7 @@ export function formatRebuildReport(report: RebuildReport): string {
       report.gamePlayerRowsChanged === 1 ? '' : 's'
     }, ${report.ratingRowsChanged} ratings row${report.ratingRowsChanged === 1 ? '' : 's'}`,
     `players       ${report.playersWritten} with a rated game`,
+    `roles         ${report.rolesChanged} inferred pair${report.rolesChanged === 1 ? '' : 's'} moved`,
     `biggest move  ${formatMuChange(report.largestMuChange, report.firstRatings)}`,
   ];
   if (report.orphanRatings > 0) {

@@ -64,6 +64,12 @@ export interface EogBodyOptions {
   winningSide?: 100 | 200 | null;
   startedAt?: string;
   durationS?: number;
+  /**
+   * The role the client detected for each participant, by index, overriding the default
+   * `ROLES_IN_ORDER[index % 5]`. What M5.17's tests need: a game whose positions are the ones
+   * the balancer's split handed out, rather than the fixture's own rotation.
+   */
+  roles?: readonly (string | null)[];
   /** Extra keys mixed into `raw`, for the credential-scrub assertions. */
   raw?: Record<string, unknown>;
 }
@@ -78,7 +84,7 @@ export function eogBody(options: EogBodyOptions): Record<string, unknown> {
   const participants = options.puuids.map((puuid, index) => ({
     puuid,
     side: index < 5 ? 100 : 200,
-    role: ROLES_IN_ORDER[index % 5],
+    role: options.roles === undefined ? ROLES_IN_ORDER[index % 5] : (options.roles[index] ?? null),
     championId: 100 + index,
     kills: index,
     deaths: 10 - index,

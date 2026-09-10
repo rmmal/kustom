@@ -1,0 +1,328 @@
+import { randomUUID } from 'node:crypto';
+import { type Database, SEASON_ONE_ID } from '@customs/db';
+import { companionLobbyPayloadSchema } from '@customs/db/schemas';
+import { createClient } from '@supabase/supabase-js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mintCompanionToken } from '@/lib/companionAuth';
+import { ensurePlayers } from '@/lib/ingest/players';
+import { ROSTER_STABLE_MS } from '@/lib/lobbyState';
+import { eogBody, ROLES_IN_ORDER, testGameId, testPuuids } from '@/lib/testing/fixtures';
+import { resolveLocalStack } from '@/lib/testing/localStack';
+
+/**
+ * Inferred roles (M5.17) against the Supabase CLI local stack, driven through the real ingest:
+ * the companion posts games, the fold rates them, and `players.main_role` moves by itself.
+ *
+ * The three things this file is here to prove:
+ *
+ * 1. **Three counted games make a pair.** Two do not — under `config.roles.minGames` a player
+ *    is flexible, which is the balancer's existing "fill them anywhere" (M1.4).
+ * 2. **A game the balancer filled somebody into does not count.** End to end: a real lobby, a
+ *    real split from `balance()`, a real end-of-game block whose positions are the ones the
+ *    split handed out. The filled players' `counts_for_role_inference` is false and their
+ *    counted total does not move; the players the split put on their own role gain one.
+ * 3. **`rebuild-ratings` reproduces the same pairs from scratch and is idempotent** — a second
+ *    run moves no role column and does not touch `roles_inferred_at`.
+ *
+ * The file runs in a **season of its own**, started at the top and handed back at the bottom,
+ * for the same reason `rebuild.integration.test.ts` does: a rebuild is season-wide and cannot
+ * be namespaced by row. Skipped, not failed, without the stack (`pnpm db:start`).
+ */
+
+const stack = await resolveLocalStack();
+
+if (stack === null) {
+  describe.skip('inferred roles against the local Supabase stack', () => {
+    it('needs the local stack: run `pnpm db:start`', () => {
+      expect(true).toBe(true);
+    });
+  });
+} else {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = stack.url;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = stack.serviceRoleKey;
+  process.env.BOOTSTRAP_ADMIN_PUUID = '';
+  process.env.DISCORD_WEBHOOK_URL = '';
+  process.env.CUSTOMS_NIGHT_TZ = 'Africa/Cairo';
+
+  const { POST: postGame } = await import('@/app/api/companion/game/route');
+  const { ingestLobby } = await import('./lobby');
+  const { rebuildRatings } = await import('./rebuild');
+
+  const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  const TIME_ZONE = 'Africa/Cairo';
+  const runId = randomUUID().slice(0, 8);
+  const puuids = testPuuids(runId);
+  const ownerPuuid = puuids[0] as string;
+  const partyId = `roles-${runId}`;
+  const base = testGameId();
+  const looseGameIds = [base + 1, base + 2, base + 3];
+  const filledGameId = base + 4;
+  const allGameIds = [...looseGameIds, filledGameId];
+
+  let token = '';
+  let seasonId = '';
+  let ownerPlayerId = '';
+  let playerIds: string[] = [];
+
+  function post(body: unknown): Request {
+    return new Request('http://localhost/api/companion/game', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+  }
+
+  interface RoleRow {
+    puuid: string;
+    main_role: string | null;
+    secondary_role: string | null;
+    roles_counted: number;
+    roles_inferred_at: string | null;
+  }
+
+  async function roleRows(): Promise<RoleRow[]> {
+    const { data, error } = await db
+      .from('players')
+      .select('puuid, main_role, secondary_role, roles_counted, roles_inferred_at')
+      .in('puuid', puuids)
+      .order('puuid');
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
+  async function roleRow(puuid: string): Promise<RoleRow> {
+    const rows = await roleRows();
+    const row = rows.find((entry) => entry.puuid === puuid);
+    if (row === undefined) throw new Error(`no player row for ${puuid}`);
+    return row;
+  }
+
+  /** `counts_for_role_inference` for one game, by puuid. */
+  async function guardFlags(lcuGameId: number): Promise<Map<string, boolean>> {
+    const { data, error } = await db
+      .from('game_players')
+      .select('counts_for_role_inference, games!inner(lcu_game_id), players!inner(puuid)')
+      .eq('games.lcu_game_id', lcuGameId);
+    if (error) throw new Error(error.message);
+    return new Map((data ?? []).map((row) => [row.players.puuid, row.counts_for_role_inference]));
+  }
+
+  function lobbyPost(now: Date) {
+    const payload = companionLobbyPayloadSchema.parse({
+      partyId,
+      lobbyName: 'customs night',
+      members: puuids.map((puuid, index) => ({
+        puuid,
+        gameName: `Player${index}`,
+        tagLine: 'EUW',
+        summonerId: 3000 + index,
+        side: index < 5 ? 100 : 200,
+        isSpectator: false,
+      })),
+    });
+    return ingestLobby(db, payload, ownerPlayerId, { now, timeZone: TIME_ZONE });
+  }
+
+  async function lobbyUpdatedAt(lobbyId: string): Promise<Date> {
+    const { data, error } = await db.from('lobbies').select('updated_at').eq('id', lobbyId).single();
+    if (error) throw new Error(error.message);
+    return new Date(data.updated_at);
+  }
+
+  beforeAll(async () => {
+    const ids = await ensurePlayers(
+      db,
+      puuids.map((puuid) => ({ puuid })),
+    );
+    playerIds = puuids.map((puuid) => ids.get(puuid) ?? '');
+    ownerPlayerId = ids.get(ownerPuuid) ?? '';
+
+    // Two seeds, so the balancer has a reason to prefer one arrangement over another.
+    await db
+      .from('players')
+      .update({ rank_tier: 'GOLD', rank_division: 'II' })
+      .in('id', playerIds.slice(0, 5));
+    await db
+      .from('players')
+      .update({ rank_tier: 'PLATINUM', rank_division: 'IV' })
+      .in('id', playerIds.slice(5));
+
+    const { token: raw, tokenHash } = mintCompanionToken();
+    await db
+      .from('companion_tokens')
+      .insert({ player_id: ownerPlayerId, token_hash: tokenHash, label: `it-${runId}-roles` });
+    token = raw;
+
+    const { data: season, error } = await db.rpc('start_season', { p_name: `it-${runId} roles` });
+    if (error) throw new Error(`start_season: ${error.message}`);
+    seasonId = (season as unknown as { id: string }[])[0]?.id ?? (season as unknown as { id: string }).id;
+    expect(seasonId).toBeTruthy();
+  });
+
+  afterAll(async () => {
+    // Season 1 back in one statement (0002), so there is never a window with no active season.
+    await db.rpc('set_active_season', { p_id: SEASON_ONE_ID });
+    await db.from('games').delete().in('lcu_game_id', allGameIds);
+    await db.from('ratings').delete().eq('season_id', seasonId);
+    await db.from('seasons').delete().eq('id', seasonId);
+    await db.from('lobbies').delete().eq('lcu_party_id', partyId);
+    await db.from('players').delete().in('puuid', puuids);
+  });
+
+  describe('the fold infers a pair', () => {
+    it('is flexible after two games and has a main after the third', async () => {
+      // No party id: these games were played from no lobby, so nobody was filled into anything
+      // and every one of them counts (the column's default).
+      for (const [index, gameId] of looseGameIds.entries()) {
+        const response = await postGame(
+          post(
+            eogBody({
+              gameId,
+              puuids,
+              partyId: null,
+              winningSide: index % 2 === 0 ? 100 : 200,
+              startedAt: `2026-09-0${index + 2}T20:00:00.000Z`,
+              durationS: 1_500 + index,
+            }),
+          ),
+        );
+        expect(response.status).toBe(200);
+        expect((await response.json()).rated).toBe(true);
+
+        if (index === 1) {
+          // Two counted games is under `config.roles.minGames`: flexible, and the count says
+          // why. This is the M1.4 newcomer, unchanged — the balancer fills them anywhere.
+          const early = await roleRow(ownerPuuid);
+          expect(early.main_role).toBeNull();
+          expect(early.secondary_role).toBeNull();
+          expect(early.roles_counted).toBe(2);
+        }
+      }
+
+      // The fixture gives every player the same position in all three games, so the answer is
+      // that position, with no second role invented.
+      const rows = await roleRows();
+      expect(rows).toHaveLength(10);
+      for (const row of rows) {
+        const index = puuids.indexOf(row.puuid);
+        expect([row.puuid, row.main_role]).toEqual([row.puuid, ROLES_IN_ORDER[index % 5]]);
+        expect(row.secondary_role).toBeNull();
+        expect(row.roles_counted).toBe(3);
+        expect(row.roles_inferred_at).not.toBeNull();
+      }
+    });
+  });
+
+  describe('a game the balancer filled somebody into does not count', () => {
+    it('marks the filled seats and leaves their counted total alone', async () => {
+      // Everybody a mid main, by hand. Two of the ten can be given mid by the balancer and the
+      // other eight are filled — which is the situation the guard exists for, and it also sets
+      // up the other half of the claim: these hand-set roles are overwritten by the recompute
+      // at the end of this game, exactly as M1's roles are.
+      await db
+        .from('players')
+        .update({ main_role: 'mid', secondary_role: null })
+        .in('id', playerIds);
+
+      const opened = await lobbyPost(new Date());
+      expect(opened.status).toBe('open');
+      const settled = new Date(
+        (await lobbyUpdatedAt(opened.lobbyId)).getTime() + ROSTER_STABLE_MS,
+      );
+      const balanced = await lobbyPost(settled);
+      expect(balanced.status).toBe('balanced');
+      const split = balanced.balanced?.split;
+      if (split === undefined) throw new Error('the lobby did not balance');
+
+      // The game as it would really be played: the ten in the split's own order, each on the
+      // seat the balancer gave them.
+      const seats = [...split.blue, ...split.red];
+      const played = seats.map((seat) => seat.puuid);
+      const roles = seats.map((seat) => seat.role);
+      const onRole = seats.filter((seat) => seat.role === 'mid').map((seat) => seat.puuid);
+      const filled = seats.filter((seat) => seat.role !== 'mid').map((seat) => seat.puuid);
+      expect(onRole.length).toBe(2);
+      expect(filled.length).toBe(8);
+
+      const response = await postGame(
+        post({
+          ...eogBody({
+            gameId: filledGameId,
+            puuids: played,
+            partyId,
+            winningSide: 100,
+            startedAt: '2026-09-05T20:00:00.000Z',
+            durationS: 1_800,
+            roles,
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).rated).toBe(true);
+
+      // The guard, on the row, written by the same update that claimed the rating columns.
+      const flags = await guardFlags(filledGameId);
+      for (const puuid of onRole) expect([puuid, flags.get(puuid)]).toEqual([puuid, true]);
+      for (const puuid of filled) expect([puuid, flags.get(puuid)]).toEqual([puuid, false]);
+
+      for (const row of await roleRows()) {
+        const index = puuids.indexOf(row.puuid);
+        // The hand-set `mid` is gone from all ten: the first recompute overwrites it.
+        expect([row.puuid, row.main_role]).toEqual([row.puuid, ROLES_IN_ORDER[index % 5]]);
+        // Four counted games for the two the split put on their own role, three for the eight
+        // it filled — the fourth game happened to them and did not change who they are.
+        expect([row.puuid, row.roles_counted]).toEqual([
+          row.puuid,
+          onRole.includes(row.puuid) ? 4 : 3,
+        ]);
+      }
+    });
+  });
+
+  describe('rebuild-ratings recomputes and is idempotent', () => {
+    function rebuild() {
+      return rebuildRatings(db, { seasonId, force: true });
+    }
+
+    it('agrees with the incremental recompute, rebuilds a wiped pair, and then changes nothing', async () => {
+      const live = await roleRows();
+
+      // 1. The rebuild reads the same games in the same order and reaches the same pairs, so
+      //    it writes no role column at all.
+      const first = await rebuild();
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      expect(first.report.rolesChanged).toBe(0);
+      expect(await roleRows()).toEqual(live);
+
+      // 2. From scratch: wipe every pair and the rebuild puts them back, guard included — the
+      //    eight filled seats are still worth three games, not four, because the column that
+      //    says so was written at fold time and the rebuild never second-guesses it.
+      await db
+        .from('players')
+        .update({ main_role: null, secondary_role: null, roles_counted: 0, roles_inferred_at: null })
+        .in('id', playerIds);
+
+      const second = await rebuild();
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.report.rolesChanged).toBe(10);
+
+      const rebuilt = await roleRows();
+      expect(rebuilt.map((row) => [row.main_role, row.secondary_role, row.roles_counted])).toEqual(
+        live.map((row) => [row.main_role, row.secondary_role, row.roles_counted]),
+      );
+
+      // 3. Idempotent: a second run over an unchanged season writes nothing, so the stamp does
+      //    not creep forward either.
+      const third = await rebuild();
+      expect(third.ok).toBe(true);
+      if (!third.ok) return;
+      expect(third.report.rolesChanged).toBe(0);
+      expect(await roleRows()).toEqual(rebuilt);
+    });
+  });
+}
