@@ -4324,7 +4324,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > **Out of scope.** Champion, KDA or any other backfilled column. Re-reading games already stored.
     > Anything about the live end-of-game block, which already carries the position.
 
-- [ ] **M5.20** The per-player stats sections on `/p/[puuid]`: their role record, their side record, their partners, their streaks, their average game length, and the award line. *(owner: web-engineer; after **M5.8**)*
+- [ ] **M5.20** The per-player stats sections on `/p/[puuid]`: their role record, their side record, their partners, their streaks, their average game length, and the award line. *(owner: web-engineer; after **M5.8**)* **Copy questions for product with this task (designer, 2026-09-10):** the window's game count prints three times in one band on `/stats` (the slot line and both group statements); and an empty window offers no way onward, so decide whether a line points at the nearest window with games or silence is right.
 
     > **Split out of M5.4 (product, 2026-09-10).** M5.4 shipped `/stats`, the awards and every pure
     > function these sections need; it did not render them on the player page. This task is the rendering,
