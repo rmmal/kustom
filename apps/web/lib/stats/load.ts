@@ -1,10 +1,11 @@
 import type { RoleValue, SideValue } from '@customs/db';
-import { inChunks } from '../board/load';
+import { inChunks } from '../chunks';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import type { AwardRender } from './awards';
+import { countedGames, playerStreaks } from './fold';
 import { playerStatsView } from './player';
-import type { PlayerStatsView, StatsGame, StatsPlayer, StatsRow, StatsView } from './types';
+import type { PlayerStatsView, PlayerStreaks, StatsGame, StatsPlayer, StatsRow, StatsView } from './types';
 import { type StatsInput, statsView } from './view';
 
 /**
@@ -33,7 +34,8 @@ export const STATS_MAX_GAMES = 2_000;
 /**
  * PostgREST answers at most a thousand rows per request whatever the `limit` says, so the game
  * read is paged — the same shape `lib/ingest/rebuild.ts` uses. The scoreboard rows are chunked
- * by `inChunks` instead, which is the board's own 90-id list and therefore 900 rows a request.
+ * by `inChunks` instead, which is the 90-id list `lib/chunks.ts` holds for both loaders and
+ * therefore 900 rows a request.
  */
 const PAGE_SIZE = 1_000;
 
@@ -84,6 +86,27 @@ export async function loadPlayerStats(
 ): Promise<PlayerStatsView> {
   const read = await readWindow(client, options);
   return playerStatsView({ ...read, puuid });
+}
+
+/**
+ * Every player's runs through the window (M5.21), for a caller that wants the streak and none
+ * of the rest of the page: `/leaderboard`'s `All time` row and the rail behind it.
+ *
+ * **The board's `L2` is this list.** It used to be a third read — the season's last 200 games,
+ * ordered by `started_at` alone — so a player whose last game was older than the group's most
+ * recent 200 had no streak on their row and a real one on their own page, and two games
+ * sharing an instant could order differently in the two reads. One read, one order
+ * (`started_at`, then `lcu_game_id`), one cap, one gate.
+ *
+ * **The universe is `gateGame`'s and not the fold's rated rows**, which is the seam this does
+ * not close: the row's `13W 15L` is counted off `ratings`, and a backfilled game the rebuild
+ * has not folded yet is in the streak and not in the record. That is the pre-existing
+ * rated-vs-counted seam (`04-decisions.md`, 2026-09-11), and closing it is a rebuild, not a
+ * read.
+ */
+export async function loadStreaks(client: PublicClient, options: StatsOptions): Promise<PlayerStreaks[]> {
+  const read = await readWindow(client, options);
+  return playerStreaks(countedGames(read.games), read.players);
 }
 
 /**

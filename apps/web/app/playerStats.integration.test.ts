@@ -86,6 +86,20 @@ if (stack === null) {
    */
   const SWAPPED = new Set([4, 6, 7]);
 
+  /**
+   * **Ten more people and 250 more games, after this player's last one** (M5.21).
+   *
+   * The streak-equality case below is only worth making on a database where the two reads
+   * *could* disagree: until M5.21 the board folded the group's most recent 200 games and this
+   * page folded up to 2000, so a player whose last game is further back than 250 of everybody
+   * else's had `streak: null` on their row and a real `L3` on their own page. These games are
+   * that gap. They are ten-row, rated flat at 25, played on Monday 13 and Tuesday 14 July —
+   * inside `This week` and outside the `Last week` every other test here reads — so no number
+   * above moves and nobody wins an award for them.
+   */
+  const FILLER_GAMES = 250;
+  const FILLER_KEYS = Array.from({ length: 10 }, (_, index) => `pf${index}`);
+
   const KEYS = ['pn0', 'pn1', 'pn2', 'pn3', 'pn4', 'pn5', 'pn6', 'pn7', 'pn8', 'pn9'];
   const LANES = ['top', 'jungle', 'mid', 'adc', 'support'] as const;
 
@@ -100,14 +114,20 @@ if (stack === null) {
 
     const { data: players, error } = await db
       .from('players')
-      .insert(
-        KEYS.map((key, index) => ({
+      .insert([
+        ...KEYS.map((key, index) => ({
           puuid: puuidOf(key),
           display_name: `Pn${index}`,
           rank_tier: 'GOLD',
           rank_division: 'IV',
         })),
-      )
+        ...FILLER_KEYS.map((key, index) => ({
+          puuid: puuidOf(key),
+          display_name: `Pf${index}`,
+          rank_tier: 'GOLD',
+          rank_division: 'IV',
+        })),
+      ])
       .select('id, puuid');
     expect(error).toBeNull();
     for (const row of players ?? []) playerIds.set(row.puuid.replace(`it-${runId}-`, ''), row.id);
@@ -147,7 +167,55 @@ if (stack === null) {
         })),
       );
     }
+
+    await seedTheGap(seasonId);
   });
+
+  /**
+   * The 250 games between this player's last one and tonight (M5.21).
+   *
+   * Bulk inserts, because 250 round trips against the local stack is a minute of waiting for a
+   * fixture nothing asserts on directly: one `games` insert, then the scoreboards in chunks.
+   */
+  async function seedTheGap(seasonId: string): Promise<void> {
+    const START = Date.parse('2026-07-13T07:00:00Z');
+    const { data: rows, error } = await db
+      .from('games')
+      .insert(
+        Array.from({ length: FILLER_GAMES }, (_, index) => ({
+          lcu_game_id: Number(`77${runIdNumber()}${index}`),
+          season_id: seasonId,
+          started_at: new Date(START + index * 5 * 60_000).toISOString(),
+          duration_s: 1_800,
+          winning_side: 100,
+          raw: {},
+        })),
+      )
+      .select('id');
+    expect(error).toBeNull();
+
+    const seats = (gameId: string) =>
+      FILLER_KEYS.map((key, seat) => ({
+        game_id: gameId,
+        player_id: playerIds.get(key) as string,
+        side: seat < 5 ? 100 : 200,
+        role: LANES[seat % 5] as (typeof LANES)[number],
+        // Flat: these games move nobody, so `Most improved` is still the one who climbed.
+        mu_before: 25,
+        sigma_before: 5,
+        mu_after: 25,
+        sigma_after: 5,
+      }));
+
+    const all = (rows ?? []).flatMap((row) => {
+      gameIds.push(row.id);
+      return seats(row.id);
+    });
+    for (let from = 0; from < all.length; from += 500) {
+      const { error: seatError } = await db.from('game_players').insert(all.slice(from, from + 500));
+      expect(seatError).toBeNull();
+    }
+  }
 
   /** A stable numeric suffix for `lcu_game_id`, which is a bigint and unique. */
   function runIdNumber(): number {
@@ -182,7 +250,14 @@ if (stack === null) {
   }
 
   afterAll(async () => {
-    if (gameIds.length > 0) await db.from('games').delete().in('id', gameIds);
+    // In chunks: `in.(…)` is a URL, and 258 ids in one is the `414 URI too long` the board's
+    // own reads are chunked against.
+    for (let from = 0; from < gameIds.length; from += 50) {
+      await db
+        .from('games')
+        .delete()
+        .in('id', gameIds.slice(from, from + 50));
+    }
     const ids = [...playerIds.values()];
     if (ids.length > 0) {
       await db.from('ratings').delete().in('player_id', ids);
@@ -252,7 +327,20 @@ if (stack === null) {
    * all (M5.12), and it is this page's default window.
    */
   describe('the streak the leaderboard row prints', () => {
+    /**
+     * **M5.21's acceptance: their last game is 250 games back.** The board used to fold the
+     * group's most recent 200 games for this one number, so this player's row said nothing
+     * while their own page said `L3`. One read, one window, one answer — and the gap is
+     * asserted first, because a fixture that quietly stopped producing it would turn this
+     * test into a tautology.
+     */
     it('is the same run, from the same helper, on the same window', async () => {
+      const { count } = await db
+        .from('games')
+        .select('id', { count: 'exact', head: true })
+        .gt('started_at', '2026-07-10T00:00:00Z');
+      expect(count).toBeGreaterThanOrEqual(FILLER_GAMES);
+
       const [board, stats] = await Promise.all([
         loadBoard(anon, ALL_TIME),
         loadPlayerStats(anon, puuidOf('pn0'), ALL_TIME),

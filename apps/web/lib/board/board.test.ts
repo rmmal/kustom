@@ -1,5 +1,6 @@
 import { displayRating } from '@customs/core';
 import { describe, expect, it, vi } from 'vitest';
+import { inChunks } from '../chunks';
 import { closedWindow, formatWeekRange, type WindowKind, windowRange } from '../night';
 import { displayDelta, formatWebDelta, provenRating } from '../ratingDisplay';
 import { workedBoardRows, workedWindowRows } from '../testing/boardFixtures';
@@ -23,7 +24,7 @@ import {
   windowSlotLine,
   winLossLabel,
 } from './copy';
-import { inChunks, loadTopPlayers, loadTopPlayersOrNone } from './load';
+import { loadTopPlayers, loadTopPlayersOrNone } from './load';
 import { compareBoardRows, sortBoardRows } from './order';
 import { isRated, recentGames } from './recent';
 import { currentStreak, formatStreak } from './streak';
