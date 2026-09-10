@@ -2909,9 +2909,9 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > Everything about the lobby existing (M4.2). Voice (M4.4, M4.5). Any attempt to move a spectator onto a team,
     > or to swap two players by orchestrating two commands. Champion select, in any form, for any reason.
 
-- [ ] **M4.4** `apps/discord` bot: Realtime subscription; on `balanced` move linked members into blue and red voice; on `finished` move everyone back. Handles missing permissions gracefully with a log line, never a crash.
-- [ ] **M4.5** Presence: when lobby voice membership changes and no lobby is open, post or edit a single "N around: names" message. Count feeds the sit-out logic as "around".
-- [ ] **M4.6** Deploy the bot to Fly.io or Railway with a health check and auto-restart.
+- [-] **M4.4** **Dropped by the user, 2026-09-10** ("not interested in auto separating players into channels"). Nothing built; the bot app stays a placeholder. `apps/discord` bot: Realtime subscription; on `balanced` move linked members into blue and red voice; on `finished` move everyone back. Handles missing permissions gracefully with a log line, never a crash.
+- [ ] **M4.5** (**deferred 2026-09-10**: with M4.4 dropped, the bot would exist for this alone; queued only if the user asks for the "N around" post) Presence: when lobby voice membership changes and no lobby is open, post or edit a single "N around: names" message. Count feeds the sit-out logic as "around".
+- [-] **M4.6** **Dropped with M4.4, 2026-09-10**: no bot to deploy. Deploy the bot to Fly.io or Railway with a health check and auto-restart.
 
 - [ ] **M4.7** Designer: the two M4 surfaces that have copy and no layout. (a) The `Start a lobby` control on the tonight page — where it sits in the **idle** and **filling** states of `05-design.md`'s state table, and how the four refusal sentences and the pending line (`Opening a lobby on <Name>'s PC…`) are shown without a toast. (b) The side line — `Move to your side in the lobby.` / `You'll be moved to your side — if not, move yourself.` — in the teams embed's `Seats` block (field order fixed by M3.13) and under the team cards on the page. The words are product's and are fixed in the M4.2 and M4.3 briefs; the placement is the designer's.
 
