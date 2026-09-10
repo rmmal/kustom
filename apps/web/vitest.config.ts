@@ -17,6 +17,14 @@ export default defineConfig({
      *
      * The whole suite is about a second, so serialising every file costs nothing and removes a
      * class of flake that only shows up on some runs.
+     *
+     * **It has to be set on every project, not only here** (2026-09-11, M5.7). With `projects`
+     * defined, this root-level value does not reach them: `vitest run lib/ingest lib/board`
+     * ran the rebuild's file beside `roles.integration.test.ts`, which posted its ten players'
+     * games into the season `start_season` had just made active, and the rebuild then folded
+     * twenty players and nine games it had never heard of. Adding one file was enough to
+     * change the scheduling and make it show. `--no-file-parallelism` on the command line is
+     * the same switch; nobody should have to remember it.
      */
     fileParallelism: false,
 
@@ -42,6 +50,7 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['app/**/*.test.ts', 'lib/**/*.test.ts'],
+          fileParallelism: false,
         },
       },
       {
@@ -57,6 +66,7 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['app/**/*.test.tsx', 'lib/**/*.test.tsx'],
           setupFiles: ['./vitest.setup.tsx'],
+          fileParallelism: false,
         },
       },
     ],

@@ -1,8 +1,9 @@
-import { type Rating, seedFromRank } from '@customs/core';
+import type { Rating } from '@customs/core';
 import type { RatingInsert, SideValue } from '@customs/db';
 import type { ServiceClient } from '../supabase';
 import { type FoldPlayer, type FoldSkipReason, foldGame, gateGame } from './fold';
 import { recomputeInferredRoles, selectAllPlayerIds } from './roles';
+import { readSeed, type StoredSeed, sameSeed, seedColumns, seedFor } from './seed';
 
 /**
  * The rating rebuild (M5.2): fold every rated-eligible game of a season, in `started_at` order,
@@ -36,10 +37,13 @@ import { recomputeInferredRoles, selectAllPlayerIds } from './roles';
  * fold's claim serialises two companions posting the same game, and this is the one caller that
  * is entitled to say the claim was wrong.
  *
- * **The caveat, stated once and honestly:** everyone is seeded from their *current* rank, so a
- * rank that moved after somebody's first rated game shifts their whole history on the next
- * rebuild. That is the best estimate the database holds today; storing the seed the first fold
- * used is M5.7.
+ * **Where a fold starts** (M5.7). Each player is seeded from `ratings.seed_mu` / `seed_sigma`
+ * when their row has them, and from their *current* rank when it does not. The stored seed is
+ * what makes this command safe to run twice a year apart: a rank that moved after somebody's
+ * first rated game no longer shifts their whole history. A row with no stored seed is a row
+ * written before `0012`, and this is what fills it — with the seed **this run actually folded
+ * from**, so the number and the history under it agree by construction. Nothing rewrites a seed
+ * that is already there.
  */
 
 /** PostgREST's `max_rows`. Every select here pages, because a season outgrows one page. */
@@ -132,6 +136,13 @@ export interface RebuildReport {
   largestMuChange: { puuid: string; from: number; to: number; delta: number } | null;
   /** Players who had no `ratings` row in this season before the run. */
   firstRatings: number;
+  /**
+   * `ratings` rows this run writes a seed on for the first time (M5.7): a row this fold is
+   * creating, and — the backfill — a row written before `0012` that has none. Zero on every
+   * run after the first, which is what makes it worth printing on a dry run: the seeds are
+   * where a player's history starts, and this is the count of the ones about to be fixed.
+   */
+  seedsStored: number;
   /** `ratings` rows for players with no rated game left in the season. */
   orphanRatings: number;
   prunedRatings: number;
@@ -216,7 +227,7 @@ export async function rebuildRatings(
 
   // ---- Fold, in memory, from seeds ----------------------------------------------------
   const current = new Map<string, Rating>();
-  const seeds = new Map<string, Rating>();
+  const seeds = new Map<string, StoredSeed>();
   const puuids = new Map<string, string>();
   const played = new Map<string, { games: number; wins: number }>();
   const problems: string[] = [];
@@ -232,10 +243,16 @@ export async function rebuildRatings(
   for (const row of rows) {
     puuids.set(row.playerId, row.puuid);
     if (!seeds.has(row.playerId)) {
-      // The seed. When M5.3 makes a new season carry `mu` forward, *this line* is what changes:
-      // the seed stops being the rank and becomes the previous season's rating. And the M5.7
-      // caveat lives here too — this is the player's rank *now*, not when they first played.
-      seeds.set(row.playerId, seedFromRank(row.rankTier, row.rankDivision));
+      /**
+       * The seed (M5.7): the stored one, or this player's current rank when their row has
+       * none. Reading the stored pair first is what stops a rank that moved *after* somebody's
+       * first rated game rewriting their whole history the next time this command runs — the
+       * fold has to start where it started, not where the client last saw them.
+       */
+      seeds.set(
+        row.playerId,
+        seedFor(storedRatings.get(row.playerId)?.seed ?? null, row.rankTier, row.rankDivision),
+      );
     }
   }
 
@@ -307,15 +324,26 @@ export async function rebuildRatings(
   const ratingInserts: RatingInsert[] = [];
   let largestMuChange: RebuildReport['largestMuChange'] = null;
   let firstRatings = 0;
+  let seedsStored = 0;
   for (const [playerId, tally] of played) {
     const rating = current.get(playerId) as Rating;
     const previous = storedRatings.get(playerId);
+    /**
+     * The seed this run folded from, written back (M5.7). For a row that already has one it is
+     * the same pair it already holds, so the write is a no-op on those four columns and
+     * `sameSeed` below keeps the row out of the payload entirely. For a row written before
+     * `0012` it is the backfill: the seed **this fold used**, which is the only value that
+     * cannot disagree with the history stored under it.
+     */
+    const seed = mustSeedRecord(seeds, playerId);
+    if (previous === undefined || previous.seed === null) seedsStored += 1;
     const unchanged =
       previous !== undefined &&
       sameNumber(previous.mu, rating.mu) &&
       sameNumber(previous.sigma, rating.sigma) &&
       previous.games === tally.games &&
-      previous.wins === tally.wins;
+      previous.wins === tally.wins &&
+      sameSeed(previous.seed, seed);
     if (!unchanged) {
       ratingInserts.push({
         player_id: playerId,
@@ -324,6 +352,7 @@ export async function rebuildRatings(
         sigma: rating.sigma,
         games: tally.games,
         wins: tally.wins,
+        ...seedColumns(seed),
       });
     }
     if (previous === undefined) {
@@ -352,6 +381,7 @@ export async function rebuildRatings(
     skipped,
     gamePlayerRowsChanged: changedRows.length,
     ratingRowsChanged: ratingInserts.length,
+    seedsStored,
     playersWritten: played.size,
     rolesChanged: 0,
     largestMuChange,
@@ -403,7 +433,11 @@ function nulled(gameId: string, playerId: string): WriteRow {
   return { gameId, playerId, muBefore: null, sigmaBefore: null, muAfter: null, sigmaAfter: null };
 }
 
-function mustSeed(seeds: Map<string, Rating>, playerId: string): Rating {
+function mustSeed(seeds: Map<string, StoredSeed>, playerId: string): Rating {
+  return mustSeedRecord(seeds, playerId).rating;
+}
+
+function mustSeedRecord(seeds: Map<string, StoredSeed>, playerId: string): StoredSeed {
   const seed = seeds.get(playerId);
   if (seed === undefined) throw new Error(`rebuild: no seed for player ${playerId}`);
   return seed;
@@ -530,6 +564,8 @@ interface StoredRating {
   sigma: number;
   games: number;
   wins: number;
+  /** The stored seed (M5.7), or null on a row written before `0012`. */
+  seed: StoredSeed | null;
 }
 
 async function selectSeasonRatings(
@@ -539,14 +575,17 @@ async function selectSeasonRatings(
   const rows = await selectPaged('ratings select', (from, to) =>
     client
       .from('ratings')
-      .select('player_id, mu, sigma, games, wins')
+      .select('player_id, mu, sigma, games, wins, seed_mu, seed_sigma, seed_rank_tier, seed_rank_division')
       .eq('season_id', seasonId)
       .order('player_id', { ascending: true })
       .range(from, to),
   );
 
   return new Map(
-    rows.map((row) => [row.player_id, { mu: row.mu, sigma: row.sigma, games: row.games, wins: row.wins }]),
+    rows.map((row) => [
+      row.player_id,
+      { mu: row.mu, sigma: row.sigma, games: row.games, wins: row.wins, seed: readSeed(row) },
+    ]),
   );
 }
 
@@ -655,6 +694,7 @@ export function formatRebuildReport(report: RebuildReport): string {
       report.gamePlayerRowsChanged === 1 ? '' : 's'
     }, ${report.ratingRowsChanged} ratings row${report.ratingRowsChanged === 1 ? '' : 's'}`,
     `players       ${report.playersWritten} with a rated game`,
+    `seeds         ${report.seedsStored} ${report.dryRun ? 'to store' : 'stored'} for the first time`,
     `roles         ${report.rolesChanged} inferred pair${report.rolesChanged === 1 ? '' : 's'} moved`,
     `biggest move  ${formatMuChange(report.largestMuChange, report.firstRatings)}`,
   ];
