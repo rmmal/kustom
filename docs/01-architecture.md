@@ -55,7 +55,10 @@ players        (id, puuid unique, summoner_id, game_name, tag_line, display_name
                 roles_inferred_at null, roles_counted,          -- 0010, M5.17
                 rank_tier, rank_division, rank_lp, rank_updated_at, created_at)
 ratings        (player_id, season_id, mu, sigma, ordinal generated (mu - 2 * sigma) stored,
-                games, wins, updated_at)  pk (player_id, season_id), index (season_id, ordinal desc)
+                games, wins,
+                seed_mu null, seed_sigma null,                  -- 0012, M5.7
+                seed_rank_tier null, seed_rank_division null,   -- 0012, M5.7
+                updated_at)  pk (player_id, season_id), index (season_id, ordinal desc)
 lobbies        (id, lcu_party_id, status, reported_by_player_id, lobby_name, lobby_password,
                 created_at, updated_at)  unique (lcu_party_id) where status in (open, balanced, in_game)
 lobby_members  (lobby_id, player_id, side null, role null, role_override null, is_spectator, created_at)
@@ -104,6 +107,12 @@ Rules:
 - `ratings` is per season. Ratings never reset: there is one season row, and the board is viewed through automatic time windows (week, month, all time; M5.9, M5.12). `ordinal` is a
   stored generated column so the leaderboard sorts in one index scan and SQL cannot disagree with
   `packages/core` about the formula; `packages/core` stays the only place that computes a rating.
+- `ratings.seed_mu` / `seed_sigma` are the `{ mu, sigma }` the **first fold that rated this player** started
+  from, with `seed_rank_tier` / `seed_rank_division` the raw pair `seedFromRank` read to get them (0012, M5.7).
+  Written once and never rewritten, by whichever fold creates the row; both folds read the stored pair in
+  preference to the player's current rank, so a rank that moves later does not move anybody's history. A null
+  `seed_mu` means "no seed stored yet" — a row written before 0012 — and the next `rebuild-ratings` fills it
+  with the seed it used.
 - `games.raw` keeps the full end-of-game block, with `mucJwtDto` and `multiUserChatPassword` replaced by
   `"[redacted]"` (M2.10). Every derived column can be recomputed from it.
 - `game_players` rating columns are nullable: the API inserts the game and its ten players, then rates, and a
