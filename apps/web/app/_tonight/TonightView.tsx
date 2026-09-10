@@ -101,11 +101,7 @@ export function TonightView({ snapshot, viewer, topPlayers, onViewerChanged }: T
         {state.kind === 'idle' ? <Idle /> : null}
         {state.kind === 'filling' ? (
           <section className="cn-block">
-            <SeatRack
-              members={state.lobby.members}
-              viewerPuuid={seatViewer.puuid}
-              isAdmin={seatViewer.isAdmin}
-            />
+            <SeatRack members={state.lobby.members} viewerPuuid={seatViewer.puuid} />
           </section>
         ) : null}
         {state.kind === 'teams' ? (

@@ -248,6 +248,16 @@ describe('the role column only appears when it distinguishes', () => {
     expect(container.textContent).not.toContain('flexible');
   });
 
+  it('says it once for an admin too: the `Set roles` link went with M5.17', () => {
+    const { container } = draw(snapshot(lobbyView({ members: flexible })), { isAdmin: true });
+
+    expect(screen.getAllByText(ALL_FLEXIBLE_HINT)).toHaveLength(1);
+    // The hint is a sentence, not a signpost. `/admin/players` shows the inferred pair
+    // read-only, so there is no longer a page for an admin to go and set a role on.
+    expect(container.querySelector('.cn-hint a')).toBeNull();
+    expect(container.textContent).not.toContain('Set roles');
+  });
+
   it('shows the column, with `flexible` on the rows that have none, as soon as one does', () => {
     const [first, ...rest] = flexible;
     if (first === undefined) throw new Error('no member');

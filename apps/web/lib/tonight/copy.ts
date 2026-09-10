@@ -266,9 +266,3 @@ export const ROLE_TAP_OFFLINE = 'That did not reach the server. Your role is unc
 
 /** The same case, on the `That's me` list. */
 export const LINK_OFFLINE = 'That did not reach the server. Nothing changed — tap it again.';
-
-/**
- * Appended to {@link ALL_FLEXIBLE_HINT} for an admin, and only now that M3.6 has shipped the
- * control it points at (`05-design.md`, the copy table).
- */
-export const SET_ROLES_LINK = 'Set roles';

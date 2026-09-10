@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PLAYERS_PER_GAME } from '@/lib/lobbyState';
 import {
@@ -10,7 +9,6 @@ import {
   RACK_LEGEND,
   rackCount,
   renderWebName,
-  SET_ROLES_LINK,
 } from '@/lib/tonight/copy';
 import { anyRoleShown, tonightRoles } from '@/lib/tonight/roles';
 import type { MemberView } from '@/lib/tonight/types';
@@ -34,11 +32,9 @@ export interface SeatRackProps {
   /** Everybody around, in join order. The spectators past the ten sit under `Around`. */
   members: readonly MemberView[];
   viewerPuuid: string | null;
-  /** Adds `Set roles` to the all-flexible hint. A link to a page only an admin can open. */
-  isAdmin?: boolean;
 }
 
-export function SeatRack({ members, viewerPuuid, isAdmin = false }: SeatRackProps) {
+export function SeatRack({ members, viewerPuuid }: SeatRackProps) {
   const playing = members.filter((member) => !member.isSpectator);
   const around = members.filter((member) => member.isSpectator);
 
@@ -98,22 +94,11 @@ export function SeatRack({ members, viewerPuuid, isAdmin = false }: SeatRackProp
 
       {/* Once, under the rack, and never on a rack nobody is in — at zero the strip's sentence
           has already said the only thing there is to say. */}
-      {showRoles || members.length === 0 ? null : (
-        <p className="cn-hint">
-          {ALL_FLEXIBLE_HINT}
-          {/* Admin only, and only now that M3.6 has shipped the control it points at
-              (`05-design.md`, the copy table). Everybody else's profile roles are an admin's
-              to set; their role for *tonight* is the card under this rack. */}
-          {isAdmin ? (
-            <>
-              {' '}
-              <Link className="cn-hint-link" href="/admin">
-                {SET_ROLES_LINK}
-              </Link>
-            </>
-          ) : null}
-        </p>
-      )}
+      {/* One sentence, for everybody. The admin-only `Set roles` link that used to follow it
+          went with M5.17: roles are worked out from the games people play and `/admin/players`
+          shows them read-only, so the link pointed at a page with nothing to press. The one
+          role anybody can still choose is the card under this rack (M3.6). */}
+      {showRoles || members.length === 0 ? null : <p className="cn-hint">{ALL_FLEXIBLE_HINT}</p>}
     </>
   );
 }
