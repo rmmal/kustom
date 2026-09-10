@@ -64,6 +64,8 @@ function form(body: Record<string, string>, path = 'role-tonight'): Request {
 
 interface FakeRoleStore extends RoleTonightStore {
   writes: { lobbyId: string; playerId: string; role: RoleValue | null }[];
+  /** The night's preference on `players`, which is what makes a tap outlive its lobby row. */
+  preferences: { playerId: string; role: RoleValue | null; until: string | null }[];
 }
 
 function roleStore(
@@ -72,12 +74,17 @@ function roleStore(
   const players = options.players ?? { [ME]: 'player-me', [SOMEBODY_ELSE]: 'player-else' };
   const members = new Set(options.members ?? Object.values(players));
   const writes: FakeRoleStore['writes'] = [];
+  const preferences: FakeRoleStore['preferences'] = [];
 
   return {
     writes,
+    preferences,
     findPlayerIdByPuuid: async (puuid) => players[puuid] ?? null,
     findLobbyStatus: async () => (options.status === undefined ? 'open' : options.status),
     isMember: async (_lobbyId, playerId) => members.has(playerId),
+    writePreference: async (playerId, role, until) => {
+      preferences.push({ playerId, role, until: until?.toISOString() ?? null });
+    },
     writeOverride: async (lobbyId, playerId, role) => {
       writes.push({ lobbyId, playerId, role });
     },
@@ -106,6 +113,13 @@ describe('POST /api/me/role-tonight', () => {
       savedForNextGame: false,
     });
     expect(store.writes).toEqual([{ lobbyId: LOBBY, playerId: 'player-me', role: 'jungle' }]);
+    // And the night's preference, which is what survives a `lobby_members` row being deleted
+    // and re-created (decision 2026-09-10). The expiry is the night's own 06:00.
+    expect(store.preferences).toHaveLength(1);
+    expect(store.preferences[0]).toMatchObject({ playerId: 'player-me', role: 'jungle' });
+    const until = store.preferences[0]?.until;
+    expect(until).not.toBeNull();
+    expect(Date.parse(String(until))).toBeGreaterThan(Date.now());
   });
 
   it('clears the override when the role is null, and reads "" from a form as null', async () => {
@@ -124,6 +138,11 @@ describe('POST /api/me/role-tonight', () => {
     expect(store.writes).toEqual([
       { lobbyId: LOBBY, playerId: 'player-me', role: null },
       { lobbyId: LOBBY, playerId: 'player-me', role: null },
+    ]);
+    // Clearing writes null to **both** columns, so nothing can come back on the next post.
+    expect(store.preferences).toEqual([
+      { playerId: 'player-me', role: null, until: null },
+      { playerId: 'player-me', role: null, until: null },
     ]);
   });
 
@@ -150,6 +169,7 @@ describe('POST /api/me/role-tonight', () => {
     expect(await response.json()).toEqual({ ok: false, error: ROLE_TAP_NOT_YOURS });
     // Not a silent write to the caller's own row: nothing moved at all.
     expect(store.writes).toEqual([]);
+    expect(store.preferences).toEqual([]);
   });
 
   it("lets an admin set somebody else's row", async () => {
@@ -162,6 +182,8 @@ describe('POST /api/me/role-tonight', () => {
 
     expect(response.status).toBe(200);
     expect(store.writes).toEqual([{ lobbyId: LOBBY, playerId: 'player-else', role: 'support' }]);
+    // The admin sets the other player's night, not their own.
+    expect(store.preferences[0]).toMatchObject({ playerId: 'player-else', role: 'support' });
   });
 
   it('refuses a lobby that is over, and one the player is not in', async () => {
@@ -181,6 +203,7 @@ describe('POST /api/me/role-tonight', () => {
     expect(outside.status).toBe(409);
     expect(await outside.json()).toEqual({ ok: false, error: ROLE_TAP_NOT_IN_LOBBY });
     expect(finished.writes.concat(elsewhere.writes)).toEqual([]);
+    expect(finished.preferences.concat(elsewhere.preferences)).toEqual([]);
   });
 
   it('is 401 without a session and 403 for a session with no player', async () => {

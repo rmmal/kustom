@@ -9,6 +9,7 @@ import {
 } from '@/lib/me/roleTonight';
 import type { MeContext, MeRouteOptions } from '@/lib/me/route';
 import { withViewerAuth } from '@/lib/me/route';
+import { nightTimeZone } from '@/lib/tonight/night';
 
 /**
  * `POST /api/me/role-tonight` (M3.6). Separate from `route.ts` because a Next route file may
@@ -43,11 +44,14 @@ async function handle(
   if (actor === null) return context.fail(403, ROLE_TAP_NOT_LINKED);
 
   const store = options.store ? options.store(context) : supabaseRoleTonightStore(context.client);
-  const result = await setRoleTonight(store, actor, {
-    lobbyId: input.lobbyId,
-    role: input.role,
-    puuid: input.puuid,
-  });
+  const result = await setRoleTonight(
+    store,
+    actor,
+    { lobbyId: input.lobbyId, role: input.role, puuid: input.puuid },
+    // The night this preference belongs to ends at 06:00 in the deployment's zone, and the
+    // route is the only place that knows which zone that is.
+    { timeZone: nightTimeZone() },
+  );
   if (!result.ok) return context.fail(result.status, result.error);
 
   const { puuid, role, status } = result.value;

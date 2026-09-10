@@ -66,7 +66,9 @@ describe("the role control, for a linked viewer in tonight's lobby", () => {
 
     // `Your role tonight · Bilal`: the viewer's own name, so the card says whose it is
     // (product, 2026-09-10). Never `· Someone`.
-    expect(screen.getByText('Your role tonight · Bilal')).toBeInTheDocument();
+    // A heading, so a screen-reader user can find the only control on the page by navigating
+    // headings (the designer, 2026-09-10).
+    expect(screen.getByRole('heading', { name: 'Your role tonight · Bilal' })).toBeInTheDocument();
     expect(roleCardTitle(null)).toBe(ROLE_CONTROL_HEADING);
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
       'top',
@@ -173,7 +175,7 @@ describe("the role control, for a linked viewer in tonight's lobby", () => {
       lobby({ members: [...workedMembers(4), sitter] }),
     );
 
-    expect(screen.getByText('Your role tonight · Deniz')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your role tonight · Deniz' })).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(5);
   });
 });
@@ -202,7 +204,7 @@ describe('signed out, with a lobby up', () => {
     // The same card as every other state, with a title, a sentence, and a button whose label
     // is a label (the designer and product, 2026-09-10).
     expect(container.querySelector('.cn-role-card')).toBeInTheDocument();
-    expect(screen.getByText(ROLE_CONTROL_HEADING)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: ROLE_CONTROL_HEADING })).toBeInTheDocument();
     expect(screen.getByText(ROLE_SIGN_IN)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: SIGN_IN_LABEL })).toBeEnabled();
     expect(container.querySelector('form')).toHaveAttribute('action', '/auth/signin');
@@ -217,7 +219,7 @@ describe('signed in with no player row: picking yourself, once', () => {
   it("offers tonight's members, each with `That's me`, under product's question", () => {
     draw(visitor, lobby());
 
-    expect(screen.getByText(ROLE_CONTROL_HEADING)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: ROLE_CONTROL_HEADING })).toBeInTheDocument();
     expect(screen.getByText(PICK_YOURSELF)).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(4);
     // The visible label is the same four words on every row; the name is what a listener

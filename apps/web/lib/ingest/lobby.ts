@@ -4,7 +4,6 @@ import {
   type LobbyMemberInsert,
   type LobbyStatusValue,
   type LobbyUpdate,
-  type RoleValue,
   rosterKey,
 } from '@customs/db';
 import { supersedeLobbyCommands } from '../commands/queue';
@@ -230,20 +229,12 @@ export async function ingestLobby(
   const diff = await replaceMembers(client, lobby.id, payload);
   const memberCount = diff.count;
 
-  // A role for tonight lasts the night, not the lobby row (M3.6). Every row this post
-  // **created** gets its override back — from a row this same post deleted (a friend who
-  // dropped out of the client lobby and rejoined) or from the party's previous cycle, when
-  // that cycle started inside the same night. Rows that were already here are not touched, so
-  // a re-post can never re-apply an old value over a tap that has just landed.
+  // A role for tonight lasts the night and lives on the player (M3.6): every row this post
+  // **created** gets `players.role_tonight` copied onto it while that preference is still
+  // tonight's. Rows that were already here are not touched, so a re-post can never re-apply a
+  // value over a tap that has just landed.
   if (diff.inserted.length > 0) {
-    await carryRoleOverrides(client, {
-      lobbyId: lobby.id,
-      partyId: payload.partyId,
-      inserted: diff.inserted,
-      departed: diff.departed,
-      now,
-      timeZone,
-    });
+    await carryRoleOverrides(client, { lobbyId: lobby.id, inserted: diff.inserted, now });
   }
 
   let row = lobby;
@@ -614,14 +605,11 @@ export async function selectLatestLobby(
 export interface MemberDiff {
   /** How many rows the lobby has after the post. The caller's `memberCount`. */
   count: number;
-  /** Players whose row this post **created**: they had none a moment ago. */
-  inserted: string[];
   /**
-   * The overrides on the rows this post deleted, read before the delete. A friend who drops
-   * out of the client lobby and rejoins is a delete and then an insert, and this is the only
-   * memory of what they had picked.
+   * Players whose row this post **created**: they had none a moment ago. The role carry writes
+   * to exactly these, so a tap that has just landed on an existing row is never overwritten.
    */
-  departed: Map<string, RoleValue>;
+  inserted: string[];
 }
 
 /**
@@ -661,14 +649,10 @@ async function replaceMembers(
 
   const keep = [...rows.keys()];
 
-  // Read before the delete, or the two facts the carry needs are gone: who was already here
-  // (so an insert can be told from an update) and what the leavers had picked.
-  const before = await selectMemberOverrides(client, lobbyId);
+  // Read before the write, so an insert can be told from an update: only a row this post
+  // creates gets the player's role for tonight copied onto it (M3.6).
+  const before = await selectMemberIds(client, lobbyId);
   const inserted = keep.filter((playerId) => !before.has(playerId));
-  const departed = new Map<string, RoleValue>();
-  for (const [playerId, role] of before) {
-    if (role !== null && !rows.has(playerId)) departed.set(playerId, role);
-  }
 
   const remove = client.from('lobby_members').delete().eq('lobby_id', lobbyId);
   const { error: deleteError } = await (keep.length === 0
@@ -683,20 +667,14 @@ async function replaceMembers(
     if (error) throw new Error(`ingestLobby: member upsert failed: ${error.message}`);
   }
 
-  return { count: keep.length, inserted, departed };
+  return { count: keep.length, inserted };
 }
 
-/** Every member row of a lobby with whatever `role_override` it carries, `null` included. */
-async function selectMemberOverrides(
-  client: ServiceClient,
-  lobbyId: string,
-): Promise<Map<string, RoleValue | null>> {
-  const { data, error } = await client
-    .from('lobby_members')
-    .select('player_id, role_override')
-    .eq('lobby_id', lobbyId);
-  if (error) throw new Error(`ingestLobby: member override read failed: ${error.message}`);
-  return new Map((data ?? []).map((row) => [row.player_id, row.role_override]));
+/** Who already has a row in this lobby, before the post is applied. */
+async function selectMemberIds(client: ServiceClient, lobbyId: string): Promise<Set<string>> {
+  const { data, error } = await client.from('lobby_members').select('player_id').eq('lobby_id', lobbyId);
+  if (error) throw new Error(`ingestLobby: member read failed: ${error.message}`);
+  return new Set((data ?? []).map((row) => row.player_id));
 }
 
 async function countMembers(client: ServiceClient, lobbyId: string): Promise<number> {

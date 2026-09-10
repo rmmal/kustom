@@ -1,129 +1,62 @@
 import { describe, expect, it } from 'vitest';
-import { carryableOverrides } from './roleCarry';
+import { nightEnd, nightStart } from '../night';
 
 /**
- * How long a role for tonight lasts (M3.6, decision 2026-09-09): the night, not the lobby row.
+ * How long a role for tonight lasts (M3.6, decisions 2026-09-09 and 2026-09-10): the night,
+ * and it lives on the player.
  *
- * This is the rule itself — what a new row inherits, and what a new night does not. The
- * database half is `roleCarry.integration.test.ts`, which drives real companion posts against
- * the local stack.
+ * The carry itself is now two queries with no rule left in TypeScript — "the rows this post
+ * created" and "`players.role_tonight` while `role_tonight_until` is in the future" — so it is
+ * exercised end to end in `roleCarry.integration.test.ts` against the local stack, where the
+ * expiry is compared by Postgres exactly as it is in production. What is left here is the
+ * boundary that decides it: when a night ends.
  */
 
-const NIGHT_START = new Date('2026-09-08T03:00:00.000Z'); // 06:00 in Africa/Cairo
-const DURING = '2026-09-08T21:30:00.000Z';
-const AFTER_MIDNIGHT = '2026-09-09T00:40:00.000Z';
-const LAST_NIGHT = '2026-09-07T22:00:00.000Z';
+const TIME_ZONE = 'Africa/Cairo';
 
-const overrides = [
-  { playerId: 'hana', role: 'jungle' as const },
-  { playerId: 'iris', role: 'top' as const },
-  { playerId: 'omar', role: 'jungle' as const },
-];
+describe('the night a preference belongs to', () => {
+  it('ends at the 06:00 that starts the next one', () => {
+    const evening = new Date('2026-09-08T20:30:00.000Z'); // 23:30 in Cairo
+    const end = nightEnd(evening, TIME_ZONE);
 
-describe('carryableOverrides', () => {
-  it("carries every member's override onto the night's next cycle, grouped by role", () => {
-    const carried = carryableOverrides({
-      previousLobby: { createdAt: DURING },
-      overrides,
-      memberIds: ['hana', 'iris', 'omar', 'theo'],
-      nightStart: NIGHT_START,
-    });
-
-    // Grouped so the write is at most five statements however big the lobby is.
-    expect([...carried.entries()].sort()).toEqual([
-      ['jungle', ['hana', 'omar']],
-      ['top', ['iris']],
-    ]);
+    expect(end.toISOString()).toBe('2026-09-09T03:00:00.000Z'); // 06:00 Cairo, next morning
+    expect(end.getTime()).toBe(nightStart(new Date(end.getTime() + 1_000), TIME_ZONE).getTime());
   });
 
-  it('carries a 01:00 cycle forward: the night runs 06:00 to 06:00, not midnight to midnight', () => {
-    const carried = carryableOverrides({
-      previousLobby: { createdAt: AFTER_MIDNIGHT },
-      overrides: [{ playerId: 'hana', role: 'jungle' }],
-      memberIds: ['hana'],
-      nightStart: NIGHT_START,
-    });
+  it('is the same instant for a 01:00 game as for the evening before it', () => {
+    // A session running to 01:30 is one night (`lib/night.ts`), so a tap at either end of it
+    // expires at the same 06:00 and nobody re-taps at midnight.
+    const evening = new Date('2026-09-08T20:30:00.000Z');
+    const afterMidnight = new Date('2026-09-08T23:10:00.000Z'); // 02:10 in Cairo
 
-    expect(carried.get('jungle')).toEqual(['hana']);
+    expect(nightEnd(afterMidnight, TIME_ZONE).getTime()).toBe(nightEnd(evening, TIME_ZONE).getTime());
   });
 
-  it('carries nothing from last night: the first lobby of a night starts flexible', () => {
-    const carried = carryableOverrides({
-      previousLobby: { createdAt: LAST_NIGHT },
-      overrides,
-      memberIds: ['hana', 'iris'],
-      nightStart: NIGHT_START,
-    });
+  it('is always in the future of the night it belongs to, and 24 hours after its start', () => {
+    const now = new Date('2026-09-08T20:30:00.000Z');
 
-    expect(carried.size).toBe(0);
+    expect(nightEnd(now, TIME_ZONE).getTime()).toBeGreaterThan(now.getTime());
+    // Cairo has had no DST since 2023, so this night is exactly 24 hours long; the 26-hour
+    // probe inside `nightEnd` is what keeps that true in a zone that still shifts.
+    expect(nightEnd(now, TIME_ZONE).getTime() - nightStart(now, TIME_ZONE).getTime()).toBe(
+      24 * 60 * 60 * 1000,
+    );
   });
 
-  it("carries nothing for a party's first ever lobby", () => {
+  it('lands on 06:00 local through a DST shift, not 05:00 or 07:00', () => {
+    // Europe/Berlin springs forward at 02:00 on 2026-03-29, inside the night of the 28th.
+    const berlinNight = new Date('2026-03-28T21:00:00.000Z');
+    const end = nightEnd(berlinNight, 'Europe/Berlin');
+
     expect(
-      carryableOverrides({ previousLobby: null, overrides, memberIds: ['hana'], nightStart: NIGHT_START })
-        .size,
-    ).toBe(0);
-  });
-
-  it('prefers a row this same post deleted: a friend who dropped out and rejoined', () => {
-    // The delete happened a moment ago, in this cycle. Whatever the previous cycle holds for
-    // them is a game older, so the newer answer wins.
-    const carried = carryableOverrides({
-      previousLobby: { createdAt: DURING },
-      overrides: [{ playerId: 'hana', role: 'top' }],
-      departed: new Map([['hana', 'jungle']]),
-      memberIds: ['hana'],
-      nightStart: NIGHT_START,
-    });
-
-    expect([...carried.entries()]).toEqual([['jungle', ['hana']]]);
-  });
-
-  it("carries a deleted row's override even with no previous cycle at all", () => {
-    const carried = carryableOverrides({
-      previousLobby: null,
-      overrides: [],
-      departed: new Map([['iris', 'support']]),
-      memberIds: ['iris'],
-      nightStart: NIGHT_START,
-    });
-
-    expect([...carried.entries()]).toEqual([['support', ['iris']]]);
-  });
-
-  it('writes nothing for a row the post did not create', () => {
-    // `memberIds` is what the post inserted, and it is the only thing written: re-applying an
-    // old value over a tap that has just landed is the one thing this may not do.
-    const carried = carryableOverrides({
-      previousLobby: { createdAt: DURING },
-      overrides,
-      departed: new Map([['iris', 'support']]),
-      memberIds: [],
-      nightStart: NIGHT_START,
-    });
-
-    expect(carried.size).toBe(0);
-  });
-
-  it('skips somebody who has gone home', () => {
-    const carried = carryableOverrides({
-      previousLobby: { createdAt: DURING },
-      overrides,
-      memberIds: ['iris'],
-      nightStart: NIGHT_START,
-    });
-
-    expect([...carried.keys()]).toEqual(['top']);
-  });
-
-  it("carries nothing when the previous cycle's timestamp cannot be read", () => {
-    const carried = carryableOverrides({
-      previousLobby: { createdAt: 'not a date' },
-      overrides,
-      memberIds: ['hana'],
-      nightStart: NIGHT_START,
-    });
-
-    expect(carried.size).toBe(0);
+      new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/Berlin',
+      }).format(end),
+    ).toBe('06:00');
+    // Twenty-three hours, because the night lost one to the clock going forward.
+    expect(end.getTime() - nightStart(berlinNight, 'Europe/Berlin').getTime()).toBe(23 * 60 * 60 * 1000);
   });
 });

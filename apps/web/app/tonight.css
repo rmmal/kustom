@@ -790,7 +790,12 @@
  */
 .cn-role-choices {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(6rem, 9rem));
+  /* Flexible tracks under a cap on the **group**, not on each chip: `auto-fit` counts columns
+     from a definite max, so a 9rem max gave two chips a row at 390px. 1fr tracks inside a
+     47rem group keep the five 9rem chips on a desktop, give 3 + 2 on a phone, and let 320px
+     degrade by itself (the designer, 2026-09-10). */
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  max-width: 47rem;
   justify-content: start;
   gap: var(--cn-sp-2);
   margin: 0;
@@ -869,6 +874,9 @@
   justify-content: space-between;
   gap: var(--cn-sp-3);
   min-height: 44px;
+  /* Nine 44px controls stacked with no air between them read as one grey slab in light mode,
+     where the chip fill and the card are close. */
+  padding-block: var(--cn-sp-1);
 }
 
 .cn-pick-row + .cn-pick-row {
@@ -897,6 +905,13 @@
     grid-template-columns: minmax(0, 16rem) auto;
     justify-content: start;
     gap: var(--cn-sp-4);
+  }
+
+  /* The list is as wide as its widest row, so the hairline ends with the button instead of
+     running 600px past it across an 830px card. */
+  .cn-pick-list {
+    width: fit-content;
+    max-width: 100%;
   }
 }
 

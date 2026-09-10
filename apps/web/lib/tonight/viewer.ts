@@ -34,9 +34,11 @@ export function viewerPuuid(viewer: ViewerState): string | null {
 }
 
 /**
- * Decided on the server from the session (`lib/viewer.ts`) and used to draw the reroll control
- * and the role tap on somebody else's row. It is never the gate: the routes behind both check
- * the session again before they write.
+ * Decided on the server from the session (`lib/viewer.ts`). It draws the reroll control, and
+ * nothing else on this page: the admin's role tap on somebody else's row was struck from M3.6
+ * on 2026-09-10 and moves to `/admin/players` with M3.25, while `POST /api/me/role-tonight`
+ * keeps honouring an admin's `puuid`. It is never the gate — the route behind the control
+ * checks the session again before it writes.
  */
 export function viewerIsAdmin(viewer: ViewerState): boolean {
   return viewer.kind === 'linked' && viewer.isAdmin;

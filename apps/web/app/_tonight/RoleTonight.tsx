@@ -105,10 +105,16 @@ export function RoleTonight({ lobby, viewer, onViewerChanged }: RoleTonightProps
 
 /** Every state's frame: the card, its title, and whatever the state puts inside it. */
 function RoleCard({ title, children }: { title: string; children: ReactNode }) {
+  const id = useId();
+
   return (
-    <section className="cn-card cn-role-card">
-      {/* Archivo, not the mono micro-label: a card title is language. */}
-      <p className="cn-card-title">{title}</p>
+    <section className="cn-card cn-role-card" aria-labelledby={id}>
+      {/* Archivo, not the mono micro-label: a card title is language. A heading, because
+          heading navigation is how a screen-reader user finds the only control on this page
+          (the designer, 2026-09-10). */}
+      <h2 className="cn-card-title" id={id}>
+        {title}
+      </h2>
       {children}
     </section>
   );
@@ -167,10 +173,10 @@ function RolePicker({
   }
 
   return (
-    <section className="cn-card cn-role-card">
-      <p className="cn-card-title" id={titleId}>
+    <section className="cn-card cn-role-card" aria-labelledby={titleId}>
+      <h2 className="cn-card-title" id={titleId}>
         {roleCardTitle(seat.name)}
-      </p>
+      </h2>
       <form className="cn-role-choices" method="post" action={ROLE_TAP_ACTION} aria-labelledby={titleId}>
         <input type="hidden" name="lobbyId" value={lobbyId} />
         {/* Only the no-JavaScript path reads this. The route re-validates it as a path here. */}
