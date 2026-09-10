@@ -203,7 +203,7 @@ describe('the sections under the chart (M5.20)', () => {
     const records = [...(roles?.querySelectorAll('.cn-record') ?? [])].map((node) =>
       node.textContent?.replace(/ over \d+ games?/, ''),
     );
-    expect(records).toEqual(['top11W 9L · 55%', 'mid7W 10L · 41%']);
+    expect(records).toEqual(['top12W 8L · 60%', 'mid7W 10L · 41%']);
   });
 
   it('draws none of them for a window this player has no counted game in', () => {

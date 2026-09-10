@@ -164,18 +164,24 @@ export function workedPlayerStats(overrides: Partial<PlayerStatsView> = {}): Pla
     winRate: Math.round((wins / (wins + losses)) * 100),
   });
 
+  /**
+   * **The rows add up, because a reader adds them up.** Hana's 37 games and `19W 18L` are the
+   * board fixture's, so the role rows total 37 and 19 wins, the side rows total the same 37 and
+   * the same 19, and a screenshot of this page holds no two numbers that contradict. The fold
+   * guarantees this from real rows; a hand-written fixture has to be written that way.
+   */
   return {
     window: 'all-time',
     games: 37,
     roles: [
-      { role: 'top', puuid: workedPuuid('Hana'), name: 'Hana', games: 20, wins: 11, losses: 9, winRate: 55 },
+      { role: 'top', puuid: workedPuuid('Hana'), name: 'Hana', games: 20, wins: 12, losses: 8, winRate: 60 },
       { role: 'mid', puuid: workedPuuid('Hana'), name: 'Hana', games: 17, wins: 7, losses: 10, winRate: 41 },
     ],
     noRoleGames: 0,
     sides: [
       {
         side: 100,
-        record: { puuid: workedPuuid('Hana'), name: 'Hana', games: 21, wins: 12, losses: 9, winRate: 57 },
+        record: { puuid: workedPuuid('Hana'), name: 'Hana', games: 33, wins: 16, losses: 17, winRate: 48 },
       },
       // Under the five-row minimum, so this one prints bare — the page's own edge case.
       {

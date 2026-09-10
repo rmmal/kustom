@@ -47,6 +47,12 @@ describe('by role', () => {
 
     // Acceptance 2, on the page: `71%` for jungle, and `1W 0L` with no percentage for mid.
     expect(rowsOf(container, 0)).toEqual(['jungle12W 5L · 71%', 'mid1W 0L']);
+    // And the sections add up: the role rows total the record the page prints above them.
+    const roles = workedPlayerStats().roles;
+    expect(roles.reduce((sum, role) => sum + role.games, 0)).toBe(workedPlayerStats().games);
+    expect(roles.reduce((sum, role) => sum + role.wins, 0)).toBe(
+      workedPlayerStats().sides.reduce((sum, side) => sum + side.record.wins, 0),
+    );
   });
 
   it('names each role with its icon and its word, never the icon alone', () => {
@@ -88,7 +94,7 @@ describe('by side', () => {
     const { container } = draw();
 
     expect(screen.getByText(SIDE_RECORD_HEADING)).toBeInTheDocument();
-    expect(rowsOf(container, 1)).toEqual(['Blue12W 9L · 57%', 'Red3W 1L']);
+    expect(rowsOf(container, 1)).toEqual(['Blue16W 17L · 48%', 'Red3W 1L']);
   });
 
   /**
