@@ -3308,7 +3308,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > never printed to a friend again — which is why the row the user named `gamesd` in production is harmless
     > where it is and does not need renaming.
 
-- [ ] **M5.4** Stats pages: win rate by role, by side, by duo pairing (min five games together), average game length, longest streaks. Awards when a window closes: most improved, best off-role, cursed duo.
+- [ ] **M5.4** Stats pages: win rate by role, by side, by duo pairing (min five games together), average game length, longest streaks. Awards when a window closes: most improved, best off-role, cursed duo. **Picker (lead, 2026-09-10):** `/stats` mounts the same `WindowPicker` in the same header slot as the board pages, default `This month`, with the window slot (date range or empty sentence) beneath it; it invents no second control.
 
     > **Brief (product, 2026-09-09)**
     >
