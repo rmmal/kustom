@@ -185,7 +185,7 @@ export async function rebuildRatings(
       code: 'no-season',
       message:
         options.seasonId == null
-          ? 'No season is active. Start one on /admin/seasons, or pass --season <id>.'
+          ? 'No season is active. The one season row is created by migration 0001; restore it with pnpm db:reset locally, or pass --season <id>.'
           : `No season ${options.seasonId}.`,
       report: null,
     };
