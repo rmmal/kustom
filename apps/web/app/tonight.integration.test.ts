@@ -3,7 +3,7 @@ import type { Database } from '@customs/db';
 import { createClient } from '@supabase/supabase-js';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ROSTER_STABLE_MS } from '@/lib/lobbyState';
 import { eogBody, lobbyBody } from '@/lib/testing/fixtures';
 import { resolveLocalStack } from '@/lib/testing/localStack';
@@ -108,6 +108,34 @@ if (stack === null) {
       .insert({ player_id: ids.get(ten[0] ?? '') ?? '', token_hash: tokenHash, label: `tn-${runId}` });
     if (error) throw new Error(error.message);
     token = raw;
+  });
+
+  /**
+   * Hand the shared database back the way it was found (M3.27).
+   *
+   * This file used to leak its ten `it-<run>-tn*` players, their ratings, the lobby and the
+   * game into the local stack on every run — 140 of them after a day of work, which is how the
+   * stack crossed PostgREST's 1000-row cap and made `/admin/players` silently drop rows.
+   *
+   * Order matters. The game goes first, because `games.lobby_id` is `on delete set null` and
+   * deleting the lobby would leave the row behind with nothing pointing at it. The lobby is
+   * next (`lobby_members` and `splits` cascade off it), and the players last — `ratings`,
+   * `game_players` and the companion token all cascade off them.
+   */
+  afterAll(async () => {
+    const { error: gameError } = await db.from('games').delete().eq('lcu_game_id', gameId);
+    if (gameError) throw new Error(`cleanup: deleting the test game failed: ${gameError.message}`);
+
+    const { error: lobbyError } = await db.from('lobbies').delete().eq('lcu_party_id', partyId);
+    if (lobbyError) throw new Error(`cleanup: deleting the test lobby failed: ${lobbyError.message}`);
+
+    const { error: playerError } = await db.from('players').delete().in('puuid', ten);
+    if (playerError) throw new Error(`cleanup: deleting the test players failed: ${playerError.message}`);
+
+    // Asserted, not hoped for: a swallowed failure above is exactly how the rows piled up.
+    const { data: left, error: leftError } = await db.from('players').select('puuid').in('puuid', ten);
+    if (leftError) throw new Error(`cleanup: checking the test players failed: ${leftError.message}`);
+    expect(left ?? []).toEqual([]);
   });
 
   describe('the tonight page, read with the anon key', () => {

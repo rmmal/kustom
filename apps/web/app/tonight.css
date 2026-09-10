@@ -940,9 +940,3 @@
 .cn-signin {
   display: flex;
 }
-
-/* `Set roles`, inside the all-flexible hint and only for an admin. */
-.cn-hint-link {
-  color: var(--cn-brand);
-  text-underline-offset: 3px;
-}

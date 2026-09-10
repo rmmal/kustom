@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --workspace-concurrency=1 test",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
