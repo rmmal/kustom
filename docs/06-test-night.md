@@ -143,9 +143,11 @@ and anything `smoke --diff` reported; the console line count from the idle hour.
 `/admin/players`, that ten rows carry a **Rating** which has moved, **Rank** and **Riot ID** are filled in for
 people nobody had seen before, and a **Name** you set by hand is untouched (M2.4 check 9).
 
-The lead reads the row counts from the database: one `games` row per `lcu_game_id`; ten `game_players` rows for
-the Session 2 games with every rating column non-null; ten `ratings` rows, `games` up by one and `wins` on
-exactly five; three `splits` rows with one `is_chosen`; both Session 2 lobbies `finished`.
+The lead reads the counts off **`/admin/games`** (M5.5), not out of the database by hand: `Captured` has one
+row per game with `10` players, `eog` and `rated: yes`, and `Missed` says `Nothing missing. Every game that
+started has a result.` — which is the same sentence as "both Session 2 lobbies finished". The two things that
+page does not show are still read from the database: ten `ratings` rows with `games` up by one and `wins` on
+exactly five, and three `splits` rows with one `is_chosen`.
 
 ## Pass or fail
 

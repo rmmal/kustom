@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
  * `players.is_admin` — never in the browser and never from anything the request supplied.
  *
  * The route group `(dashboard)` keeps `/admin/login` out of it while leaving the URLs alone:
- * this layout wraps `/admin`, `/admin/players`, `/admin/tokens`, `/admin/discord` and
- * `/admin/seasons`.
+ * this layout wraps `/admin`, `/admin/players`, `/admin/tokens`, `/admin/games`,
+ * `/admin/discord` and `/admin/seasons`.
  */
 export default async function AdminDashboardLayout({ children }: { children: ReactNode }) {
   const admin = await requireAdmin();
@@ -21,6 +21,7 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
         <Link href="/admin">Admin</Link>
         <Link href="/admin/players">Players</Link>
         <Link href="/admin/tokens">Tokens</Link>
+        <Link href="/admin/games">Games</Link>
         <Link href="/admin/discord">Discord</Link>
         <Link href="/admin/seasons">Seasons</Link>
         <Link href="/">Tonight</Link>

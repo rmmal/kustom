@@ -49,6 +49,23 @@ if (stack === null) {
 
   const TIME_ZONE = 'Africa/Cairo';
   const runId = randomUUID().slice(0, 8);
+
+  /**
+   * The instant every case here treats as "now": one hour into the night the suite is really
+   * running in (M3.28).
+   *
+   * It used to be a plain `new Date()`. A role for tonight expires at the next 06:00 in
+   * `CUSTOMS_NIGHT_TZ` (M3.6), and these cases post lobbies at `now + 20` and `now + 30`
+   * minutes — so between 05:30 and 06:00 local the *second* cycle of a case landed in the next
+   * night, the preference had expired by the clock the ingest was handed, and two cases failed
+   * on a suite that passes at every other hour. Found on 2026-09-10 at 05:34 Cairo, which is
+   * the same class of defect as M3.24 in the Discord suite and gets the same treatment.
+   *
+   * One hour past the boundary leaves 22 hours of headroom for every offset in the file, and it
+   * is inside the same night as the database's own `now()`, which is what the carry compares
+   * against on the rows these cases write.
+   */
+  const NIGHT_ANCHOR = new Date(nightStart(new Date(), TIME_ZONE).getTime() + 3_600_000);
   /** Four is enough: nothing here balances, so the roster never has to reach ten. */
   const cast = ['a', 'b', 'c', 'd'].map((letter) => `rc-${runId}-${letter}`);
   const partyIds = new Set<string>();
@@ -154,7 +171,7 @@ if (stack === null) {
   describe('the role for tonight against the local Supabase stack', () => {
     it('survives a friend dropping out of the lobby and rejoining in the first cycle', async () => {
       const id = party('first-cycle');
-      const now = new Date();
+      const now = NIGHT_ANCHOR;
       const friend = cast[1] ?? '';
 
       const first = await post(id, cast, now);
@@ -171,7 +188,7 @@ if (stack === null) {
 
     it('carries the choice onto the night’s next cycle, and a change replaces it', async () => {
       const id = party('next-cycle');
-      const now = new Date();
+      const now = NIGHT_ANCHOR;
       const friend = cast[1] ?? '';
 
       const first = await post(id, cast, now);
@@ -193,7 +210,7 @@ if (stack === null) {
 
     it('lets a friend clear it: nothing comes back on the next post', async () => {
       const id = party('cleared');
-      const now = new Date();
+      const now = NIGHT_ANCHOR;
       const friend = cast[2] ?? '';
 
       const first = await post(id, cast, now);
@@ -208,7 +225,7 @@ if (stack === null) {
 
     it('carries nothing into the first lobby of the next night', async () => {
       const id = party('next-night');
-      const now = new Date();
+      const now = NIGHT_ANCHOR;
       const friend = cast[3] ?? '';
 
       const first = await post(id, cast, now);
@@ -227,7 +244,7 @@ if (stack === null) {
 
     it('stores a tap made while the teams are up, and applies it to the next cycle', async () => {
       const id = party('balanced');
-      const now = new Date();
+      const now = NIGHT_ANCHOR;
       const friend = cast[1] ?? '';
 
       const first = await post(id, cast, now);

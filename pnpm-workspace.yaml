@@ -1,6 +1,19 @@
 packages:
   - "apps/*"
   - "packages/*"
+# One workspace at a time for every recursive command (M3.28).
+#
+# `pnpm -r test` used to start `packages/lcu`, `apps/companion` and `apps/web` together, and the
+# suites that drive the one Supabase CLI local stack must not overlap: the active season is a
+# singleton there, and no amount of row namespacing separates a singleton. pnpm's topological
+# order already keeps a package behind its own dependencies, so this is what covers the ones
+# with no dependency between them.
+#
+# It lives here and not in `.npmrc`: on pnpm 12.3.4 `workspace-concurrency` in `.npmrc` is inert
+# (`pnpm config get workspace-concurrency` -> undefined), and the camelCase key here is the
+# spelling that is honoured. `pnpm -r test` is what CLAUDE.md tells everyone to type, and that
+# spelling reads no script of ours, so the setting has to be configuration rather than a flag.
+workspaceConcurrency: 1
 allowBuilds:
   esbuild: false
 minimumReleaseAgeExclude:
