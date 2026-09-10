@@ -266,3 +266,19 @@ export const ROLE_TAP_OFFLINE = 'That did not reach the server. Your role is unc
 
 /** The same case, on the `That's me` list. */
 export const LINK_OFFLINE = 'That did not reach the server. Nothing changed — tap it again.';
+
+/* ---------------------------------------------------------------------------
+ * `Start a lobby` (M4.2's control, M4.7's placement).
+ *
+ * Every word the control says is product's and lives in `lib/admin/lobbyStart.ts`, beside the
+ * rules that answer with it: the label, the pending line, the invited line and the four
+ * refusals are imported from there and never retyped here. This one sentence is the page's
+ * own, for the same reason the role tap's is — only the browser knows a request never left it.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The press never reached the server, so nothing was created and nobody was invited. Built to
+ * the shape product fixed for the other two (`ROLE_TAP_OFFLINE`, `LINK_OFFLINE`): the fact,
+ * what is unchanged, then the whole fix.
+ */
+export const START_LOBBY_OFFLINE = 'That did not reach the server. No lobby was opened — tap it again.';

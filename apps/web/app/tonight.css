@@ -940,3 +940,48 @@
 .cn-signin {
   display: flex;
 }
+
+/* ---------------------------------------------------------------------------
+ * `Start a lobby` (M4.2's control; the layout is M4.7's and `05-design.md` has no spec for it
+ * yet, so this is built out of the card recipe `Your role tonight` already uses).
+ *
+ * **One card, one control, one line under it**, directly below the primary block and above the
+ * role card: it belongs to the state of the night — it is drawn in `idle` and while the lobby
+ * is filling and nowhere else — so it sits with the rack it acts on, and the role card stays
+ * last in the column. Appearing or disappearing moves nothing above it.
+ *
+ * **No 2px brand inset rule.** That mark means "this is about you" (the rack's row, the role
+ * card); this control is about the night, and a second meaning for one mark is worse than no
+ * mark. The button is the only amber on the card and the card is the plain `raise` card.
+ * ------------------------------------------------------------------------- */
+
+.cn-start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-3);
+  padding: var(--cn-sp-4);
+  margin-top: var(--cn-sp-5);
+}
+
+/* The form is the button: a 44px target, full width on a phone and its own width from 720px,
+   exactly like the reroll control's. */
+.cn-start-form {
+  display: flex;
+}
+
+/*
+ * The one slot under the button: the pending line, or the route's refusal, in `text` — the same
+ * rule the role card's refusal follows. A sentence in caption grey under an amber control is a
+ * sentence nobody reads, and red here would read as the red side.
+ */
+.cn-start-note {
+  margin: 0;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-text);
+}
+
+@media (min-width: 720px) {
+  .cn-start-form {
+    align-items: flex-start;
+  }
+}

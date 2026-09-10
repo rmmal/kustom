@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { invitedLine, START_LOBBY_BUTTON, startLobbySentence } from '@/lib/admin/lobbyStart';
 import { getRerollableLobby, NO_MORE_SPLITS, type RerollableLobby } from '@/lib/admin/reroll';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { NO_ACTIVE_SEASON_MESSAGE } from '@/lib/season';
 import { getServiceClient } from '@/lib/supabase';
+import { type LobbyStartView, loadLobbyStartOrNone } from '@/lib/tonight/lobbyStart';
+import { nightTimeZone } from '@/lib/tonight/night';
 import { AdminAnswerGroup } from '../_components/AdminAnswerGroup';
 import { AdminForm } from '../_components/AdminForm';
 import { Empty, formatTimestamp, Notices, type SearchParams } from '../_components/ui';
@@ -20,7 +23,13 @@ export const metadata: Metadata = {
 export default async function AdminIndexPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [params, admin] = await Promise.all([searchParams, requireAdmin()]);
   const client = getServiceClient();
-  const [season, lobby] = await Promise.all([getActiveSeason(client), getRerollableLobby(client)]);
+  const [season, lobby, lobbyStart] = await Promise.all([
+    getActiveSeason(client),
+    getRerollableLobby(client),
+    // The same read the tonight page's control makes, so the two surfaces say one thing about
+    // one command (M4.2). This page is behind the session check already.
+    loadLobbyStartOrNone(client, { timeZone: nightTimeZone() }),
+  ]);
 
   return (
     <main>
@@ -33,6 +42,7 @@ export default async function AdminIndexPage({ searchParams }: { searchParams: P
       <Notices params={params} />
 
       <h2>Tonight</h2>
+      <StartLobby start={lobbyStart} />
       <Reroll lobby={lobby} />
 
       <h2>You</h2>
@@ -79,6 +89,47 @@ export default async function AdminIndexPage({ searchParams }: { searchParams: P
     </main>
   );
 }
+
+/**
+ * `Start a lobby` (M4.2), the same route and the same words as the tonight page's control.
+ *
+ * The admin area ships no dress and no client JavaScript beyond `AdminForm`, so this is one
+ * button and one sentence: the refusal comes back in the route's own words, and a successful
+ * press prints `Opening a lobby on <Name>'s PC…` from the response's host.
+ *
+ * The line under it is the row itself, so an admin who reloads — or who did not press it —
+ * still sees what became of tonight's command, and the lobby name and password the companion
+ * was given, which is what somebody joining by hand needs and what this page is for.
+ */
+function StartLobby({ start }: { start: LobbyStartView | null }) {
+  const sentence = start === null ? null : startLobbySentence(start, start.hostName);
+
+  return (
+    <>
+      <AdminForm action="/api/admin/lobbies/start" kind="lobby-start">
+        <button type="submit">{START_LOBBY_BUTTON}</button>
+      </AdminForm>
+      {start === null ? <Empty>{NO_LOBBY_STARTED}</Empty> : null}
+      {/* An acked create says nothing (product): the line under it is the lobby itself. */}
+      {sentence === null ? null : <p>{sentence}</p>}
+      {start === null || start.lobbyName === null ? null : (
+        <p className="admin-muted">
+          <span className="admin-mono">{start.lobbyName}</span>
+          {start.lobbyPassword === null ? null : (
+            <>
+              {' · password '}
+              <span className="admin-mono">{start.lobbyPassword}</span>
+            </>
+          )}
+          {start.status === 'acked' && start.invited > 0 ? ` · ${invitedLine(start.invited)}` : null}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Nobody has pressed it tonight. A fact, with the button right above it. */
+const NO_LOBBY_STARTED = 'No lobby has been opened tonight.';
 
 /**
  * The reroll control (M3.2), until the tonight page grows its own (M3.4).

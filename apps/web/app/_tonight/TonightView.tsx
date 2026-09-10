@@ -1,5 +1,6 @@
 import { displayRating } from '@customs/core';
 import type { RoleValue } from '@customs/db';
+import type { ReactNode } from 'react';
 import type { BoardRow } from '@/lib/board/types';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
@@ -14,6 +15,7 @@ import {
   SIT_OUT_VIEWER,
   sitOutGeneral,
 } from '@/lib/tonight/copy';
+import type { LobbyStartView } from '@/lib/tonight/lobbyStart';
 import { hasNamelessRow, tonightHeader, tonightState } from '@/lib/tonight/state';
 import type {
   LobbyView,
@@ -31,6 +33,7 @@ import { CompanionCard, HowThisWorksCard } from '../_shell/HowThisWorks';
 import { RerollControl } from './RerollControl';
 import { RoleTonight } from './RoleTonight';
 import { SeatRack } from './SeatRack';
+import { StartLobby } from './StartLobby';
 
 /**
  * The tonight page's markup (M3.4, Floodlit v2 in M3.18). A pure function of one snapshot and
@@ -71,17 +74,57 @@ export interface TonightViewProps {
    */
   topPlayers: readonly BoardRow[];
   /**
+   * Tonight's newest `create_lobby`, read on the **server** with the service role and only for
+   * an admin (`lib/tonight/lobbyStart.ts`). `null` for everybody else and for a night nobody
+   * has pressed the button on. It is not part of the snapshot on purpose: the snapshot is
+   * re-read in the browser with the anon key, which may not see this table at all.
+   */
+  lobbyStart?: LobbyStartView | null;
+  /**
    * Re-read this page's server components. `TonightLive` supplies it; it is how the self-link
    * (M3.6) turns into a linked viewer — and a footer with `Your games` in it — without a
    * document load. Undefined everywhere the page is rendered without a router.
    */
   onViewerChanged?: (() => void) | undefined;
+  /**
+   * The same re-read, asked for by the press instead of by a self-link: `companion_commands`
+   * is service-role only and in no Realtime publication, so the only way to learn what became
+   * of a `create_lobby` is to ask the server again. Two props and one function, because the
+   * two things they re-read are two different facts that happen to live in one place.
+   */
+  onLobbyStarted?: (() => void) | undefined;
 }
 
-export function TonightView({ snapshot, viewer, topPlayers, onViewerChanged }: TonightViewProps) {
+export function TonightView({
+  snapshot,
+  viewer,
+  topPlayers,
+  lobbyStart = null,
+  onViewerChanged,
+  onLobbyStarted,
+}: TonightViewProps) {
   const state = tonightState(snapshot);
   const header = tonightHeader(state);
   const seatViewer = { puuid: viewerPuuid(viewer), isAdmin: viewerIsAdmin(viewer) };
+  /**
+   * `Start a lobby` (M4.2), in the two states it means anything: the idle page and a lobby
+   * that is still filling. From `balanced` on there is a lobby, and the route would refuse the
+   * press with `There is already a lobby open.` — a control whose only possible answer is a
+   * refusal is not a control.
+   *
+   * **Admin only** while the route is admin-gated (`04-decisions.md`, 2026-09-10), and being
+   * drawn is not permission: the route checks the session again before it writes. An anonymous
+   * visitor is shown nothing — nothing anonymous can press it, and this page's one sign-in
+   * lives on the role card.
+   */
+  const startLobby =
+    seatViewer.isAdmin && (state.kind === 'idle' || state.kind === 'filling') ? (
+      <StartLobby
+        start={lobbyStart}
+        around={state.kind === 'filling' ? state.lobby.members.length : 0}
+        onPressed={onLobbyStarted}
+      />
+    ) : null;
 
   return (
     <div className="cn-grid cn-grid-rail">
@@ -98,10 +141,13 @@ export function TonightView({ snapshot, viewer, topPlayers, onViewerChanged }: T
           </p>
         )}
 
-        {state.kind === 'idle' ? <Idle /> : null}
+        {state.kind === 'idle' ? <Idle control={startLobby} /> : null}
         {state.kind === 'filling' ? (
           <section className="cn-block">
             <SeatRack members={state.lobby.members} viewerPuuid={seatViewer.puuid} />
+            {/* Directly under the rack it acts on: the control and the seats it is about are
+                one thought, and the role card below is still the last thing in the column. */}
+            {startLobby}
           </section>
         ) : null}
         {state.kind === 'teams' ? (
@@ -202,10 +248,13 @@ function LivePill() {
  * rail is on screen they are in it, and `tonight.css` hides the inline pair rather than saying
  * the same two things twice.
  */
-function Idle() {
+function Idle({ control }: { control: ReactNode }) {
   return (
     <section className="cn-block">
       <SeatRack members={[]} viewerPuuid={null} />
+      {/* Before the two explainer cards, not after them: at 19:00 this is the point of the
+          page for the one person who can press it, and `How this works` is not. */}
+      {control}
       <div className="cn-idle-cards">
         <HowThisWorksCard />
         <CompanionCard />

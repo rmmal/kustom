@@ -13,7 +13,9 @@
  * page prints the route's own words.
  */
 
-export type AdminFormKind = 'players' | 'tokens' | 'discord' | 'reroll';
+import { openingOnPcLine } from './lobbyStart';
+
+export type AdminFormKind = 'players' | 'tokens' | 'discord' | 'reroll' | 'lobby-start';
 
 /** What a form posted: every value is a string, exactly as the no-JS form post sends it. */
 export type SubmittedValues = Record<string, string>;
@@ -28,7 +30,26 @@ export function adminNotice(kind: AdminFormKind, values: SubmittedValues, body: 
       return 'Discord config saved';
     case 'reroll':
       return rerollNotice(body);
+    case 'lobby-start':
+      return lobbyStartNotice(body);
   }
+}
+
+/**
+ * `app/api/admin/lobbies/start/handler.ts` — and **not a second copy of the sentence** (M4.2).
+ *
+ * The pending line is `openingOnPcLine`, which the handler itself calls, so the two surfaces
+ * compose one function with one argument rather than spelling one string twice. The argument
+ * is the host from the route's own answer, already through the admin name chain.
+ */
+function lobbyStartNotice(body: unknown): string {
+  const host = readField(body, 'host');
+  const name = readField(host, 'name');
+  return typeof name === 'string' && name.length > 0
+    ? openingOnPcLine(name)
+    : // A 200 in a shape the response schema does not allow. The row is written either way,
+      // and the page re-reads it a moment later.
+      'the lobby is being opened';
 }
 
 /** `app/api/admin/players/handler.ts`, `noticeFor`. */
