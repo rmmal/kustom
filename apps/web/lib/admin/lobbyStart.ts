@@ -383,7 +383,7 @@ export interface StartLobbyOutcome extends StartLobbyPlan {
  * friendly refusal, and `companion_commands_one_create_lobby_idx` (`0008`) enforces it for the
  * two presses that read the same empty table in the same millisecond. The loser of that race
  * gets the identical 409 and the identical sentence, so no caller can tell which path refused
- * it. There is no unlock — an ack, a nack or the expiry sweep takes the row out of `pending`
+ * it. There is no unlock — an ack, a non-retryable nack or the expiry sweep takes the row out of `pending`
  * and `sent`, and that releases it.
  */
 export async function startLobby(

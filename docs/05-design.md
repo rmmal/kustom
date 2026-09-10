@@ -416,6 +416,15 @@ Nobody has a role set, so the balancer treats everyone as flexible.
   second role is `display: none` below 480px — never removed from the DOM, so it stays in the accessible name.
   10rem is measured, not guessed: `jungle · support` with its icon and gap is 149px at 12px mono with 0.06em. A
   column that hard-cuts to `suppo` is worse than one that shows the role somebody actually plays.
+- **A role override prints as `<the override> · <their usual main>`** — `support · jungle` — because that is
+  literally what core holds once `resolveRoles` demotes the old main to backup, so the column's existing
+  "main · backup" grammar carries it with nothing new to learn. `support` alone destroys information on the
+  one row the reader cares most about, and at 480 and up it makes that row look like it lost a field while
+  nine rows beside it show two roles. No arrow, no badge, no second colour: the only glyphs on this page are
+  the five role icons and the live dot, and an arrow beside a column of tabular numbers reads as a trend. The
+  `you` rule already says whose row it is. Below 480 the second role is hidden as usual, so the phone is
+  unchanged. `resolveRoles` is exported from `@customs/core` for exactly this (`04-decisions.md`,
+  2026-09-10); `lib/tonight/roles.ts` asks it rather than restating the rule.
 - The "just joined" 2px `brand` inset rule and the permanent "you" rule are unchanged from v1, including the
   reason they are inset shadows rather than borders.
 - People past the ten sit under the rack, under a `raise` divider labelled `Around`, in the same row shape.
@@ -661,6 +670,109 @@ black screen. v2:
   One card, one place, per width.
 - The v1 `Last night and the board` link becomes the `Leaderboard` tab in the top bar. One destination, one
   place.
+
+#### `Your role tonight`, and picking yourself (M3.6, designer 2026-09-10)
+
+The one thing on this page a friend can change about themselves. Somebody says in voice "I'll jungle
+tonight", taps `jungle`, puts the phone down. It is a **preference, not a lock**, and no pixel on the card
+may promise more than the balancer delivers. Every word of it is settled in "Copy — the role tap and picking
+yourself"; this section is where those words sit and what they are dressed in.
+
+**Home: a card, last in the main column, outside the primary block.** Never a control inside a rack row — the
+rack is ten 44px rows at every count, five 44px targets do not fit in one, and a row that is structurally
+different for one reader stops being a scoreboard. Never in the rail: the rail never carries state. Being
+last means the card can appear, change state or disappear without moving a pixel a thumb is already over,
+which is the no-shift rule paid for with layout instead of with a reserved height.
+
+**The card is marked as yours**: `box-shadow: inset 2px 0 0 var(--cn-brand)` — the same 2px `brand` inset
+rule that marks your row in the rack, two blocks up. Same mark, same meaning, no new token. **Not** the 3px
+leading rule, which already means "the bot's own sentence" on the explanation and sit-out strips.
+
+**Anatomy**, top to bottom, the same three parts in all three states:
+
+```
+┌ ▌ ───────────────────────────────────────────────┐
+│ Your role tonight · Hana                         │  title: Archivo t-sm 600 text; the name dim 400
+│ [◺ top ] [✦ jungle] [◹ mid ] [◿ adc ] [⛨ support] │  chips: 44px tall, capped at 9rem wide
+│ That is not you. Only an admin can …             │  a refusal, if there was one: t-sm, text
+│ Teams are already set. A role you pick now …     │  the state's one hint: t-sm dim
+└──────────────────────────────────────────────────┘
+```
+
+- **The title is language, so it is Archivo** — `t-sm`, 600, `text`, no tracking, exactly like `How this
+  works` and `Run the companion`. Mono `t-xs` `dim` `0.08em` is for `SEATS`, `rating`, `live` and `open`; a
+  title set in it reads as a code comment and ends up quieter than the control it introduces. The copy
+  table's `Where` column describes this slot as `t-xs` `dim` because that is what the first build shipped —
+  the words in that table are product's and stand, the type here is this section's and supersedes it.
+- **The name after the middot is `dim` at 400**, same family and size, so the title reads as one line with
+  one emphasis. It is absent, middot and all, for a player with no display name.
+- **A refusal goes directly under the chips, above the hint, in `text`** — beside the control that was
+  pressed, never as a banner, never in the URL, never `dim`. Three grey sentences in a stack is where a
+  refusal goes to hide.
+- **One hint per state, never two stacked.** `open` gets the preference sentence, `balanced` and `in_game`
+  get the teams-are-set sentence and nothing else, `finished` and later draw no card at all. Two sentences
+  under a two-line control is more prose than product, and in `balanced` the first of them is about a game
+  that is no longer on screen.
+
+**The chips.**
+
+```css
+.cn-role-choices { display: grid; gap: var(--cn-sp-2);
+                   grid-template-columns: repeat(auto-fit, minmax(6rem, 9rem)); justify-content: start; }
+.cn-role-choice  { min-height: 44px; color: var(--cn-text); background: var(--cn-raise);
+                   border: 1px solid var(--cn-line); border-radius: var(--cn-radius-row); }
+.cn-role-on      { color: var(--cn-brand); background: var(--cn-brand-tint); border-color: var(--cn-brand);
+                   box-shadow: inset 0 0 0 1px var(--cn-brand); }
+```
+
+- **Capped at 9rem, left-aligned.** A `1fr` chip stretches to ~245px in the 1280 main column: five 44×245px
+  bars around a 12px word, which is the sparse look Floodlit exists to end. At 390 the grid breaks 3 + 2 —
+  solo lanes, then bot lane, which is the right place for a lane order to break. At 720 the five fill one
+  row. Lane order always, `top` to `support`, never sorted.
+- **`text` at rest, not `dim`.** The rack prints a `dim` mono role word with a `dim` icon fifty pixels above,
+  and that word is a fact nobody can press. The same treatment cannot also mean "tap me". The icon stays
+  `dim`, so a chip still does not read as a name row; the word carries the affordance. Amber on all five
+  would put five lamps on one card and break the one-lamp rule the chosen chip depends on.
+- **The chosen chip is the whole receipt for a tap.** No toast, no flash, no "saved" — realtime already
+  changes the thing you are looking at. It carries `aria-pressed`, so colour is not the only signal, and
+  tapping it again clears the choice: that is the only way out and there is no Clear button.
+- **The doubled inset edge is a light-mode rule paid for in both themes.** In light, `raise` is `#DAE2ED` and
+  the brand tint is a 12% wash on white, so four unselected chips out-weigh the chosen one and the product's
+  only receipt becomes the palest thing in its own row. A second inset 1px `brand` line makes a 2px edge with
+  no change to the box, and it costs dark nothing.
+
+**Picking yourself, once (`That's me`).** A signed-in viewer with no player row gets the same card: title,
+product's sentence, then **a row list, not a chip grid**. Names are language of varying length, and a grid of
+them is a wall of unequal words with no scanning edge — the rack shape is the right one and these are the
+same people in the same order.
+
+- The row is the rack's: 44px, `line` hairline between, name `t-md` **600** left. A name that is 600 in the
+  rack and 400 forty pixels below it is the same content in two voices.
+- **At ≥720 the row is `minmax(0, 16rem) auto` with `justify-content: start`** — the rack's own name cap at
+  that width. `space-between` at every width puts a name at x=100 and its control at x=1200, nine times over.
+- **The control is a discrete button, not the whole row.** A claim is a one-way door: the route answers a
+  second one with 409 and only an admin can undo it on `/admin/players`. A one-way door does not get a
+  full-width thumb target on a phone in a dark room.
+- It is **dressed like a role chip** — `raise`, `line`, `radius-row`, `t-sm` — and never like the amber
+  reroll button: ten `brand`-outlined bars down one card is a column of lamps pointing at nothing, and these
+  are equal options, which is what the five role words are too.
+- Its accessible name is the label plus the person: a listener moving button to button must not hear nine
+  identical ones.
+- The same nine names appear in the rack above and in this list. That is allowed, once: the two lists answer
+  different questions, the second is below the fold, and it exists for one tap on one night.
+
+**Signed out** is the same card with the same title, holding the settled sentence and one `.cn-button` under
+it. **A button is a label and never a sentence** — no full stop inside a 44px amber outline, which in light
+reads as a warning banner. It is **not disabled**: a dead control that explains why it is dead is worse than
+a live one that fixes it in a tap. The sign-in stays on this card and does **not** move to the top bar — the
+bar carries identity and destinations, a bare `Sign in` there is a control with no object, and here its
+object is forty pixels below it. Reading is never gated; the rest of the page is what everybody else sees.
+
+**Nothing on this card navigates** except the sign-in, which is an OAuth round trip and cannot be done in
+place. Every control is a real form with a real action, intercepted when JavaScript is running.
+
+**Keyboard.** M3.6 is the first screen in the product with a cluster of targets — five chips and up to eleven
+buttons — so it is where the focus ring lands, and the ring is product-wide: see `tokens.css`, v2.
 
 #### Copy — final (product 2026-09-09)
 
@@ -1000,7 +1112,25 @@ next engineer to touch that file moves them, so this table has one code half and
   border-bottom: 1px solid var(--cn-line);
   border-radius: var(--cn-radius) var(--cn-radius) 0 0;
 }
+
+/* One focus ring for the product. Keyboard only -- a thumb never sees it. */
+:where(a, button, summary, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--cn-brand);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
 ```
+
+**The focus ring is `brand`, 2px, offset 2px, and there is one of it** (designer 2026-09-10, from the M3.6
+review, where the page first grew a cluster of targets: five role chips and up to eleven buttons). It is the
+lamp again, on the one control the reader has moved to, so it needs no fifth colour; the offset keeps it off
+the 1px `line` border it will usually sit next to, and `border-radius: inherit` stops a square ring around a
+rounded chip. It is **not** the `glow` shadow — that belongs to the live pill and nothing else — and it is
+`:focus-visible`, so it never appears under a thumb. `:where()` keeps specificity at zero, so any component
+can override the ring's shape without fighting it. Until this rule lands, the new controls carry the
+browser's own outline, which is a white hairline in one engine and a blue one in another and belongs to
+neither theme. `admin.css` is not touched: the admin area keeps the browser's controls and the browser's
+focus, for the reasons in "The admin area stays plain".
 
 `.cn-num` and `.cn-sr` are unchanged from v1. `themeColor` in `app/layout.tsx` becomes `#0b0e14` / `#eef1f6`.
 `admin.css` is **not** touched: it keeps `color-scheme: light dark`, `.admin { font-family: system-ui }` and

@@ -120,7 +120,7 @@ Rules:
   `kind = 'create_lobby' and status in ('pending', 'sent')`. That is the Start-a-lobby double-tap lock, global
   rather than per host so two admins pressing at once cannot open two lobbies and fan out two sets of invites.
   The API still reads the pending row first for the friendly refusal and maps a `23505` on this index to the same
-  409. An ack, a nack or the expiry sweep takes the row out of the two live statuses and releases the lock.
+  409. An ack, a non-retryable nack or the expiry sweep takes the row out of the two live statuses and releases the lock.
 
 ## Rating model (`packages/core/rating`)
 
