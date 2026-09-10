@@ -160,6 +160,24 @@ split. Output: top three splits with role assignments and explanation.
 - Reroll returns split 2, then 3. Never random.
 - Fewer than ten or more than ten players is an error at this layer; the API decides who sits (see below).
 
+## Role inference (`packages/core/roles`)
+
+`inferRoles(games, window?)` reads a player's main and backup off their own games (M5.16); M5.17 writes the
+pair into the same `players.main_role` / `secondary_role` the balancer already reads. Nobody sets a role.
+
+- Input: the player's games as `{ role, startedAt, countsForInference }`. A game counts when `countsForInference`
+  is true and `role` is not null. `countsForInference` is written at fold time: true when the balancer put the
+  player on their then-main or backup, or when we did not balance the game (backfill). A filled game never counts,
+  so being filled cannot change who you are; the role-for-tonight tap (M3.6) is the deliberate way to move.
+- The function orders the counted games by `startedAt` itself (newest first) and keeps the newest
+  `config.roles.inferenceWindow = 20`. Skipped games consume no slot. `startedAt` is epoch milliseconds or the
+  ISO-8601 string the database hands over; an unparseable string sorts as the oldest.
+- Main is the most frequent role in the window, backup the second. A tie goes to the role whose most recent game
+  is later; two roles whose newest games share an instant fall to lane order (`ROLES`). Never the list order.
+- Fewer than `config.roles.minGames = 3` counted games: `{ main: null, secondary: null }`, flexible, which the
+  balancer already handles. One role only: a main and no backup, never an invented second.
+- Output carries `counted`, the number of games the answer rests on, for the admin page.
+
 ## Lobby lifecycle (server side)
 
 ```

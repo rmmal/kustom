@@ -22,6 +22,8 @@ describe('core skeleton', () => {
       'config',
       'displayRating',
       'explain',
+      // A player's main and backup read off their own games (M5.16); M5.17 stores the pair.
+      'inferRoles',
       // The role model's one predicate, for the surfaces that mark an off-role line (M3.1).
       'isOffRole',
       'nextSplit',

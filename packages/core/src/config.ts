@@ -68,6 +68,17 @@ export const config = {
     /** How many splits `balance` returns at most, best first. Reroll walks this list. */
     splitsReturned: 3,
   },
+  roles: {
+    /**
+     * `inferRoles` (M5.16) reads a player's main and backup off their most recent games that
+     * count: this many, newest first. Twenty is about two weeks for a regular and a month for
+     * somebody who plays half the nights: one odd evening does not move a main, a real change
+     * shows inside a fortnight.
+     */
+    inferenceWindow: 20,
+    /** Fewer counted games than this and the player is flexible (`main: null`). Three is not one lucky fill. */
+    minGames: 3,
+  },
 } as const;
 
 export type Config = typeof config;

@@ -28,4 +28,5 @@ export {
 
 export { type Config, config, type RankDivision, type RankTier } from './config';
 export { displayRating, ordinal, predictWin, rateGame, seedFromRank } from './rating/index';
+export { type InferredRoles, inferRoles, type RoleGame } from './roles/infer';
 export { type LobbyStatus, type Rating, ROLES, type Role, type Side } from './types';
