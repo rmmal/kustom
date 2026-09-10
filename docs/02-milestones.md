@@ -11,7 +11,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M1 Foundation | done | M1.1 to M1.10 done; M1.1 to M1.11 done (M1.11 landed 2026-09-09; the wildcard allow-list entry can be removed). Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18 to M2.20 done; M2.6 built as Kustom.exe 0.1.3 (apps/companion/dist, sha256 ffe6345e…), publish (v0.1.3, plus the kustom-releases README rename) and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.5, M3.7, M3.8, M3.10 to M3.24 done; the whole web is Floodlit as of 2026-09-10 (shell, tonight page, leaderboard, player page, rail). Open: M3.6 role override and self-link, M3.25 admin players paging, M3.26 third-person settling sentence. Nothing calls `/api/cron/leaderboard` yet. |
-| M4 Lobby automation, voice split, presence | in progress | M4.1 companion and server halves landed (migration 0006 on kustom); first live verify-commands (16.17, 2026-09-09) got 500 INVALID_LOBBY with the community body, so 0.1.4 carries a corrected probe built from the client's own lobby UI code; all three writes stay gated until the user's rerun. Next: M4.2 admin Start-a-lobby and invite fan-out, M4.3. Needs M3. |
+| M4 Lobby automation, voice split, presence | in progress | M4.1 companion and server halves landed (migration 0006 on kustom); first live verify-commands (16.17, 2026-09-09) got 500 INVALID_LOBBY with the community body, so 0.1.4 carries a corrected probe built from the client's own lobby UI code; all three writes stay gated until the user's rerun. M4.2 server side landed 2026-09-10 (route, host pick, fan-out; page control pending on the web engineer). Next: M4.3, M4.9 lock index before the gate flips. Needs M3. |
 | M5 Backfill, seasons, stats | in progress | M5.1, M5.2, M5.11 landed (backfill walker, scan route, approval toggle, rebuild-ratings, dropped lobby status); migrations 0004 and 0005 pushed to kustom. M5.3 to M5.7 need M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
 
@@ -2619,7 +2619,7 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > button again, which is one tap and is honest about what happened. An admin page for the queue; the row's
     > `status` and `error` are enough until somebody asks twice.
 
-- [ ] **M4.2** "Start a lobby" button on the tonight page and an admin route: creates a `create_lobby` command for a chosen companion user, with a generated name and password, followed by `invite` commands for everyone linked and "around".
+- [~] **M4.2** (server side landed 2026-09-10: `POST /api/admin/lobbies/start` admin-gated per the decision row, rules and copy in `lib/admin/lobbyStart.ts`, invite fan-out in `lib/commands/invites.ts` on the ack seam, gated off with M4.1; pending: the page control on the tonight page and `/admin` for the web engineer after M3.6, widening the press to linked players once M3.6 lands, and the live check) "Start a lobby" button on the tonight page and an admin route: creates a `create_lobby` command for a chosen companion user, with a generated name and password, followed by `invite` commands for everyone linked and "around".
 
     > **Note (product, 2026-09-08, after M0.3).** The invite body is still unverified and M0 could not
     > answer it: the smoke tooling is GET-only by design, so nothing was ever POSTed to a live client. This
@@ -2777,6 +2777,7 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > seasons, anything in M5. Changing who sits (M2.5 owns that and it has not moved).
 
 - [ ] **M4.3** Auto side switch: after balancing, for each lobby member who runs a companion, queue `switch_side` if they are on the wrong side. Verify the endpoint in M0 first; if it does not exist, this task is dropped and the embed says "switch to your side".
+- [ ] **M4.9** The Start-a-lobby lock is a database constraint. Reviewer, 2026-09-10: the pending-create lock in `lib/admin/lobbyStart.ts` is read-then-insert; two presses in the same instant can both insert (same host: the companion nacks the second with `already_in_lobby` and the page prints a misleading sentence; two admins with two companions: two lobbies and two fan-outs). Add a partial unique index on `companion_commands` for `kind = 'create_lobby' and status in ('pending', 'sent')` (migration, applied to kustom by the lead) and map the unique violation to the existing `A lobby is already being opened.` refusal. Owner: `platform-engineer`, before the gate flips. **Acceptance:** two concurrent presses in an integration test yield one row and one 409.
 
     > **Correction (product, 2026-09-08, after M0.3).** "Verify the endpoint in M0 first" did not happen and
     > cannot: M0's tooling is read-only and a switch-side path can only be confirmed by POSTing to a live
