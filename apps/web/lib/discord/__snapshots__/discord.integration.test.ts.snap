@@ -44,6 +44,10 @@ exports[`a night, from the tenth join to the result > posts one teams embed on b
       "description": "Even 50%. Everyone on a main role. Gap 0. Next best: swap Player4 and Player5, gap 0.",
       "fields": [
         {
+          "name": "Seats",
+          "value": "Move to your side in the lobby.",
+        },
+        {
           "inline": true,
           "name": "Blue · 6000",
           "value": "\`top\` Player0 · 1200

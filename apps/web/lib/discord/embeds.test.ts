@@ -1,6 +1,7 @@
 import { displayRating, type Rating, rateGame } from '@customs/core';
 import { describe, expect, it } from 'vitest';
 import { WINDOW_LABELS } from '../board/copy';
+import { SWITCH_SIDE_ENABLED } from '../commands/gate';
 import { displayDelta } from '../ratingDisplay';
 import { workedBoardRows } from '../testing/boardFixtures';
 import { WORKED_ROSTER, workedBalance, workedNames, workedPool, workedPuuid } from '../testing/workedExample';
@@ -19,6 +20,9 @@ import {
   type ResultPlayer,
   renderName,
   resultEmbed,
+  SIDE_LINE_AUTO,
+  SIDE_LINE_MANUAL,
+  sideLine,
   type TeamsEmbedInput,
   teamsEmbed,
   teamsTitle,
@@ -64,7 +68,10 @@ function workedTeamsInput(overrides: Partial<TeamsEmbedInput> = {}): TeamsEmbedI
 }
 
 describe('teamsEmbed, the worked example', () => {
-  const payload = teamsEmbed(workedTeamsInput());
+  // The gate is named rather than left to default, so the snapshot is the **gate-off** message
+  // by construction and does not change the day `SWITCH_SIDE_ENABLED` flips. The gate-on
+  // sentence has its own tests below, and the default is pinned there too.
+  const payload = teamsEmbed(workedTeamsInput({ switchSideEnabled: false }));
   const embed = payload.embeds[0];
 
   it('matches the layout in 05-design.md', () => {
@@ -84,22 +91,25 @@ describe('teamsEmbed, the worked example', () => {
     );
   });
 
+  // The two side fields, by name: since M4.3's side line the first field is `Seats`.
+  const sideField = (side: 'Blue' | 'Red') => embed?.fields.find((field) => field.name.startsWith(side));
+
   it('names the two side fields with the sum of five display ratings', () => {
-    expect(embed?.fields[0]?.name).toBe('Blue · 7695');
-    expect(embed?.fields[1]?.name).toBe('Red · 7595');
-    expect(embed?.fields[0]?.inline).toBe(true);
-    expect(embed?.fields[1]?.inline).toBe(true);
+    expect(sideField('Blue')?.name).toBe('Blue · 7695');
+    expect(sideField('Red')?.name).toBe('Red · 7595');
+    expect(sideField('Blue')?.inline).toBe(true);
+    expect(sideField('Red')?.inline).toBe(true);
   });
 
   it('prints five lines a side, in lane order, role in inline code', () => {
-    expect(embed?.fields[0]?.value.split('\n')).toEqual([
+    expect(sideField('Blue')?.value.split('\n')).toEqual([
       '`top` Hana · 1434',
       '`jungle` Iris · 1578',
       '`mid` Karim · 1551',
       '`adc` Bilal · 1713',
       '`support` Theo · 1419',
     ]);
-    expect(embed?.fields[1]?.value.split('\n')).toEqual([
+    expect(sideField('Red')?.value.split('\n')).toEqual([
       '`top` Omar · 1469',
       '`jungle` Rami · 1638',
       '`mid` Nadia · 1266',
@@ -113,8 +123,11 @@ describe('teamsEmbed, the worked example', () => {
     expect(lobby?.value).toBe('`customs-night` · password `4471`');
   });
 
-  it('has no sit-out and no seats field on a ten-player night', () => {
-    expect(embed?.fields.map((field) => field.name)).toEqual(['Blue · 7695', 'Red · 7595', 'Lobby']);
+  it('has no sit-out field on a ten-player night, and a Seats field carrying the side line alone', () => {
+    expect(embed?.fields.map((field) => field.name)).toEqual(['Seats', 'Blue · 7695', 'Red · 7595', 'Lobby']);
+    expect(embed?.fields.find((field) => field.name === 'Seats')?.value).toBe(
+      'Move to your side in the lobby.',
+    );
   });
 
   it('links the tonight page, and posts no url at all when there is none', () => {
@@ -178,6 +191,7 @@ describe('teamsEmbed, the fields that only sometimes exist', () => {
     expect(embed?.fields.find((field) => field.name === 'Seats')?.value.split('\n')).toEqual([
       'Swap: Omar out, Nadia in.',
       'Yuki is playing — take the open slot.',
+      'Move to your side in the lobby.',
     ]);
   });
 
@@ -205,14 +219,104 @@ describe('teamsEmbed, the fields that only sometimes exist', () => {
     const base = workedTeamsInput();
     const blue = base.blue.map((player, index) => (index === 0 ? { ...player, offRole: true } : player));
     const embed = teamsEmbed({ ...base, blue }).embeds[0];
-    expect(embed?.fields[0]?.value.split('\n')[0]).toBe('`top` Hana · 1434 · off-role');
+    expect(blueLines(embed)[0]).toBe('`top` Hana · 1434 · off-role');
   });
 
   it('renders a player the database has no name for as Someone', () => {
     const base = workedTeamsInput();
     const blue = base.blue.map((player, index) => (index === 0 ? { ...player, name: null } : player));
     const embed = teamsEmbed({ ...base, blue }).embeds[0];
-    expect(embed?.fields[0]?.value.split('\n')[0]).toBe('`top` Someone · 1434');
+    expect(blueLines(embed)[0]).toBe('`top` Someone · 1434');
+  });
+});
+
+/** The blue column's five lines, found by name: `Seats` is field 0 since M4.3's side line. */
+function blueLines(embed: { fields: { name: string; value: string }[] } | undefined): string[] {
+  return embed?.fields.find((field) => field.name.startsWith('Blue'))?.value.split('\n') ?? [];
+}
+
+/**
+ * The side line (M4.3's copy, M4.7 (b)'s placement).
+ *
+ * One line, in the `Seats` block, on **every** teams embed — including the ten-player night
+ * where nobody swaps, because the embed is posted at the moment of balancing and somebody is
+ * always on the wrong side of a lobby that was filled in join order. Which of the two sentences
+ * it is, is the verification gate's answer and nobody else's.
+ */
+describe('teamsEmbed, the side line', () => {
+  /**
+   * **Pinned character for character**, because these two sentences are also spelled in
+   * `lib/tonight/copy.ts` for the page (`SIDE_LINE_MANUAL` / `SIDE_LINE_AUTO`) and the message
+   * and the page may not drift into two wordings of the same instruction. The code points are
+   * asserted, not just the strings: the dash is an em dash (U+2014) and the apostrophe is the
+   * ASCII one (U+0027), which is what `02-milestones.md` has in the M4.3 brief.
+   */
+  it("spells product's two sentences exactly as the brief does", () => {
+    expect(SIDE_LINE_MANUAL).toBe('Move to your side in the lobby.');
+    expect(SIDE_LINE_AUTO).toBe("You'll be moved to your side — if not, move yourself.");
+    expect([...SIDE_LINE_AUTO].map((char) => char.codePointAt(0))).toEqual([
+      89, 111, 117, 39, 108, 108, 32, 98, 101, 32, 109, 111, 118, 101, 100, 32, 116, 111, 32, 121, 111, 117,
+      114, 32, 115, 105, 100, 101, 32, 0x2014, 32, 105, 102, 32, 110, 111, 116, 44, 32, 109, 111, 118, 101,
+      32, 121, 111, 117, 114, 115, 101, 108, 102, 46,
+    ]);
+    expect(sideLine(false)).toBe(SIDE_LINE_MANUAL);
+    expect(sideLine(true)).toBe(SIDE_LINE_AUTO);
+  });
+
+  it('is the last line of the Seats field, under the moves', () => {
+    const embed = teamsEmbed(
+      workedTeamsInput({
+        switchSideEnabled: false,
+        seats: [{ kind: 'swap', sitter: 'Omar', mover: 'Nadia' }],
+      }),
+    ).embeds[0];
+    expect(embed?.fields.find((field) => field.name === 'Seats')?.value.split('\n')).toEqual([
+      'Swap: Omar out, Nadia in.',
+      'Move to your side in the lobby.',
+    ]);
+  });
+
+  it('tells people to move themselves while the switch-side gate is off', () => {
+    const embed = teamsEmbed(workedTeamsInput({ switchSideEnabled: false })).embeds[0];
+    expect(embed?.fields.find((field) => field.name === 'Seats')?.value).toBe(SIDE_LINE_MANUAL);
+  });
+
+  it('says the companion moves you once the gate is on, and still ends with move yourself', () => {
+    // M4.3 acceptance check 8. A companion that is closed, offline or facing a full side moves
+    // nobody, and the embed is written before any of them has polled.
+    const embed = teamsEmbed(workedTeamsInput({ switchSideEnabled: true })).embeds[0];
+    expect(embed?.fields.find((field) => field.name === 'Seats')?.value).toBe(SIDE_LINE_AUTO);
+  });
+
+  it('carries the line once, never per-person and never both sentences', () => {
+    for (const enabled of [false, true]) {
+      const embed = teamsEmbed(
+        workedTeamsInput({
+          switchSideEnabled: enabled,
+          sitOut: { names: ['Omar'], reason: 'most-games' },
+          seats: [{ kind: 'swap', sitter: 'Omar', mover: 'Nadia' }],
+        }),
+      ).embeds[0];
+      const whole = JSON.stringify(embed);
+      expect(whole.split('to your side').length - 1).toBe(1);
+    }
+  });
+
+  it('changes nothing else about the embed', () => {
+    const off = teamsEmbed(workedTeamsInput({ switchSideEnabled: false })).embeds[0];
+    const on = teamsEmbed(workedTeamsInput({ switchSideEnabled: true })).embeds[0];
+    expect({ ...on, fields: on?.fields.filter((field) => field.name !== 'Seats') }).toEqual({
+      ...off,
+      fields: off?.fields.filter((field) => field.name !== 'Seats'),
+    });
+  });
+
+  it('takes the sentence from the server gate when nothing overrides it', () => {
+    // `buildTeamsInput` reads `SWITCH_SIDE_ENABLED` at post time, so the message and the queue
+    // can never disagree: the flag that decides whether a `switch_side` row is written is the
+    // flag that decides which sentence is posted.
+    const embed = teamsEmbed(workedTeamsInput()).embeds[0];
+    expect(embed?.fields.find((field) => field.name === 'Seats')?.value).toBe(sideLine(SWITCH_SIDE_ENABLED));
   });
 });
 
@@ -452,7 +556,7 @@ describe('the small formatters', () => {
       'Sitting out: Dark\\_Wolf — most games tonight.',
     );
     expect(embed?.fields.find((field) => field.name === 'Seats')?.value).toBe(
-      'Swap: Dark\\_Wolf out, a\\`b in.',
+      'Swap: Dark\\_Wolf out, a\\`b in.\nMove to your side in the lobby.',
     );
     expect(embed?.fields.find((field) => field.name.startsWith('Blue'))?.value.split('\n')[0]).toBe(
       '`top` a\\`b · 1434',

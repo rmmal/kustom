@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SWITCH_SIDE_ENABLED } from '../commands/gate';
 import type { PoolMember, SeatMove } from '../ingest/selection';
 import { workedBalance, workedNames, workedPool, workedPuuid } from '../testing/workedExample';
 import type { NameLookup } from './assemble';
@@ -161,6 +162,23 @@ describe('buildTeamsInput', () => {
       { kind: 'swap', sitter: 'Omar', mover: 'Nadia' },
       { kind: 'open-slot', mover: 'Nadia' },
     ]);
+  });
+
+  it('reads the switch-side gate at post time, and lets a caller name it (M4.3)', () => {
+    // The flag that decides whether a `switch_side` row is ever queued is the flag that decides
+    // which sentence the embed carries, so the message can never promise a switch the server
+    // does not make. The default is the server's own constant, not a literal.
+    expect(buildTeamsInput(teamsSource(), workedNames(), CONTEXT).switchSideEnabled).toBe(
+      SWITCH_SIDE_ENABLED,
+    );
+    expect(
+      buildTeamsInput(teamsSource(), workedNames(), { ...CONTEXT, switchSideEnabled: true })
+        .switchSideEnabled,
+    ).toBe(true);
+    expect(
+      buildTeamsInput(teamsSource(), workedNames(), { ...CONTEXT, switchSideEnabled: false })
+        .switchSideEnabled,
+    ).toBe(false);
   });
 
   it('throws rather than inventing a rating for somebody who is not among the ten', () => {
