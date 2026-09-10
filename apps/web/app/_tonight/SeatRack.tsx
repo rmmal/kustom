@@ -147,10 +147,11 @@ function SeatRow({
  * else has. Never `top / mid`: a slash between two roles reads as a fraction next to a column
  * of numbers.
  *
- * **Tonight's roles, not the profile's** (M3.6): a role tap writes `lobby_members.role_override`
- * and core makes that the player's main, so the row has to say the same thing the bot is about
- * to build teams from. `lib/tonight/roles.ts` asks core rather than restating it, and a row
- * with an override prints that role alone — see the note there.
+ * **Tonight's roles, not the profile's** (M3.6): a role tap writes `lobby_members.role_override`,
+ * and core's `resolveRoles` makes that the player's main with their usual main as the backup —
+ * so a row that has tapped `support` reads `support · jungle`, which is what the bot is about
+ * to build teams from. The call is core's own (`lib/tonight/roles.ts`), never a copy of the
+ * rule, so the page and the balancer cannot disagree about what an override means.
  */
 function RoleCell({ member }: { member: MemberView }) {
   const { main, secondary } = tonightRoles(member);

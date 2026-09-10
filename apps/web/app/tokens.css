@@ -149,6 +149,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The focus ring, once, for the whole product (the designer, 2026-09-10).
+ *
+ * `:focus-visible`, so it appears for a keyboard and never for a thumb, and `:where()` so it
+ * costs no specificity and any component can override it deliberately. `outline` rather than a
+ * border or a shadow: it is drawn outside the box, so nothing moves when it appears, and
+ * `border-radius: inherit` makes it follow a chip, a pill or a card without a second rule.
+ */
+:where(button, a, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--cn-brand);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
 /* Not `display: none`: the sums, the off-role marker and the live pill all need a word. */
 .cn-sr {
   position: absolute;

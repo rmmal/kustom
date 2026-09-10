@@ -1,5 +1,6 @@
 import { nightStart } from '../night';
 import type { ServiceClient } from '../supabase';
+import { LINK_ALREADY_LINKED, LINK_NOT_IN_LOBBY, LINK_TAKEN, UNKNOWN_PLAYER } from './copy';
 import type { MeIdentity } from './identity';
 
 /**
@@ -27,19 +28,23 @@ export type SelfLinkResult =
   | { ok: true; value: { puuid: string; playerId: string } }
   | { ok: false; status: 403 | 404 | 409; error: string };
 
+/**
+ * What the conditional write answered. Three outcomes and not a boolean, because the two
+ * failures are two different sentences: somebody else has that player, or this session already
+ * has one.
+ */
+export type LinkWrite = 'linked' | 'player taken' | 'session taken';
+
 export interface SelfLinkStore {
   /** The players in tonight's newest non-`abandoned` lobby — exactly what the page shows. */
   tonightMemberPuuids(): Promise<Set<string>>;
   findPlayerByPuuid(puuid: string): Promise<{ playerId: string; discordId: string | null } | null>;
-  /** Writes the link **only** while the row is still unlinked. False means somebody won. */
-  linkIfUnlinked(playerId: string, discordId: string): Promise<boolean>;
+  /** Writes the link **only** while the row is still unlinked. */
+  linkIfUnlinked(playerId: string, discordId: string): Promise<LinkWrite>;
 }
 
-/** Product's sentence, verbatim (M3.6 brief). */
-export const LINK_TAKEN = 'Someone is already linked to that player.';
-export const LINK_ALREADY_LINKED = 'You are already linked to a player.';
-export const LINK_NOT_IN_LOBBY = 'Only somebody in tonight’s lobby can be picked.';
-export const LINK_UNKNOWN_PLAYER = 'No player with that id.';
+/** Postgres `unique_violation`: `players_discord_id_key`, in the only place that can hit it. */
+const UNIQUE_VIOLATION = '23505';
 
 export async function linkSelf(store: SelfLinkStore, me: MeIdentity, puuid: string): Promise<SelfLinkResult> {
   // Asked once and never twice: a session that already has a player is not in this flow at
@@ -50,14 +55,15 @@ export async function linkSelf(store: SelfLinkStore, me: MeIdentity, puuid: stri
   if (!members.has(puuid)) return { ok: false, status: 403, error: LINK_NOT_IN_LOBBY };
 
   const player = await store.findPlayerByPuuid(puuid);
-  if (player === null) return { ok: false, status: 404, error: LINK_UNKNOWN_PLAYER };
+  if (player === null) return { ok: false, status: 404, error: UNKNOWN_PLAYER };
   if (player.discordId !== null) return { ok: false, status: 409, error: LINK_TAKEN };
 
   // Conditional on `discord_id is null`, so two friends tapping the same name in the same
-  // second cannot both win. The loser reads the same sentence as the slow case above.
-  if (!(await store.linkIfUnlinked(player.playerId, me.discordId))) {
-    return { ok: false, status: 409, error: LINK_TAKEN };
-  }
+  // second cannot both win. The loser reads the same sentence as the slow case above; a
+  // session that turns out to hold a player already reads the sentence for that instead.
+  const written = await store.linkIfUnlinked(player.playerId, me.discordId);
+  if (written === 'player taken') return { ok: false, status: 409, error: LINK_TAKEN };
+  if (written === 'session taken') return { ok: false, status: 409, error: LINK_ALREADY_LINKED };
 
   return { ok: true, value: { puuid, playerId: player.playerId } };
 }
@@ -115,8 +121,14 @@ export function supabaseSelfLinkStore(
         .eq('id', playerId)
         .is('discord_id', null)
         .select('id');
+      // `players_discord_id_key`: this Discord account is already on **another** player row,
+      // which is a 409 a friend can read and act on — not a 500. It is the same race the
+      // `is('discord_id', null)` guard covers from the other side: that one is two people
+      // claiming one player, this one is one person claiming two players (two tabs, or a link
+      // an admin made between the page load and the tap).
+      if (error !== null && error.code === UNIQUE_VIOLATION) return 'session taken';
       if (error) throw new Error(`self link: write failed: ${error.message}`);
-      return (data ?? []).length > 0;
+      return (data ?? []).length > 0 ? 'linked' : 'player taken';
     },
   };
 }

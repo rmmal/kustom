@@ -16,7 +16,13 @@
  */
 export type ViewerState =
   | { kind: 'anonymous' }
-  | { kind: 'unlinked' }
+  /**
+   * Signed in with Discord, matching no player row. `claimable` is the PUUIDs of tonight's
+   * lobby members **nobody is linked to yet**, decided on the server (`lib/me/claimable.ts`):
+   * the `That's me` list is exactly these, and a player who already carries a Discord id is
+   * not offered. No Discord id and no fact about who is linked reaches the browser.
+   */
+  | { kind: 'unlinked'; claimable: readonly string[] }
   | { kind: 'linked'; puuid: string; isAdmin: boolean };
 
 /** Nobody is signed in, which is the ordinary case and the one the page is designed for. */

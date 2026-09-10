@@ -1,12 +1,20 @@
 import type { LobbyStatusValue, RoleValue } from '@customs/db';
 import { describe, expect, it } from 'vitest';
+import {
+  LINK_ALREADY_LINKED,
+  LINK_NOT_IN_LOBBY,
+  LINK_TAKEN,
+  ROLE_TAP_NO_LOBBY,
+  ROLE_TAP_NOT_IN_LOBBY,
+  ROLE_TAP_NOT_LINKED,
+  ROLE_TAP_NOT_YOURS,
+} from '@/lib/me/copy';
 import type { MeAuthResult, MeIdentity } from '@/lib/me/identity';
 import type { RoleTonightStore } from '@/lib/me/roleTonight';
-import { ROLE_TAP_NO_LOBBY, ROLE_TAP_NOT_IN_LOBBY, ROLE_TAP_NOT_YOURS } from '@/lib/me/roleTonight';
-import { LINK_ALREADY_LINKED, LINK_NOT_IN_LOBBY, LINK_TAKEN, type SelfLinkStore } from '@/lib/me/selfLink';
+import type { LinkWrite, SelfLinkStore } from '@/lib/me/selfLink';
 import type { ServiceClient } from '@/lib/supabase';
 import { selfLinkRoute } from './link/handler';
-import { ROLE_TAP_NOT_LINKED, roleTonightRoute } from './role-tonight/handler';
+import { roleTonightRoute } from './role-tonight/handler';
 
 /**
  * The two `/api/me/*` routes: the third route class (a session with a linked player and no
@@ -81,7 +89,7 @@ function roleRoute(me: MeAuthResult, store: RoleTonightStore) {
 }
 
 describe('POST /api/me/role-tonight', () => {
-  it('stores the tap on the caller’s own row while the lobby is open', async () => {
+  it("stores the tap on the caller's own row while the lobby is open", async () => {
     const store = roleStore();
     const response = await roleRoute(
       { ok: true, me: identity() },
@@ -144,7 +152,7 @@ describe('POST /api/me/role-tonight', () => {
     expect(store.writes).toEqual([]);
   });
 
-  it('lets an admin set somebody else’s row', async () => {
+  it("lets an admin set somebody else's row", async () => {
     const store = roleStore();
     const admin = identity({ player: { playerId: 'player-me', puuid: ME, isAdmin: true } });
     const response = await roleRoute(
@@ -213,7 +221,7 @@ interface FakeLinkStore extends SelfLinkStore {
 }
 
 function linkStore(
-  options: { members?: string[]; discordId?: string | null; unlinked?: boolean } = {},
+  options: { members?: string[]; discordId?: string | null; write?: LinkWrite } = {},
 ): FakeLinkStore {
   const links: FakeLinkStore['links'] = [];
   return {
@@ -224,9 +232,9 @@ function linkStore(
       discordId: options.discordId ?? null,
     }),
     linkIfUnlinked: async (playerId, discordId) => {
-      if (options.unlinked === false) return false;
+      if (options.write !== undefined && options.write !== 'linked') return options.write;
       links.push({ playerId, discordId });
-      return true;
+      return 'linked';
     },
   };
 }
@@ -238,7 +246,7 @@ function linkRoute(me: MeAuthResult, store: SelfLinkStore) {
 describe('POST /api/me/link', () => {
   const visitor = identity({ player: null });
 
-  it('links the session to a player in tonight’s lobby', async () => {
+  it("links the session to a player in tonight's lobby", async () => {
     const store = linkStore();
     const response = await linkRoute({ ok: true, me: visitor }, store)(post({ puuid: ME }, 'link'));
 
@@ -247,7 +255,7 @@ describe('POST /api/me/link', () => {
     expect(store.links).toEqual([{ playerId: `player-${ME}`, discordId: 'discord-1' }]);
   });
 
-  it('refuses somebody who is not in tonight’s lobby', async () => {
+  it("refuses somebody who is not in tonight's lobby", async () => {
     const store = linkStore({ members: [SOMEBODY_ELSE] });
     const response = await linkRoute({ ok: true, me: visitor }, store)(post({ puuid: ME }, 'link'));
 
@@ -262,11 +270,22 @@ describe('POST /api/me/link', () => {
     expect(first.status).toBe(409);
     expect(await first.json()).toEqual({ ok: false, error: LINK_TAKEN });
 
-    const raced = linkStore({ unlinked: false });
+    const raced = linkStore({ write: 'player taken' });
     const second = await linkRoute({ ok: true, me: visitor }, raced)(post({ puuid: ME }, 'link'));
     expect(second.status).toBe(409);
     expect(await second.json()).toEqual({ ok: false, error: LINK_TAKEN });
     expect(taken.links.concat(raced.links)).toEqual([]);
+  });
+
+  it('answers the session-taken sentence when the unique index catches the second tab', async () => {
+    // `players_discord_id_key`: this Discord account is already on another player row. A 409
+    // with a sentence, never the 500 a raw Postgres error would have produced.
+    const store = linkStore({ write: 'session taken' });
+    const response = await linkRoute({ ok: true, me: visitor }, store)(post({ puuid: ME }, 'link'));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ ok: false, error: LINK_ALREADY_LINKED });
+    expect(store.links).toEqual([]);
   });
 
   it('never lets a linked session claim a second player', async () => {

@@ -5,9 +5,11 @@ import {
   PICK_YOURSELF,
   ROLE_CONTROL_HEADING,
   ROLE_CONTROL_HINT,
-  ROLE_SAVED_FOR_NEXT_GAME,
   ROLE_SIGN_IN,
   ROLE_TAP_OFFLINE,
+  ROLE_TEAMS_ALREADY_SET,
+  roleCardTitle,
+  SIGN_IN_LABEL,
   SIGNED_IN_NO_LOBBY,
   THATS_ME,
 } from '@/lib/tonight/copy';
@@ -36,6 +38,11 @@ function draw(viewer: ViewerState, view: LobbyView | null, onViewerChanged?: () 
 
 const linked: ViewerState = { kind: 'linked', puuid: ME, isAdmin: false };
 
+/** Everybody in the fixture lobby is unclaimed unless a test says otherwise. */
+function unlinked(claimable: readonly string[] = workedMembers(4).map((m) => m.puuid)): ViewerState {
+  return { kind: 'unlinked', claimable };
+}
+
 /** The route answered. `ok: false` carries the envelope every route in this app uses. */
 function answers(body: unknown, ok = true): void {
   vi.stubGlobal(
@@ -53,11 +60,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('the role control, for a linked viewer in tonight’s lobby', () => {
-  it('draws the five roles under product’s heading, with the sentence that says it is a preference', () => {
+describe("the role control, for a linked viewer in tonight's lobby", () => {
+  it('draws the five roles under the card title, with the sentence that says it is a preference', () => {
     draw(linked, lobby());
 
-    expect(screen.getByText(ROLE_CONTROL_HEADING)).toBeInTheDocument();
+    // `Your role tonight · Bilal`: the viewer's own name, so the card says whose it is
+    // (product, 2026-09-10). Never `· Someone`.
+    expect(screen.getByText('Your role tonight · Bilal')).toBeInTheDocument();
+    expect(roleCardTitle(null)).toBe(ROLE_CONTROL_HEADING);
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
       'top',
       'jungle',
@@ -66,8 +76,9 @@ describe('the role control, for a linked viewer in tonight’s lobby', () => {
       'support',
     ]);
     expect(screen.getByText(ROLE_CONTROL_HINT)).toBeInTheDocument();
-    // `open`: there is nothing to say about teams that do not exist yet.
-    expect(screen.queryByText(ROLE_SAVED_FOR_NEXT_GAME)).not.toBeInTheDocument();
+    // **One hint per state.** `open` says what a tap is worth; the teams sentence is for a
+    // screen that has teams on it.
+    expect(screen.queryByText(ROLE_TEAMS_ALREADY_SET)).not.toBeInTheDocument();
   });
 
   it('posts the role that was pressed, marks it chosen, and never navigates', async () => {
@@ -110,22 +121,31 @@ describe('the role control, for a linked viewer in tonight’s lobby', () => {
     answers({ ok: true, puuid: ME, role: 'top', status: 'balanced', savedForNextGame: true });
     draw(linked, lobby({ status: 'balanced' }));
 
-    expect(screen.getByText(ROLE_SAVED_FOR_NEXT_GAME)).toBeInTheDocument();
+    expect(screen.getByText(ROLE_TEAMS_ALREADY_SET)).toBeInTheDocument();
+    // One hint, not two: the preference sentence is replaced, never stacked under it.
+    expect(screen.queryByText(ROLE_CONTROL_HINT)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'top' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   });
 
-  it('prints the route’s own sentence beside the control and puts the word back', async () => {
-    answers({ ok: false, error: 'That lobby is over. Nothing to set a role on.' }, false);
+  it("prints the route's own sentence beside the control and puts the word back", async () => {
+    answers({ ok: false, error: 'That lobby is over. You can set a role when the next one opens.' }, false);
     draw(linked, lobby());
 
     const mid = screen.getByRole('button', { name: 'mid' });
     fireEvent.click(mid);
 
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('That lobby is over. Nothing to set a role on.'),
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'That lobby is over. You can set a role when the next one opens.',
+      ),
     );
+    // Above the hint, under the words it belongs to: a refusal below a grey explanation is a
+    // refusal nobody reads (the designer, 2026-09-10).
+    const card = screen.getByRole('alert').parentElement;
+    const order = [...(card?.children ?? [])].map((child) => child.className);
+    expect(order.indexOf('cn-role-error')).toBeLessThan(order.indexOf('cn-hint'));
     // Not a banner at the top of the page and not in the query string (M3.20), and the word
     // that was pressed is not left looking chosen.
     expect(mid).toHaveAttribute('aria-pressed', 'false');
@@ -145,15 +165,21 @@ describe('the role control, for a linked viewer in tonight’s lobby', () => {
   });
 
   it('draws for a sitter, who may well be in the next game', () => {
-    const sitter = extraMember({ puuid: ME });
-    draw(linked, lobby({ members: [...workedMembers(4), sitter] }));
+    // The eleventh person around, in the spectator slot: they are in `lobby_members`, so they
+    // have a row and their choice counts at the next balance.
+    const sitter = extraMember({ puuid: 'puuid-sitter', name: 'Deniz' });
+    draw(
+      { kind: 'linked', puuid: 'puuid-sitter', isAdmin: false },
+      lobby({ members: [...workedMembers(4), sitter] }),
+    );
 
-    expect(screen.getByText(ROLE_CONTROL_HEADING)).toBeInTheDocument();
+    expect(screen.getByText('Your role tonight · Deniz')).toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(5);
   });
 });
 
 describe('when there is nothing to tap', () => {
-  it('draws nothing for a linked viewer who is not in tonight’s lobby', () => {
+  it("draws nothing for a linked viewer who is not in tonight's lobby", () => {
     const { container } = draw({ kind: 'linked', puuid: 'somebody-else', isAdmin: false }, lobby());
 
     expect(container).toBeEmptyDOMElement();
@@ -173,7 +199,12 @@ describe('signed out, with a lobby up', () => {
   it('offers the one control that starts the Discord round trip, back to the tonight page', () => {
     const { container } = draw({ kind: 'anonymous' }, lobby());
 
-    expect(screen.getByRole('button', { name: ROLE_SIGN_IN })).toBeInTheDocument();
+    // The same card as every other state, with a title, a sentence, and a button whose label
+    // is a label (the designer and product, 2026-09-10).
+    expect(container.querySelector('.cn-role-card')).toBeInTheDocument();
+    expect(screen.getByText(ROLE_CONTROL_HEADING)).toBeInTheDocument();
+    expect(screen.getByText(ROLE_SIGN_IN)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: SIGN_IN_LABEL })).toBeEnabled();
     expect(container.querySelector('form')).toHaveAttribute('action', '/auth/signin');
     // Not `/admin`, which is where a sign-in with no destination lands.
     expect(container.querySelector('input[name="next"]')).toHaveValue('/');
@@ -181,11 +212,12 @@ describe('signed out, with a lobby up', () => {
 });
 
 describe('signed in with no player row: picking yourself, once', () => {
-  const visitor: ViewerState = { kind: 'unlinked' };
+  const visitor = unlinked();
 
-  it('offers tonight’s members, each with `That’s me`, under product’s question', () => {
+  it("offers tonight's members, each with `That's me`, under product's question", () => {
     draw(visitor, lobby());
 
+    expect(screen.getByText(ROLE_CONTROL_HEADING)).toBeInTheDocument();
     expect(screen.getByText(PICK_YOURSELF)).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(4);
     // The visible label is the same four words on every row; the name is what a listener
@@ -206,7 +238,7 @@ describe('signed in with no player row: picking yourself, once', () => {
     await waitFor(() => expect(refreshed).toHaveBeenCalledTimes(1));
   });
 
-  it('prints the route’s sentence when somebody is already linked to that player', async () => {
+  it("prints the route's sentence when somebody is already linked to that player", async () => {
     answers({ ok: false, error: 'Someone is already linked to that player.' }, false);
     draw(visitor, lobby());
 
@@ -219,6 +251,26 @@ describe('signed in with no player row: picking yourself, once', () => {
 
   it('asks nothing when there is nobody to pick', () => {
     draw(visitor, null);
+
+    expect(screen.getByText(SIGNED_IN_NO_LOBBY)).toBeInTheDocument();
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('offers only the members nobody is linked to yet', () => {
+    // The server decided this list (`lib/me/claimable.ts`): a player who already carries a
+    // Discord id is not on it, and the page is never told who those are.
+    const members = workedMembers(4);
+    const free = members[1];
+    draw(unlinked(free === undefined ? [] : [free.puuid]), lobby());
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName(`${THATS_ME}: Hana`);
+    expect(screen.queryByText('Bilal')).not.toBeInTheDocument();
+  });
+
+  it('asks nothing when every member of the lobby is already linked', () => {
+    draw(unlinked([]), lobby());
 
     expect(screen.getByText(SIGNED_IN_NO_LOBBY)).toBeInTheDocument();
     expect(screen.queryAllByRole('button')).toHaveLength(0);

@@ -1,3 +1,4 @@
+import { resolveRoles } from '@customs/core';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
@@ -255,6 +256,48 @@ describe('the role column only appears when it distinguishes', () => {
     expect(container.querySelectorAll('.cn-rack-roles')).toHaveLength(6);
     expect(screen.getAllByText('flexible')).toHaveLength(5);
     expect(screen.queryByText(ALL_FLEXIBLE_HINT)).not.toBeInTheDocument();
+  });
+
+  it('turns the column on for an override alone: a tap is a role on screen', () => {
+    const [first, ...rest] = flexible;
+    if (first === undefined) throw new Error('no member');
+    const { container } = draw(
+      snapshot(lobbyView({ members: [{ ...first, roleOverride: 'adc' }, ...rest] })),
+    );
+
+    expect(container.querySelectorAll('.cn-rack-roles')).toHaveLength(6);
+    // A flexible player who taps has a main for tonight and no backup.
+    expect(container.querySelector('.cn-rack-roles')?.textContent).toBe('adc');
+  });
+});
+
+describe("the rack prints tonight's roles, not the profile's (M3.6)", () => {
+  /** Iris mains jungle with top as her backup, from the worked example. */
+  const iris = workedMembers(3)[2];
+
+  it('shows `<override> · <old main>` for a row that has tapped a role', () => {
+    if (iris === undefined) throw new Error('no member');
+    const { container } = draw(
+      snapshot(lobbyView({ members: [{ ...iris, roleOverride: 'support' }, ...workedMembers(2)] })),
+    );
+
+    // Core's `resolveRoles`, rendered: the tap is the main and the usual main is the backup,
+    // which is exactly what the balancer will do with it.
+    expect(resolveRoles({ ...iris, roleOverride: 'support' })).toEqual({
+      main: 'support',
+      secondary: 'jungle',
+    });
+    expect(container.querySelector('.cn-rack-roles')?.textContent).toBe('support · jungle');
+  });
+
+  it('leaves a row alone when the tap names the role they already main', () => {
+    if (iris === undefined) throw new Error('no member');
+    const { container } = draw(
+      snapshot(lobbyView({ members: [{ ...iris, roleOverride: iris.mainRole }, ...workedMembers(2)] })),
+    );
+
+    // Core treats an override equal to the main as a no-op, so the backup stays.
+    expect(container.querySelector('.cn-rack-roles')?.textContent).toBe('jungle · top');
   });
 });
 

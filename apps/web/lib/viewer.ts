@@ -1,8 +1,10 @@
 import { cookies } from 'next/headers';
 import { cache } from 'react';
 import { discordIdFromUser, supabaseSessionUser } from './adminAuth';
+import { claimablePuuids } from './me/claimable';
 import { getServiceClient } from './supabase';
 import { createAuthClient, readOnlyCookieJar } from './supabaseAuth';
+import { nightTimeZone } from './tonight/night';
 import { ANONYMOUS_VIEWER, type ViewerState } from './tonight/viewer';
 
 /**
@@ -80,7 +82,12 @@ export const currentViewerState: () => Promise<ViewerState> = cache(async () => 
       console.error('tonight page: reading the viewer failed', error);
       return ANONYMOUS_VIEWER;
     }
-    if (data === null) return { kind: 'unlinked' };
+    // Signed in, matching no player row: the `That's me` case. The list of who may be claimed
+    // is a service-role read of `players.discord_id` and is decided here, so the page never
+    // sees a Discord id — one extra query, and only for this state.
+    if (data === null) {
+      return { kind: 'unlinked', claimable: await claimable() };
+    }
 
     return { kind: 'linked', puuid: data.puuid, isAdmin: data.is_admin };
   } catch (error) {
@@ -88,3 +95,16 @@ export const currentViewerState: () => Promise<ViewerState> = cache(async () => 
     return ANONYMOUS_VIEWER;
   }
 });
+
+/**
+ * Tonight's unclaimed members, or none: a failed lookup offers nobody rather than taking the
+ * page down. A visitor who is asked nothing can still read every word on it.
+ */
+async function claimable(): Promise<readonly string[]> {
+  try {
+    return await claimablePuuids(getServiceClient(), { timeZone: nightTimeZone() });
+  } catch (error) {
+    console.error('tonight page: reading who can be picked failed', error);
+    return [];
+  }
+}

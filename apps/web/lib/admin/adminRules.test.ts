@@ -119,7 +119,7 @@ describe('renderMintedTokenPage', () => {
    * installing the companion gets, so they are asserted character for character — a reworded
    * "paste it into the first-run prompt" is what this task existed to remove.
    */
-  it('carries product’s copy verbatim, in order, with the token still in it', () => {
+  it("carries product's copy verbatim, in order, with the token still in it", () => {
     const html = renderMintedTokenPage({
       token: 'tok_verbatim',
       puuid: 'puuid-hana',

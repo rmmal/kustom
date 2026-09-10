@@ -73,7 +73,7 @@ describe('buildTeamsInput', () => {
     expect(input.explanation).toBe('whatever core said.');
   });
 
-  it('marks off-role with core’s rule, not a copy of it', () => {
+  it("marks off-role with core's rule, not a copy of it", () => {
     // Hana mains top; putting her on support in the source makes her line off-role.
     const source = teamsSource();
     const split = {

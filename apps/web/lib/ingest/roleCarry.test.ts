@@ -4,9 +4,9 @@ import { carryableOverrides } from './roleCarry';
 /**
  * How long a role for tonight lasts (M3.6, decision 2026-09-09): the night, not the lobby row.
  *
- * The database half — the two reads and the grouped update — runs against the local stack with
- * the rest of lobby ingest. This is the rule itself: what a new cycle inherits, and what a new
- * night does not.
+ * This is the rule itself — what a new row inherits, and what a new night does not. The
+ * database half is `roleCarry.integration.test.ts`, which drives real companion posts against
+ * the local stack.
  */
 
 const NIGHT_START = new Date('2026-09-08T03:00:00.000Z'); // 06:00 in Africa/Cairo
@@ -21,7 +21,7 @@ const overrides = [
 ];
 
 describe('carryableOverrides', () => {
-  it('carries every member’s override onto the night’s next cycle, grouped by role', () => {
+  it("carries every member's override onto the night's next cycle, grouped by role", () => {
     const carried = carryableOverrides({
       previousLobby: { createdAt: DURING },
       overrides,
@@ -58,11 +58,51 @@ describe('carryableOverrides', () => {
     expect(carried.size).toBe(0);
   });
 
-  it('carries nothing for a party’s first ever lobby', () => {
+  it("carries nothing for a party's first ever lobby", () => {
     expect(
       carryableOverrides({ previousLobby: null, overrides, memberIds: ['hana'], nightStart: NIGHT_START })
         .size,
     ).toBe(0);
+  });
+
+  it('prefers a row this same post deleted: a friend who dropped out and rejoined', () => {
+    // The delete happened a moment ago, in this cycle. Whatever the previous cycle holds for
+    // them is a game older, so the newer answer wins.
+    const carried = carryableOverrides({
+      previousLobby: { createdAt: DURING },
+      overrides: [{ playerId: 'hana', role: 'top' }],
+      departed: new Map([['hana', 'jungle']]),
+      memberIds: ['hana'],
+      nightStart: NIGHT_START,
+    });
+
+    expect([...carried.entries()]).toEqual([['jungle', ['hana']]]);
+  });
+
+  it("carries a deleted row's override even with no previous cycle at all", () => {
+    const carried = carryableOverrides({
+      previousLobby: null,
+      overrides: [],
+      departed: new Map([['iris', 'support']]),
+      memberIds: ['iris'],
+      nightStart: NIGHT_START,
+    });
+
+    expect([...carried.entries()]).toEqual([['support', ['iris']]]);
+  });
+
+  it('writes nothing for a row the post did not create', () => {
+    // `memberIds` is what the post inserted, and it is the only thing written: re-applying an
+    // old value over a tap that has just landed is the one thing this may not do.
+    const carried = carryableOverrides({
+      previousLobby: { createdAt: DURING },
+      overrides,
+      departed: new Map([['iris', 'support']]),
+      memberIds: [],
+      nightStart: NIGHT_START,
+    });
+
+    expect(carried.size).toBe(0);
   });
 
   it('skips somebody who has gone home', () => {
@@ -76,7 +116,7 @@ describe('carryableOverrides', () => {
     expect([...carried.keys()]).toEqual(['top']);
   });
 
-  it('carries nothing when the previous cycle’s timestamp cannot be read', () => {
+  it("carries nothing when the previous cycle's timestamp cannot be read", () => {
     const carried = carryableOverrides({
       previousLobby: { createdAt: 'not a date' },
       overrides,

@@ -1,6 +1,8 @@
 import type { LobbyStatusValue, RoleValue } from '@customs/db';
 import { isActiveLobbyStatus } from '../ingest/lobby';
 import type { ServiceClient } from '../supabase';
+// Every sentence these rules answer with is product's, and they all live in one file.
+import { ROLE_TAP_NO_LOBBY, ROLE_TAP_NOT_IN_LOBBY, ROLE_TAP_NOT_YOURS, UNKNOWN_PLAYER } from './copy';
 import type { MePlayer } from './identity';
 
 /**
@@ -39,16 +41,6 @@ export interface RoleTonightInput {
   puuid?: string | undefined;
 }
 
-/**
- * Refusals a friend reads on their own phone, so they are sentences and not codes. They are
- * product's voice from the copy table's rules: say what happened, never apologise, never name
- * a page the reader cannot open.
- */
-export const ROLE_TAP_NOT_YOURS = 'That is not your row. Only an admin can set a role for somebody else.';
-export const ROLE_TAP_NO_LOBBY = 'That lobby is over. Nothing to set a role on.';
-export const ROLE_TAP_NOT_IN_LOBBY = 'You are not in that lobby, so there is no row to set.';
-export const ROLE_TAP_UNKNOWN_PLAYER = 'No player with that id.';
-
 export async function setRoleTonight(
   store: RoleTonightStore,
   actor: MePlayer,
@@ -69,7 +61,7 @@ export async function setRoleTonight(
   if (!isActiveLobbyStatus(status)) return { ok: false, status: 409, error: ROLE_TAP_NO_LOBBY };
 
   const playerId = await store.findPlayerIdByPuuid(target);
-  if (playerId === null) return { ok: false, status: 404, error: ROLE_TAP_UNKNOWN_PLAYER };
+  if (playerId === null) return { ok: false, status: 404, error: UNKNOWN_PLAYER };
 
   if (!(await store.isMember(input.lobbyId, playerId))) {
     return { ok: false, status: 409, error: ROLE_TAP_NOT_IN_LOBBY };

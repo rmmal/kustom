@@ -77,7 +77,7 @@ describe('formatNightLabel', () => {
     expect(formatNightLabel(nightOf8Sep, CAIRO)).toBe('Tuesday 8 September');
   });
 
-  it('reads the instant in the zone it is given, never the runner’s', () => {
+  it("reads the instant in the zone it is given, never the runner's", () => {
     // 03:00 UTC is still the 7th in New York, which is why the slug is formatted on the server
     // with the configured zone and carried through every re-read (M3.18).
     expect(formatNightLabel(nightOf8Sep, 'America/New_York')).toBe('Monday 7 September');

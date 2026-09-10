@@ -31,7 +31,7 @@ describe('a stored split, however it was written', () => {
     ]);
   });
 
-  it('carries each seat’s own puuid with it, not just the roles', () => {
+  it("carries each seat's own puuid with it, not just the roles", () => {
     expect(inLaneOrder(readAssignments(shuffled)).map((seat) => seat.puuid)).toEqual([
       'p-top',
       'p-jungle',

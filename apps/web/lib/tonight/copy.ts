@@ -192,14 +192,32 @@ export function joinWebNames(names: readonly PlayerName[]): string {
 /* ---------------------------------------------------------------------------
  * Role for tonight, and picking yourself out of the lobby (M3.6).
  *
- * Product's words, from the brief's copy block (2026-09-09), typed here unchanged. The two
- * sentences that are **not** product's are marked: they are failure text for a request that
- * never reached the server, which the brief does not cover, and they are written in the same
- * voice — say what happened, promise nothing, never apologise.
+ * Product's words, from `05-design.md`, "Copy — the role tap and picking yourself (M3.6,
+ * product 2026-09-10)" — the control's own strings are the 2026-09-09 brief's, typed here
+ * unchanged, and the two offline sentences are product's from the 2026-09-10 pass. The
+ * sentences the **routes** answer with are in `lib/me/copy.ts`, and the same table rules both
+ * files.
  * ------------------------------------------------------------------------- */
 
-/** The mono `t-xs` `dim` label above the five role words, dressed like `SEATS` and `rating`. */
+/**
+ * The card's title. Archivo, not the mono micro-label: it is language, and a card title in
+ * 12px tracked mono reads as a code comment (the designer, 2026-09-10).
+ */
 export const ROLE_CONTROL_HEADING = 'Your role tonight';
+
+/**
+ * `Your role tonight · Iris` when we have a name for the viewer's player, and the bare title
+ * otherwise (product, 2026-09-10). **Never `· Someone`**: the fallback word exists so a row in
+ * a list is not blank, and a title that says `· Someone` about the person reading it is worse
+ * than a title that says nothing. The separator is the rack header's own middot.
+ */
+export function roleCardTitle(name: PlayerName): string {
+  // `renderWebName` is what every other surface prints, truncation and all; the guard above is
+  // what stops its `Someone` fallback ever reaching this line.
+  return isNameless(name)
+    ? ROLE_CONTROL_HEADING
+    : `${ROLE_CONTROL_HEADING} ${HEAD_SEPARATOR} ${renderWebName(name)}`;
+}
 
 /**
  * Under the control, once. The whole meaning of the feature in two sentences: it is a
@@ -209,15 +227,22 @@ export const ROLE_CONTROL_HINT =
   'The bot tries for this one. If the teams need it, you can still end up somewhere else.';
 
 /**
- * Shown from `balanced` on. A tap then is stored and the teams **do not move**: a rebalance on
- * a role tap would be an unlimited reroll that any one of ten people can pull, and by then
- * people have already moved to their side in the client. The control says so rather than
- * pretending.
+ * The card's **only** hint from `balanced` on, replacing {@link ROLE_CONTROL_HINT} rather than
+ * stacking under it (the designer and product, 2026-09-10): a tap then is stored and the teams
+ * **do not move** — a rebalance on a role tap would be an unlimited reroll that any one of ten
+ * people can pull, and by then people have already moved to their side in the client. It says
+ * what the tap is worth instead of announcing a save nobody asked for.
  */
-export const ROLE_SAVED_FOR_NEXT_GAME = 'Saved for the next game. Teams are already set.';
+export const ROLE_TEAMS_ALREADY_SET =
+  'Teams are already set. A role you pick now is what the bot tries for in the next game.';
 
-/** The control that starts the Discord round trip, back to `/`. Reading is never gated. */
+/**
+ * The signed-out card's sentence. The control beside it is labelled {@link SIGN_IN_LABEL}: a
+ * button's label is a label, not a sentence (the designer, 2026-09-10). Reading is never gated.
+ */
 export const ROLE_SIGN_IN = 'Sign in with Discord to pick your role.';
+
+export const SIGN_IN_LABEL = 'Sign in with Discord';
 
 /** Above the list of tonight's members, for a signed-in visitor who matches no player row. */
 export const PICK_YOURSELF =
@@ -230,11 +255,17 @@ export const THATS_ME = "That's me";
 export const SIGNED_IN_NO_LOBBY =
   'Signed in. Open the page while the lobby is up and you can pick yourself out of it.';
 
-/** **Not product's**: the request never reached the server. Nothing was written. */
-export const ROLE_TAP_OFFLINE = 'That did not reach the server. Your role is unchanged.';
+/**
+ * The request never reached the server, so nothing was written. `tap it again` is the whole
+ * fix and the sentence is not allowed to end without it (product, 2026-09-10).
+ *
+ * Every sentence the **routes** answer with is `lib/me/copy.ts`; these two are the page's own,
+ * because only the browser knows a request never left it.
+ */
+export const ROLE_TAP_OFFLINE = 'That did not reach the server. Your role is unchanged — tap it again.';
 
-/** **Not product's**: the same case, on the `That's me` list. */
-export const LINK_OFFLINE = 'That did not reach the server. Nothing changed.';
+/** The same case, on the `That's me` list. */
+export const LINK_OFFLINE = 'That did not reach the server. Nothing changed — tap it again.';
 
 /**
  * Appended to {@link ALL_FLEXIBLE_HINT} for an admin, and only now that M3.6 has shipped the

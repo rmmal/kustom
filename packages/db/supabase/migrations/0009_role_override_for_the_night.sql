@@ -1,4 +1,4 @@
--- 0007_role_override_for_the_night.sql
+-- 0009_role_override_for_the_night.sql
 --
 -- `lobby_members.role_override` lasts the **night**, not the lobby row (M3.6; decision row
 -- 2026-09-09).
@@ -23,6 +23,10 @@
 -- `loadPool` → core's `resolveRoles`, which makes the override the player's main and their
 -- usual main the backup. This migration exists so the database's own documentation is not the
 -- one place still stating the retired rule.
+--
+-- Renumbered from 0007 on 2026-09-10: M4.9's `0008` reached the hosted project first, and the
+-- Supabase CLI refuses to push a version older than the newest applied one. Nothing else
+-- changed — this file has no DDL, so replaying it is a comment and nothing more.
 --
 -- Never edit this file once it has been applied. Add a new numbered migration.
 

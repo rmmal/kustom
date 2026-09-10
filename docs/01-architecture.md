@@ -248,6 +248,27 @@ watching: on lobby event -> POST /api/companion/lobby
   not write `companion_tokens.last_seen_at`, which is what makes that column mean "at their PC with League
   open".
 - `/api/admin/*` session-gated.
+- `/api/me/*` **the third route class** (M3.6): a Supabase session with a **linked player** and no
+  `players.is_admin`. The caller is resolved the one way this project resolves anybody — session → Discord
+  identity → `players.discord_id` → the player row — and no request body is ever part of that chain
+  (`apps/web/lib/me/identity.ts`, `lib/me/route.ts`, which is `withAdminAuth` with the admin step removed).
+  401 without a session, 403 for a session with no Discord identity. An **unlinked** session is not a failure:
+  it is handed to the handler as `player: null`, because `POST /api/me/link` exists for exactly that visitor.
+  - `POST /api/me/role-tonight` writes `lobby_members.role_override` for one player in one live lobby
+    (`open`, `balanced`, `in_game`; anything else is refused). `role: null` clears it. The body's optional
+    `puuid` names a **target** and is honoured **only for an admin** — 403 otherwise, decided before any read,
+    and never a silent write to the caller's own row. Nothing rebalances and nothing is posted to Discord: a
+    tap while the teams are up is stored for the next game.
+  - `POST /api/me/link` is the self-link ("picking yourself, once"): the visitor claims one of **tonight's**
+    lobby members as themselves and the route writes `players.discord_id` and nothing else. **One link per
+    player and one player per session**: only a member of tonight's newest non-`abandoned` lobby may be
+    claimed, a player who already carries a `discord_id` is neither offered nor accepted (409), the write is
+    conditional on `discord_id is null` so the race cannot double-link, and `players_discord_id_key` catching a
+    session that already has a player is the same 409 rather than a 500. Undoing a link stays an admin's job on
+    `/admin/players`.
+  - Which members may be claimed is decided **on the server** with the service role
+    (`apps/web/lib/me/claimable.ts`): `discord_id` is not readable with the anon key, so the page is handed the
+    PUUIDs of the unclaimed members only and never learns who is linked to what.
 
 ## Discord
 

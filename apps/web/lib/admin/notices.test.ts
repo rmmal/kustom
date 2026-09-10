@@ -69,7 +69,7 @@ describe('players', () => {
 });
 
 describe('tokens, the Discord config and the season', () => {
-  it('names the two token outcomes, in the route’s words', () => {
+  it("names the two token outcomes, in the route's words", () => {
     expect(adminNotice('tokens', { action: 'mint' }, { ok: true })).toBe('token minted');
     expect(adminNotice('tokens', { action: 'revoke' }, { ok: true })).toBe('token revoked');
     expect(tokens).toContain("'token minted'");
@@ -81,7 +81,7 @@ describe('tokens, the Discord config and the season', () => {
     expect(mintedToken({ ok: true })).toBeNull();
   });
 
-  it('confirms the Discord config in the route’s words', () => {
+  it("confirms the Discord config in the route's words", () => {
     expect(adminNotice('discord', {}, { ok: true })).toBe('Discord config saved');
     expect(discord).toContain("'Discord config saved'");
   });
@@ -138,7 +138,7 @@ describe('the reroll', () => {
 });
 
 describe('a refusal', () => {
-  it('is the route’s own sentence, never one of ours', () => {
+  it("is the route's own sentence, never one of ours", () => {
     expect(adminError({ ok: false, error: 'that lobby is not balanced' }, 'fallback')).toBe(
       'that lobby is not balanced',
     );

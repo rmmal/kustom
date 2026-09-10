@@ -1,5 +1,6 @@
 import { type RoleTonightRequest, roleTonightRequestSchema, roleTonightResponseSchema } from '@customs/db';
 import type { NextResponse } from 'next/server';
+import { ROLE_TAP_NOT_LINKED } from '@/lib/me/copy';
 import {
   type RoleTonightStore,
   savedForNextGame,
@@ -19,9 +20,6 @@ import { withViewerAuth } from '@/lib/me/route';
  * whose teams are up is stored and answered with `savedForNextGame`, which is the sentence the
  * control prints.
  */
-
-/** No linked player: the page shows the `That's me` list instead, so this is a refusal. */
-export const ROLE_TAP_NOT_LINKED = 'Pick yourself out of the lobby first, then you can set a role.';
 
 export interface RoleTonightRouteOptions extends MeRouteOptions {
   /** Injection point for tests. Defaults to the Supabase-backed store. */
