@@ -46,12 +46,11 @@ const MAX_NAME_LENGTH = 32;
  * that gated the auto switch. They are quoted from the brief character for character — em dash
  * U+2014, ASCII apostrophe — and `embeds.test.ts` pins both by code point.
  *
- * **Two copies today, on purpose.** `lib/tonight/copy.ts` carries the same two constants for
- * the page's line, on the web engineer's branch, which is not merged yet so nothing here can
- * import it. That file already imports {@link NAMELESS_PLAYER} from this one, so this is the
- * shared home the pair should end up with and the copy there collapses into a re-export when
- * the branches meet. Until then the test is what keeps them the same sentence
- * (`04-decisions.md`, 2026-09-11).
+ * **One definition, and this is it.** The tonight page prints the same two sentences under the
+ * team cards, and `lib/tonight/copy.ts` re-exports these three so the page keeps importing its
+ * copy from its own copy file. That file already imports {@link NAMELESS_PLAYER} from here,
+ * which is the same direction and the same reason: a string two surfaces print lives in the
+ * module with no Next and no DOM in front of it (`04-decisions.md`, 2026-09-11).
  * ------------------------------------------------------------------------- */
 
 /**

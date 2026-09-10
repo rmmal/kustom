@@ -245,11 +245,12 @@ function blueLines(embed: { fields: { name: string; value: string }[] } | undefi
  */
 describe('teamsEmbed, the side line', () => {
   /**
-   * **Pinned character for character**, because these two sentences are also spelled in
-   * `lib/tonight/copy.ts` for the page (`SIDE_LINE_MANUAL` / `SIDE_LINE_AUTO`) and the message
-   * and the page may not drift into two wordings of the same instruction. The code points are
-   * asserted, not just the strings: the dash is an em dash (U+2014) and the apostrophe is the
-   * ASCII one (U+0027), which is what `02-milestones.md` has in the M4.3 brief.
+   * **Pinned character for character.** These are the sentences the tonight page prints too —
+   * `lib/tonight/copy.ts` re-exports these three constants, so the page and the message cannot
+   * be two wordings of one instruction, and this is the test that guards the words themselves.
+   * The code points are asserted, not just the strings: the dash is an em dash (U+2014) and the
+   * apostrophe is the ASCII one (U+0027), which is what the M4.3 brief and `05-design.md`'s
+   * copy table both have.
    */
   it("spells product's two sentences exactly as the brief does", () => {
     expect(SIDE_LINE_MANUAL).toBe('Move to your side in the lobby.');
