@@ -16,10 +16,12 @@ import type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split
 
 export { explain } from './explain';
 /**
- * Re-exported for the display surfaces (M3.1's teams embed marks an off-role line). One rule
- * for "off-role" in the product: the scorer, the explanation and every embed ask this.
+ * Re-exported for the display surfaces (M3.1's teams embed marks an off-role line; M3.6's
+ * tonight page prints an overridden row as `<override> · <old main>`). One rule for "off-role"
+ * and one for "tonight's main and backup" in the product: the scorer, the explanation, every
+ * embed and the page ask these, never a re-derived `role !== mainRole`.
  */
-export { isOffRole } from './roles';
+export { isOffRole, type ResolvedRoles, type RoleProfile, resolveRoles } from './roles';
 export type { Assignment, BalanceInput, BalancePlayer, BalanceResult, Duo, Split } from './types';
 
 /** Thrown for every input the balancer refuses. The message is written for a Discord line. */
