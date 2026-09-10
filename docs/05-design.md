@@ -458,6 +458,8 @@ Nobody has a role set, so the balancer treats everyone as flexible.
 ┃ …                                              ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+  Move to your side in the lobby.                    side line: Archivo t-sm dim, `balanced` only
+
 ┃ Blue favored 54%. Everyone on a main role.      ┃  explanation: 3px brand left rule, t-base text
 ┃ Gap 100. Next best: swap Hana and Omar, gap 170.┃
 ┃                                    [ Reroll ]   ┃  admins only, right on ≥720px
@@ -487,6 +489,18 @@ Nobody has a role set, so the balancer treats everyone as flexible.
   leading rule and **no header bar**: its own sentence opens `Sitting out this game: …`, and a `SITTING OUT`
   label above that is the same three words twice, 45px above the fold on the one screen where the second team
   card is already below it.
+- **The side line sits under both cards and above the explanation strip** (M4.7 (b), designer 2026-09-11):
+  one line for the page, never one per card and never per person, Archivo `t-sm` `dim`, `sp-4` under the
+  second card and `sp-4` over the strip, full width and no border of its own. Its two sentences are product's
+  and are in the copy table above — `Move to your side in the lobby.` when the auto side switch is off, and
+  `You'll be moved to your side — if not, move yourself.` when the gate is on — and which of the two prints is
+  the gate's, not the dress's. It is **`dim` and not `text`, and it never takes a `brand` rule**: it is an
+  instruction about a thing outside this page, and the strip under it is the bot explaining itself, which is
+  the loudest prose the state has. Two ruled blocks stacked would be two things claiming to be the point of
+  the screen, and the one under them is the one worth reading twice. It is drawn in **`balanced` only**
+  (product): once the game launches there is no lobby to move in, so `in_game` prints nothing where it was
+  and the explanation strip closes up under the cards (**M4.11**). The height it leaves behind is not
+  reserved — nothing on this page is waiting to reappear in it.
 
 ##### The `· off-role` legend in a team card header (designer, 2026-09-10)
 
@@ -1190,14 +1204,19 @@ On `/p/[puuid]` line 1 is the player's name in the display cut and everything el
   the dress and sentence case in the DOM, which is the tonight strip's slug treatment: it is a legend about the
   thing above it, and it is the answer to "which Monday". Every window has one, including `All time` — a slot
   that vanishes on one of five taps reads as broken. **On `/p/[puuid]` the range half prints alone**, because
-  M5.15's seed line already ends `, 6 games since.`
+  M5.15's seed line already ends `, 6 games since.` **`/stats` prints the whole form**, range and count,
+  exactly as `/leaderboard` does — M5.22 took the count out of that page's two group sentences precisely so that the
+  slot is the one place it appears.
 - when the window has no games, the window's **empty sentence** (`No games last week.`), Archivo `t-base`
   `dim`, **instead of** the range and never beside it. It lives here and not below the hairline because on
   `All time` the same slot sits above rows that exist, so it is not a caption of empty content — it is a
-  statement about the window that was just chosen, and the window is the header. **An empty window draws no
-  board card at all**: the sentence in the slot is the whole answer, and a card with a legend and nothing under
-  it is a page that looks broken rather than empty. An empty board is then a closed header over an empty page,
-  which is honest.
+  statement about the window that was just chosen, and the window is the header. **An empty window draws
+  nothing under the hairline**: no board card on `/leaderboard`, and on `/stats` no awards, no group card and
+  no lists (rule 6 of that page's section). `/p/[puuid]` is the one exception and keeps its rating card,
+  because the subject there is a person and their two numbers are current rather than the window's; everything
+  windowed on it is undrawn like the rest. The sentence in the slot is the whole answer, and a card with a
+  legend and nothing under it is a page that looks broken rather than empty. An empty board is then a closed
+  header over an empty page, which is honest.
 
 **Dress.**
 
@@ -1344,13 +1363,12 @@ icon and word. A role is one object across two pages, and this one must not prin
 beside it.
 
 **The empty window ships as built.** The window's sentence goes in the slot where the range would be, in
-`dim`, the same place and the same dress `/leaderboard` gives it — the board is one tap away and two pages say
-one thing one way. (`/stats` says the same sentence in the body under a bare strip; bringing those two into
-line is queued as its own task and does not touch this page.) The rating card stays, and the strip keeps its
-hairline, because a card does follow it: **M5.8's rule 6 is a `/stats` rule**, where the window is the whole
-subject. Here the subject is a person, their two numbers are current rather than the window's, and a page
-about somebody that prints no number about them is a page that failed. Everything windowed — the record line,
-the seed line, the chart and all six sections — is undrawn, which is the rule this page already follows.
+`dim`, the same place and the same dress `/leaderboard` and `/stats` give it — the board is one tap away and
+all three pages say one thing one way. The rating card stays, and the strip keeps its hairline: **M5.8's
+rule 6 is a `/stats` rule**, where the window is the whole subject. Here the subject is a person, their two
+numbers are current rather than the window's, and a page about somebody that prints no number about them is a
+page that failed. Everything windowed — the record line, the seed line, the chart and all six sections — is
+undrawn, which is the rule this page already follows.
 
 **Light.** Nothing here is light-specific. The two side colours are the only new ink and both hold above 6:1
 on white; `dim`, the group labels and the card header bars are unchanged.
@@ -1626,10 +1644,16 @@ rank 1 here is not the top of the board and must not borrow the board's mark. Wi
 list is a set rather than a ranking, and which of the five is the best jungler this month is the argument this
 page exists to start.
 
-**6. An empty window is a sentence, and nothing is drawn over it.** `.cn-strip`'s hairline appears only when a
-section follows it; on an empty window the window's own sentence sits under the strip as the page's one block,
-`t-base` in `text`. A full-width rule with a thousand pixels of ink under it is the strongest "this page broke"
-signal the shell can produce, and it is drawn on the one screen that has the least to say.
+**6. An empty window is one sentence in the header slot, and nothing is drawn under it.** *(Rewritten
+2026-09-11, after M5.23 built it; the first version put the sentence in the body at `t-base` in `text` and
+took the hairline off, and both halves are now false.)* The window's own empty sentence sits where the range and
+count would be — Archivo `t-base` `dim`, in the slot — which is where `/leaderboard` and `/p/[puuid]` have
+always put it, so the one control that changes all three pages is answered in the same place on all three.
+**The strip keeps its hairline on every window**: the rule closes a header, it does not promise a card, and an
+edge that vanishes on one of five taps reads as a page that half-loaded. Under it `/stats` draws **nothing at
+all** — no awards card, no group statements, no role blocks, no duos, no streaks. A bordered card with a
+legend and nothing in it is the strongest "this page broke" signal the shell can produce, and it would be
+drawn on the one screen with the least to say.
 
 **What does not change:** the 44rem column with no rail (this page has nothing per-night to put in one), the
 picker and its slot, the order down the page, the 44px rows, and every word.
@@ -2217,7 +2241,7 @@ title        Teams are set
 url          https://<tonight page>          [dropped when the only honest origin is localhost]
 description  <splits.explanation, verbatim>
 field 1      name "Sitting out"   block   value: one sentence           [only if somebody sits]
-field 2      name "Seats"         block   value: one line per move      [only if somebody moves]
+field 2      name "Seats"         block   value: any move lines, then the side line   [the side line always prints]
 field 3      name "Blue · 7695"   inline  value: five lines, lane order
 field 4      name "Red · 7595"    inline  value: five lines, lane order
 field 5      name "Lobby"         block   value: name and password      [only if known]
@@ -2231,9 +2255,21 @@ sit-out strip above the team cards on a stated rule: *if you are sitting out, ev
 you, and you should learn that before you scan for your name.* That rule is stronger in Discord, not weaker.
 Ten rating lines plus a wrapped explanation is about one phone screen, so `Swap: Omar out, Nadia in.` — the one
 line in the message that has to happen before anybody can play — was landing below the fold. On a ten-person
-night neither field exists and the embed is byte-identical to what shipped; on an eleven-person night everyone
-else pays two short lines to put the instruction above the fold. Discord groups *consecutive* inline fields, so
-a block field in front of `Blue` and `Red` does not break their pairing.
+night neither field existed and the embed was byte-identical to what shipped; on an eleven-person night
+everyone else pays two short lines to put the instruction above the fold. Discord groups *consecutive* inline fields, so
+a block field in front of `Blue` and `Red` does not break their pairing. *(Amended 2026-09-11: `Seats` is now
+on every teams post, because the side line below always prints. The rotation lines still come and go with the
+night; the ten-person post gains one sentence in the same field and nothing moves.)*
+
+**The side line is the last line of `Seats`** (M4.7 (b), placement designer 2026-09-11; the words are
+product's, M4.3, and are the two the tonight page prints). `Move to your side in the lobby.` — or `You'll be
+moved to your side — if not, move yourself.` when the auto side switch is on — closes the block, **under** any
+`Swap:` or `take the open slot` line and never above one: a move line names two people and has to be read
+first, the side line is addressed to all ten. **It always prints**, so `Seats` becomes a field on every teams
+post rather than only on a night somebody rotates, and M3.13's order already puts that field above `Blue` and
+`Red`, which is where an instruction belongs. One line, never per person — naming who is on the wrong side is
+stale the second somebody moves — and no field of its own: a `Sides` heading over one sentence is a heading
+over one sentence, and the sentence is already about seats.
 
 Line format inside a side field, one per role in lane order:
 
@@ -2249,6 +2285,9 @@ Filled in with the worked example (`docs/00-product.md`, split 1):
 > **Teams are set**
 >
 > Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and Omar, gap 170.
+>
+> **Seats**
+> Move to your side in the lobby.
 >
 > | **Blue · 7695** | **Red · 7595** |
 > |---|---|
@@ -2268,6 +2307,9 @@ The exact strings the API builds:
 ```
 title        Teams are set
 description  Blue favored 54%. Everyone on a main role. Gap 100. Next best: swap Hana and Omar, gap 170.
+
+field 2 name   Seats
+field 2 value  Move to your side in the lobby.
 
 field 3 name   Blue · 7695
 field 3 value  `top` Hana · 1434
