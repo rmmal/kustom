@@ -4149,7 +4149,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > A "why" on the leaderboard row or in Discord. Recomputing or explaining the rating model itself — this
     > task prints stored numbers and one sentence about them.
 
-- [ ] **M5.16** Infer a player's main and backup role from their own games. *(owner: core-engineer)* Pure function in `packages/core`, tested. From the user, 2026-09-10: *"for roles can we have roles auto assigned based on the frequency of the players and changable by time automatically."*
+- [x] **M5.16** (landed 2026-09-10: `inferRoles(games, window?)` from `@customs/core`; `startedAt` is `string | number` and the function sorts itself; a count tie breaks to the more recent role, then lane order; `counted` is reported under the threshold for the admin line) Infer a player's main and backup role from their own games. *(owner: core-engineer)* Pure function in `packages/core`, tested. From the user, 2026-09-10: *"for roles can we have roles auto assigned based on the frequency of the players and changable by time automatically."*
 
     > **Brief (product, 2026-09-10)**
     >
