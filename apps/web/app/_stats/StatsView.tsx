@@ -2,7 +2,6 @@ import Link from 'next/link';
 import {
   gamesLabel,
   ROLE_RECORD_HEADING,
-  WINDOW_EMPTY,
   WINDOW_LABELS,
   windowSlotLine,
   winLossLabel,
@@ -42,6 +41,7 @@ import type {
 import { renderWebName } from '@/lib/tonight/copy';
 import '../board-parts.css';
 import { WindowPicker } from '../_board/WindowPicker';
+import { WindowSlot } from '../_board/WindowSlot';
 import { RoleIcon } from '../_icons/RoleIcon';
 
 /**
@@ -86,20 +86,27 @@ export function StatsView({ stats }: StatsViewProps) {
 
   return (
     <main className="cn-page">
-      {/*
-       * The hairline under the strip closes a header over content. An empty window has none, so
-       * the rule would be a line under nothing (the designer, 2026-09-10).
-       */}
-      <header className={empty ? 'cn-strip cn-strip-bare' : 'cn-strip'}>
+      <header className="cn-strip">
         <h1 className="cn-strip-title">
           {WINDOW_LABELS[stats.window]} <span className="cn-strip-sub">{STATS_LABEL}</span>
         </h1>
         {/* The same control, in the same slot, as the two board pages. `This month` by default. */}
         <WindowPicker path="/stats" selected={stats.window} />
 
-        {empty ? null : (
-          <p className="cn-num cn-window-line">{windowSlotLine(stats.range as string, stats.games)}</p>
-        )}
+        {/*
+         * **The same slot, in the same element, as the two board pages** (the designer,
+         * 2026-09-11, M5.23). This page used to print the window's empty sentence in the body at
+         * `t-base` in `text`, under a strip with its hairline taken off — M5.8's rule 6, written
+         * when this was the only page whose whole subject is the window. Three pages carrying
+         * one picker may not answer the same tap three ways, so the sentence moved into the slot
+         * the picker already has and the hairline stays: on every window with games the same
+         * strip closes over cards, and a rule that comes and goes with the answer is a header
+         * that looks like it failed rather than one that is empty.
+         */}
+        <WindowSlot
+          window={stats.window}
+          line={empty ? null : windowSlotLine(stats.range as string, stats.games)}
+        />
 
         {pending === null ? null : <p className="cn-hint">{pending}</p>}
 
@@ -107,16 +114,7 @@ export function StatsView({ stats }: StatsViewProps) {
         {stats.capped ? <p className="cn-hint">{capLine(stats.cap)}</p> : null}
       </header>
 
-      {empty ? (
-        /*
-         * The window's own sentence, **in the body and not in the strip** (the designer): it is
-         * the page's one block, not a caption on the header, and at `t-base` in `text` it reads
-         * as the answer rather than as a footnote to the picker.
-         */
-        <section className="cn-block">
-          <p className="cn-stats-answer">{WINDOW_EMPTY[stats.window]}</p>
-        </section>
-      ) : (
+      {empty ? null : (
         <>
           <Awards awards={stats.awards} />
 

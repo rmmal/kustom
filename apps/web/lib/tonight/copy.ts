@@ -307,3 +307,33 @@ export function missedInviteSentence(name: string, password: string | null): str
   const half = password === null ? '' : `${MISSED_INVITE_PASSWORD}${password}`;
   return `${MISSED_INVITE_LEAD}${name}${half}${MISSED_INVITE_END}`;
 }
+
+/* ---------------------------------------------------------------------------
+ * The side line, under the team cards (M4.3's copy, M4.7 (b)'s placement).
+ *
+ * **Product's two sentences, fixed in the M4.2 and M4.3 briefs** (`02-milestones.md`, and the
+ * decision of 2026-09-09 that gated the auto switch). They are not in `05-design.md`'s copy
+ * table, which was written before M4.3 existed; the words below are quoted from the brief
+ * character for character and the table is the designer's to catch up with.
+ *
+ * Which one prints is not a copy decision: it is the verification gate
+ * (`COMMAND_KIND_ENABLED.switch_side`), read where the line is drawn.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The gate is **off** — no `switch_side` row is ever queued, so nobody is moved by us and the
+ * only thing that can put you on your side is you.
+ */
+export const SIDE_LINE_MANUAL = 'Move to your side in the lobby.';
+
+/**
+ * The gate is **on**. It still ends with `move yourself`, because a companion that is closed,
+ * offline, or looking at a side that already holds five cannot move anybody — and the page has
+ * no way to know which of the ten that is true for (M4.3, "the bounce").
+ */
+export const SIDE_LINE_AUTO = "You'll be moved to your side — if not, move yourself.";
+
+/** One of the two, by the gate. Never a third sentence, and never both. */
+export function sideLine(switchSideEnabled: boolean): string {
+  return switchSideEnabled ? SIDE_LINE_AUTO : SIDE_LINE_MANUAL;
+}

@@ -120,15 +120,21 @@ describe('a window with nothing in it', () => {
   });
 
   /**
-   * The sentence is **the page's block**, not a caption inside the header, and the strip drops
-   * its hairline because there is nothing under it to close over (the designer, 2026-09-10).
+   * **The sentence is in the slot, in `dim`, exactly where the two board pages print it**
+   * (the designer, 2026-09-11, M5.23). It used to be the page's own body block at `t-base` in
+   * `text` under a strip with no hairline — M5.8's rule 6, written for the page whose whole
+   * subject is the window. Three pages under one picker answer one tap one way.
    */
-  it('puts the sentence in the body and takes the rule off the strip', () => {
+  it('puts the sentence in the slot, in the strip, and keeps the hairline', () => {
     const { container } = draw(view([], { window: 'last-week' }));
+    const strip = container.querySelector('.cn-strip');
 
-    expect(container.querySelector('.cn-strip')).toHaveClass('cn-strip-bare');
-    expect(container.querySelector('.cn-strip')?.textContent).not.toContain('No games last week.');
-    expect(container.querySelector('.cn-stats-answer')?.textContent).toBe('No games last week.');
+    expect(strip).not.toHaveClass('cn-strip-bare');
+    expect(strip?.textContent).toContain('No games last week.');
+    expect(screen.getByText(WINDOW_EMPTY['last-week'])).toHaveClass('cn-empty');
+    expect(screen.getByText(WINDOW_EMPTY['last-week']).parentElement).toBe(strip);
+    // Nothing in the body says it a second time.
+    expect(container.querySelector('.cn-stats-answer')).not.toBeInTheDocument();
     // No slot line either: `· 0 games` is a thing no reader needs told twice.
     expect(container.querySelector('.cn-window-line')).not.toBeInTheDocument();
   });

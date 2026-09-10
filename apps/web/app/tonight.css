@@ -133,14 +133,22 @@
 .cn-notice,
 .cn-prediction,
 .cn-damage,
+.cn-side-line,
 .cn-sitout-text,
 .cn-explain-text,
 .cn-reroll-note {
   margin: 0;
 }
 
+/*
+ * The hint dress, and the side line's (M4.7 (b)): Archivo `t-sm` in `dim`. The line under the
+ * team cards is an aside beside two cards of names and numbers — the page has no banners — and
+ * it is the same voice as every other quiet line on this page, so it is the same declaration
+ * rather than a second one that can drift from it.
+ */
 .cn-hint,
-.cn-notice {
+.cn-notice,
+.cn-side-line {
   font-size: var(--cn-t-sm);
   color: var(--cn-dim);
 }
