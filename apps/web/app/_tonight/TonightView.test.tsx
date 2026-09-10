@@ -1,6 +1,7 @@
 import { resolveRoles } from '@customs/core';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { invitedLine, openingOnPcLine, START_LOBBY_BUTTON } from '@/lib/admin/lobbyStart';
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
 import type { BoardRow } from '@/lib/board/types';
 import { NO_ACTIVE_SEASON_MESSAGE, NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
@@ -17,10 +18,12 @@ import {
   ALL_FLEXIBLE_HINT,
   HEAD_SEPARATOR,
   IDLE_SENTENCE,
+  missedInviteSentence,
   NAMELESS_HINT,
   OFF_ROLE_LEGEND,
   OFF_ROLE_LEGEND_SUFFIX,
 } from '@/lib/tonight/copy';
+import type { LobbyStartView } from '@/lib/tonight/lobbyStart';
 import type { SeatView, TonightSnapshot } from '@/lib/tonight/types';
 import type { ViewerState } from '@/lib/tonight/viewer';
 import { TonightView } from './TonightView';
@@ -40,7 +43,13 @@ import { TonightView } from './TonightView';
 
 function draw(
   state: TonightSnapshot,
-  viewer: { puuid?: string; isAdmin?: boolean; topPlayers?: readonly BoardRow[] } = {},
+  viewer: {
+    puuid?: string;
+    isAdmin?: boolean;
+    topPlayers?: readonly BoardRow[];
+    /** Tonight's `create_lobby`, which only an admin's render is ever given (M4.2). */
+    lobbyStart?: LobbyStartView | null;
+  } = {},
 ) {
   // Anonymous unless the test names a puuid or an admin: `null` used to mean both "signed
   // out" and "signed in with no player row", and M3.6 needs the two apart
@@ -55,7 +64,14 @@ function draw(
           isAdmin: viewer.isAdmin ?? false,
         };
 
-  return render(<TonightView snapshot={state} viewer={who} topPlayers={viewer.topPlayers ?? []} />);
+  return render(
+    <TonightView
+      snapshot={state}
+      viewer={who}
+      topPlayers={viewer.topPlayers ?? []}
+      lobbyStart={viewer.lobbyStart ?? null}
+    />,
+  );
 }
 
 /**
@@ -669,5 +685,179 @@ describe('the reroll control', () => {
   it('is not drawn once the game has started: the teams on the rift are the teams', () => {
     draw(snapshot(lobbyView({ status: 'in_game', teams: workedTeams() })), { isAdmin: true });
     expect(screen.queryByRole('button', { name: 'Reroll' })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * `Start a lobby` (M4.2's control, M4.7's placement). Where it is drawn, and for whom — the
+ * control's own behaviour is `StartLobby.test.tsx`.
+ */
+/** Tonight's `create_lobby` as the page reads it: pending on Hamoodi's PC by default. */
+function startRow(overrides: Partial<LobbyStartView> = {}): LobbyStartView {
+  return {
+    status: 'pending',
+    error: null,
+    hostName: 'Hamoodi',
+    lobbyName: 'Customs 10 Sep #1',
+    lobbyPassword: '4821',
+    invited: 0,
+    ...overrides,
+  };
+}
+
+describe('the Start a lobby control', () => {
+  const startButton = { name: START_LOBBY_BUTTON } as const;
+
+  it('is on the idle page for an admin, above the rack and under the strip', () => {
+    const { container } = draw(snapshot(null), { isAdmin: true });
+
+    expect(screen.getByRole('button', startButton)).toBeInTheDocument();
+    // **Above** the rack, not below it (the designer, 2026-09-10): ten empty seats are 480px,
+    // so a button under them is under the fold on the phone this page is designed for.
+    const column = [...(container.querySelector('.cn-col')?.children ?? [])].map((child) => child.className);
+    expect(column.indexOf('cn-start')).toBeLessThan(column.indexOf('cn-block'));
+    // And the block below it is untouched: rack, then the two explainer cards.
+    const block = container.querySelector('.cn-block');
+    expect([...(block?.children ?? [])].map((child) => child.className)).toEqual([
+      'cn-card cn-rack',
+      'cn-idle-cards',
+    ]);
+  });
+
+  it('is a readout with no button while the lobby fills: there is a lobby already', () => {
+    const { container } = draw(snapshot(lobbyView({ members: workedMembers(7) })), {
+      isAdmin: true,
+      lobbyStart: startRow({ status: 'acked', invited: 6 }),
+    });
+
+    // No button: the route could only answer `There is already a lobby open.`
+    expect(screen.queryByRole('button', startButton)).not.toBeInTheDocument();
+    // The block still carries what is worth saying, under the rack.
+    expect(screen.getByText(invitedLine(6))).toBeInTheDocument();
+    const block = container.querySelector('.cn-block');
+    expect([...(block?.children ?? [])].map((child) => child.className)).toEqual([
+      'cn-card cn-rack',
+      'cn-start',
+      'cn-missed',
+    ]);
+  });
+
+  it('draws nothing at all while filling when nobody pressed it tonight', () => {
+    const { container } = draw(snapshot(lobbyView({ members: workedMembers(7) })), { isAdmin: true });
+
+    expect(container.querySelector('.cn-start')).not.toBeInTheDocument();
+  });
+
+  it('is gone once the teams are set: the only answer left would be a refusal', () => {
+    const teams = workedTeams();
+    draw(snapshot(lobbyView({ status: 'balanced', teams, members: workedMembers() })), {
+      isAdmin: true,
+    });
+
+    expect(screen.queryByRole('button', startButton)).not.toBeInTheDocument();
+    expect(document.querySelector('.cn-start')).not.toBeInTheDocument();
+  });
+
+  it('is drawn for nobody but an admin, and says nothing to an anonymous visitor', () => {
+    const { unmount } = draw(snapshot(null));
+    // **Not** `Sign in with Discord to start a lobby.`: nothing anonymous can press it, and
+    // the page's one sign-in is on the role card (M4.7).
+    expect(screen.queryByRole('button', startButton)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('to start a lobby');
+    unmount();
+
+    draw(snapshot(null), { puuid: 'puuid-someone' });
+    expect(screen.queryByRole('button', startButton)).not.toBeInTheDocument();
+  });
+
+  it('prints what became of tonight’s press, for the admin who did not make it', () => {
+    draw(snapshot(null), { isAdmin: true, lobbyStart: startRow() });
+
+    expect(screen.getByText(openingOnPcLine('Hamoodi'))).toBeInTheDocument();
+    // And the button goes quiet while the command is live — `aria-disabled`, never the
+    // attribute, so the focus stays where the keyboard left it (the designer, M3.20).
+    const button = screen.getByRole('button', { name: START_LOBBY_BUTTON });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveClass('cn-button-quiet');
+    expect(button).not.toBeDisabled();
+  });
+});
+
+/**
+ * `Missed the invite? The lobby is Customs 08 Sep #1, password 4821.` (M4.10).
+ *
+ * Five cases, and the fifth is the one that matters: the password is for the people who play,
+ * not for whoever the WhatsApp link was forwarded to (product and the designer, 2026-09-10).
+ */
+describe('the lobby a latecomer can still join', () => {
+  const me = workedMembers(1)[0]?.puuid ?? '';
+  const filling = () => snapshot(lobbyView({ members: workedMembers(7) }));
+
+  it('names the lobby and the password while it fills, for a linked viewer', () => {
+    const { container } = draw(filling(), { puuid: me });
+
+    const line = container.querySelector('.cn-missed');
+    expect(line?.textContent).toBe(missedInviteSentence('Customs 08 Sep #1', '4821'));
+    // The two values a person has to type are mono; the sentence around them is not.
+    expect([...(line?.querySelectorAll('.cn-num') ?? [])].map((node) => node.textContent)).toEqual([
+      'Customs 08 Sep #1',
+      '4821',
+    ]);
+    // One tap selects all four digits on a phone.
+    expect(line?.querySelector('.cn-missed-password')?.textContent).toBe('4821');
+  });
+
+  it('drops to the name alone when no companion has told us a password', () => {
+    const { container } = draw(snapshot(lobbyView({ members: workedMembers(7), lobbyPassword: null })), {
+      puuid: me,
+    });
+
+    expect(container.querySelector('.cn-missed')?.textContent).toBe(
+      missedInviteSentence('Customs 08 Sep #1', null),
+    );
+    expect(container.querySelector('.cn-missed')?.textContent).not.toContain('password');
+  });
+
+  it('is absent, not empty, when we do not know the lobby’s name', () => {
+    const { container } = draw(
+      snapshot(lobbyView({ members: workedMembers(7), lobbyName: null, lobbyPassword: '4821' })),
+      { puuid: me },
+    );
+
+    expect(container.querySelector('.cn-missed')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('4821');
+  });
+
+  it('is the last line of the primary block while the teams are up, and gone in game', () => {
+    const teams = workedTeams();
+    const balanced = lobbyView({ status: 'balanced', teams, members: workedMembers() });
+    const { container, unmount } = draw(snapshot(balanced), { puuid: me });
+
+    // Under the explanation strip, last in the block, above `Your role tonight`.
+    const block = container.querySelector('.cn-block');
+    expect(block?.lastElementChild?.className).toBe('cn-missed');
+    unmount();
+
+    // The game has started: there is nothing left to join.
+    draw(snapshot(lobbyView({ status: 'in_game', teams, members: workedMembers() })), { puuid: me });
+    expect(document.querySelector('.cn-missed')).not.toBeInTheDocument();
+  });
+
+  it('is drawn for nobody who is not signed in and matched to a player row', () => {
+    const { unmount } = draw(filling());
+    expect(document.querySelector('.cn-missed')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('4821');
+    unmount();
+
+    // Signed in with Discord, matching no player row: still not one of the twenty.
+    render(
+      <TonightView
+        snapshot={filling()}
+        viewer={{ kind: 'unlinked', claimable: [] }}
+        topPlayers={[]}
+        lobbyStart={null}
+      />,
+    );
+    expect(document.querySelector('.cn-missed')).not.toBeInTheDocument();
   });
 });

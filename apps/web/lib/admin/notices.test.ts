@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { LOBBY_WRITES_UNVERIFIED, openingOnPcLine } from './lobbyStart';
 import { type AdminFormKind, adminError, adminNotice, mintedToken } from './notices';
 
 /**
@@ -19,9 +20,10 @@ const players = handler('players/handler.ts');
 const tokens = handler('tokens/handler.ts');
 const discord = handler('discord-config/handler.ts');
 const reroll = handler('lobbies/[lobbyId]/reroll/handler.ts');
+const start = handler('lobbies/start/handler.ts');
 
 /** Every form kind the admin area still has. `seasons` left with M5.14's Start button. */
-const KINDS: AdminFormKind[] = ['players', 'tokens', 'discord', 'reroll'];
+const KINDS: AdminFormKind[] = ['players', 'tokens', 'discord', 'reroll', 'lobby-start'];
 
 describe('players', () => {
   const notice = (values: Record<string, string>) => adminNotice('players', values, { ok: true });
@@ -126,6 +128,43 @@ describe('the reroll', () => {
     ]) {
       expect(reroll, fragment).toContain(fragment);
     }
+  });
+});
+
+describe('the Start a lobby press (M4.2)', () => {
+  /** A whole answer, because the notice now parses the route's own response schema. */
+  const answer = {
+    ok: true,
+    commandId: '2f1d6d7e-6c9a-4f0e-9d3f-5f1b8c2a44e1',
+    host: { playerId: 'a6f0f4e2-1f77-4a63-9a5e-2c3f0b7d55aa', puuid: 'puuid-hamoodi', name: 'Hamoodi' },
+    lobbyName: 'Customs 10 Sep #1',
+    lobbyPassword: '4821',
+    cycle: 1,
+    expiresAt: '2026-09-10T19:41:00.000Z',
+  };
+
+  it('names the host the server picked, in the sentence the route itself composes', () => {
+    expect(adminNotice('lobby-start', {}, answer)).toBe(openingOnPcLine('Hamoodi'));
+  });
+
+  /**
+   * **Not a second copy of the string** — the one case in this file where the page and the
+   * handler call the same function, because the sentence has an argument in it. The guard is
+   * therefore that the handler still calls it, not that it contains the words.
+   */
+  it('composes the same function the handler does, rather than spelling it twice', () => {
+    expect(start).toContain('openingOnPcLine(value.hostName)');
+    expect(openingOnPcLine('Hana')).toBe("Opening a lobby on Hana's PC…");
+  });
+
+  it('falls back to a sentence with no name when the answer carries none', () => {
+    expect(adminNotice('lobby-start', {}, { ok: true })).toBe('the lobby is being opened');
+  });
+
+  it("prints the route's own words for a refusal, including today's gate sentence", () => {
+    expect(adminError({ ok: false, error: LOBBY_WRITES_UNVERIFIED }, 'fallback')).toBe(
+      LOBBY_WRITES_UNVERIFIED,
+    );
   });
 });
 

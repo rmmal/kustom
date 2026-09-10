@@ -8,6 +8,7 @@
  * labels, lower case inside a sentence.
  */
 
+import { config, seedFromRank } from '@customs/core';
 import type { WindowKind } from '../night';
 
 /** The primary number: `round(ordinal * 60)`. Named once per page, in the legend. */
@@ -227,3 +228,96 @@ export function gamesLabel(games: number): string {
 export function winLossLabel(wins: number, losses: number): string {
   return `${wins}W ${losses}L`;
 }
+
+/* ---------------------------------------------------------------------------
+ * "How you got here" (M5.15): the seed line above the chart, the per-game
+ * sentence on every row of `Recent games`, and the one line under the list.
+ *
+ * Product's words, from `05-design.md`'s copy table (2026-09-10). Every number
+ * inside them is `lib/ratingDisplay.ts`'s — the sentences below take the
+ * already-formatted string and never round anything themselves.
+ * ------------------------------------------------------------------------- */
+
+/** No rank in `players.rank_tier`: the client never reported one, said in one word. */
+export const UNRANKED_LABEL = 'Unranked';
+
+/**
+ * The rank the seed came from, as words: `Gold II`, `Master`, `Unranked`.
+ *
+ * The client sends the tier upper case (`GOLD`) and the division as a Roman numeral, and
+ * `seedFromRank` reads exactly those two strings — so this formats the same pair the seed was
+ * computed from and cannot name a rank the number did not come from. Master and above have no
+ * division (`config.rating.tiersWithoutDivisions`), and a tier core does not recognise seeds as
+ * unranked, so it is named that way here too: `Unranked` when the client reported none.
+ */
+export function rankLabel(tier: string | null, division: string | null): string {
+  const key = (tier ?? '').trim().toUpperCase();
+  // Exactly core's own test for "I do not know this tier": an unrecognised string seeds the
+  // unranked mu, and a page that printed `Gold` beside a number seeded from 20 would be lying
+  // about where the number came from.
+  const seeded = seedFromRank(key, division);
+  const unranked = seedFromRank(null, null);
+  if (seeded.mu === unranked.mu && seeded.sigma === unranked.sigma) return UNRANKED_LABEL;
+
+  const titled = `${key.charAt(0)}${key.slice(1).toLowerCase()}`;
+  const numeral = (division ?? '').trim().toUpperCase();
+  const withoutDivisions: readonly string[] = config.rating.tiersWithoutDivisions;
+  return withoutDivisions.includes(key) || numeral.length === 0 ? titled : `${titled} ${numeral}`;
+}
+
+/**
+ * `Seeded from Gold II at 1469, 37 games since.` — once, above the chart (M5.15).
+ *
+ * The number is the **same value the chart's reference line draws**, passed in by the caller,
+ * so the line and the sentence cannot disagree; the count is `ratings.games`.
+ *
+ * **At zero games the clause is dropped**: `Seeded from Gold II at 1469.` A brand-new player's
+ * line would otherwise end `, 0 games since.`, and M5.15's acceptance says their page shows the
+ * seed line and never a `0` (`04-decisions.md`, 2026-09-10).
+ */
+export function seededLine(rank: string, rating: number, games: number): string {
+  return `Seeded from ${rank} at ${rating}${sinceClause(games)}`;
+}
+
+/**
+ * The same line in a window: `Started the week at 1469, 6 games since.` The rating is the one
+ * the player carried **into** the window — the chart's `start` hairline — and the count is the
+ * window's counted games.
+ *
+ * Product wrote the week form; the month windows say `the month` by the same shape, because
+ * `Started the week` on `Last month` would name the wrong calendar (`04-decisions.md`).
+ */
+export function startedLine(window: WindowKind, rating: number, games: number): string {
+  const period = window === 'this-month' || window === 'last-month' ? 'month' : 'week';
+  return `Started the ${period} at ${rating}${sinceClause(games)}`;
+}
+
+/** `, 37 games since.` — or nothing at all when there are none to count. */
+function sinceClause(games: number): string {
+  return games === 0 ? '.' : `, ${gamesLabel(games)} since.`;
+}
+
+/**
+ * Why a rating change is the size it is, on one row of `Recent games`: `As the 58% side.`
+ * (product and the designer, 2026-09-10).
+ *
+ * **The clause and nothing else.** The row's own head already prints `Won`, the date, the
+ * duration and `1392 (−42)`; a caption under it that said `Lost as the 58% side, −42` would say
+ * the result twice and the change twice, which is three of the four words on the line repeated
+ * in grey. What the head cannot say is the one thing this task is for: what the balancer
+ * thought the odds were.
+ *
+ * The percentage is the chance the balancer gave **their** side. A game with no stored chance
+ * has no caption at all — no `Won, +43` form — and neither has an unrated row, which M3.23
+ * answers whole in three words.
+ */
+export function gameExplanation(chance: number): string {
+  return `As the ${chance}% side.`;
+}
+
+/**
+ * The point of the whole task, under the list and **once per page** — not per row. No maths, no
+ * formula, no link to a paper (product, 2026-09-10).
+ */
+export const RATING_EXPLANATION =
+  'Beating the favoured side moves you more than beating the underdog, and the board moves you more while it is still unsure about you.';

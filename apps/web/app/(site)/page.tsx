@@ -1,8 +1,11 @@
 import { loadTopPlayersOrNone } from '@/lib/board/load';
 import { LEADERBOARD_WINDOW } from '@/lib/board/window';
 import { createPublicClient } from '@/lib/publicClient';
+import { getServiceClient } from '@/lib/supabase';
 import { loadTonight } from '@/lib/tonight/load';
+import { loadLobbyStartOrNone } from '@/lib/tonight/lobbyStart';
 import { nightTimeZone, tonightStart } from '@/lib/tonight/night';
+import { viewerIsAdmin } from '@/lib/tonight/viewer';
 import { currentViewerState } from '@/lib/viewer';
 import { TonightLive } from '../_tonight/TonightLive';
 import '../tonight.css';
@@ -48,5 +51,17 @@ export default async function TonightPage() {
     }),
   ]);
 
-  return <TonightLive initial={snapshot} viewer={viewer} topPlayers={topPlayers} />;
+  /**
+   * Tonight's newest `create_lobby`, for the `Start a lobby` control (M4.2).
+   *
+   * **Read after the three above, and only for an admin.** `companion_commands` is
+   * service-role only, so this is not part of the snapshot and cannot be: the snapshot is
+   * re-read in the browser with the anon key. One extra round trip, on the one session that
+   * can press the button, and never on the WhatsApp link's ordinary path.
+   */
+  const lobbyStart = viewerIsAdmin(viewer)
+    ? await loadLobbyStartOrNone(getServiceClient(), { timeZone: nightTimeZone() })
+    : null;
+
+  return <TonightLive initial={snapshot} viewer={viewer} topPlayers={topPlayers} lobbyStart={lobbyStart} />;
 }

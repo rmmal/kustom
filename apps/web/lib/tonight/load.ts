@@ -73,6 +73,10 @@ export async function loadTonight(
 interface LobbyRow {
   id: string;
   status: LobbyView['status'];
+  /** `Customs 09 Sep #1`, when the client reported one. Half of M4.10's line. */
+  lobbyName: string | null;
+  /** The four digits the companion set, when it sent them (M4.2). Never a secret. */
+  lobbyPassword: string | null;
 }
 
 /**
@@ -86,14 +90,24 @@ interface LobbyRow {
 async function selectLobby(client: PublicClient, nightStart: string): Promise<LobbyRow | null> {
   const { data, error } = await client
     .from('lobbies')
-    .select('id, status')
+    // The name and the password come back with the row the page is already reading (M4.10):
+    // one query, three facts. Both are publicly readable — RLS is row-level, and this row is
+    // the one the anon policy already returns — and neither is a secret: the password goes in
+    // the Discord embed and is read out in voice.
+    .select('id, status, lobby_name, lobby_password')
     .gte('created_at', nightStart)
     .neq('status', 'abandoned')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`tonight: lobby lookup failed: ${error.message}`);
-  return data ?? null;
+  if (data === null) return null;
+  return {
+    id: data.id,
+    status: data.status,
+    lobbyName: data.lobby_name,
+    lobbyPassword: data.lobby_password,
+  };
 }
 
 /**
@@ -128,7 +142,15 @@ async function loadLobby(client: PublicClient, lobby: LobbyRow, seasonId: string
           lobby.status === 'finished' ? loadResult(client, lobby.id, byPuuid) : Promise.resolve(null),
         ]);
 
-  return { id: lobby.id, status: lobby.status, members, teams, result };
+  return {
+    id: lobby.id,
+    status: lobby.status,
+    lobbyName: lobby.lobbyName,
+    lobbyPassword: lobby.lobbyPassword,
+    members,
+    teams,
+    result,
+  };
 }
 
 interface PlayerRow {

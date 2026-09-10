@@ -940,3 +940,83 @@
 .cn-signin {
   display: flex;
 }
+
+/* ---------------------------------------------------------------------------
+ * `Start a lobby` (M4.2's control, M4.7 (a)'s layout — the designer, 2026-09-10).
+ *
+ * **Not a card.** It is a stack of lines under the status strip: the button, then the one
+ * sentence that answers it, then the invited line. A card would make the one thing an admin can
+ * do on an idle page look like a fourth panel of a page that already has three, and the 2px
+ * `brand` inset rule is spoken for — it means "this is about you", and this is about the night.
+ *
+ * In `idle` the stack sits **above** the rack, directly under the strip's sentence: ten empty
+ * seats are 480px and a button under them is under the fold on a 390px phone. In `filling` the
+ * same block, with no button in it, sits under the rack as a readout.
+ * ------------------------------------------------------------------------- */
+
+.cn-start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-3);
+}
+
+/* The form is the button, and the button is `.cn-button`: 44px, full width on a phone and its
+   own width from 720px, exactly like the reroll control's. */
+.cn-start-form {
+  display: flex;
+}
+
+/*
+ * The one slot under the button. A **progress** line is `text` at 400 — it is a state, and the
+ * page is not shouting it — and a **refusal** is 600, because it is the answer to something
+ * somebody just pressed and it has to be found without hunting. Neither is `dim`: a sentence in
+ * caption grey under an amber control is a sentence nobody reads, and red here would read as
+ * the red side. Nothing in either is mono; they are language.
+ */
+.cn-start-note {
+  margin: 0;
+  font-size: var(--cn-t-sm);
+  font-weight: 400;
+  color: var(--cn-text);
+}
+
+.cn-start-note-refused {
+  font-weight: 600;
+}
+
+/*
+ * The quiet button, while a `create_lobby` is live. **Never the `disabled` attribute**: a
+ * disabled control drops the focus to `<body>`, and M3.20 is about the focus staying where the
+ * keyboard left it — so it carries `aria-disabled` and its own class, and the submit
+ * short-circuits. It reads exactly like `.cn-button:disabled` and answers to a click.
+ */
+.cn-button-quiet {
+  color: var(--cn-dim);
+  border-color: var(--cn-line);
+  cursor: default;
+}
+
+/* ---------------------------------------------------------------------------
+ * `Missed the invite?` (M4.10, the designer 2026-09-10).
+ *
+ * **The last line of the primary block**, not part of the Start-a-lobby stack: under the rack
+ * while the lobby fills, under the explanation strip while the teams are up, and above
+ * `Your role tonight` in both. It is an instruction to somebody who is not in the lobby yet,
+ * so it goes after everything that is about the people who are.
+ *
+ * Archivo `t-sm` in **`text`**, not `dim`: it is the one line on this page a reader is meant to
+ * act on, and a grey one reads as a footnote. The two values in it are the **one exception** to
+ * "numbers inside sentences are Archivo" — a token you transcribe into another window is mono —
+ * and the password carries `user-select: all`, so one tap selects the whole four digits on a
+ * phone rather than one of them.
+ * ------------------------------------------------------------------------- */
+
+.cn-missed {
+  margin: 0;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-text);
+}
+
+.cn-missed-password {
+  user-select: all;
+}

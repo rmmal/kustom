@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import type { BoardRow } from '@/lib/board/types';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
+import type { LobbyStartView } from '@/lib/tonight/lobbyStart';
 import { hasNamelessRow, tonightState } from '@/lib/tonight/state';
 import type { TonightSnapshot } from '@/lib/tonight/types';
 import type { ViewerState } from '@/lib/tonight/viewer';
@@ -44,6 +45,19 @@ const COALESCE_MS = 120;
  */
 const NAME_REREAD_MS = 60_000;
 
+/**
+ * How often the page asks the server what became of a pending `create_lobby` (M4.2).
+ *
+ * **A poll, not a subscription, and not by choice.** `companion_commands` has no RLS policy at
+ * all and is in no Realtime publication (`0001_init.sql`) — the browser may not read that table
+ * with the anon key and will never be sent an event about it — so the only way to learn that
+ * the host's client answered is to ask this route's server components again. Five seconds is
+ * the companion's own poll interval, so the page cannot be more than one companion tick behind
+ * the client, and the command lives sixty seconds, so this runs at most a dozen times and only
+ * for the one admin who pressed the button.
+ */
+const START_POLL_MS = 5_000;
+
 export interface TonightLiveProps {
   initial: TonightSnapshot;
   /** Who is reading, decided on the server from the session (`lib/viewer.ts`). */
@@ -55,9 +69,15 @@ export interface TonightLiveProps {
    * no reason a reader can see.
    */
   topPlayers: readonly BoardRow[];
+  /**
+   * Tonight's newest `create_lobby`, read on the server for an admin only. Re-read by
+   * `router.refresh()` — see {@link START_POLL_MS} — and never by the snapshot's own re-read,
+   * which is made with the anon key and cannot see that table.
+   */
+  lobbyStart?: LobbyStartView | null;
 }
 
-export function TonightLive({ initial, viewer, topPlayers }: TonightLiveProps) {
+export function TonightLive({ initial, viewer, topPlayers, lobbyStart = null }: TonightLiveProps) {
   const [snapshot, setSnapshot] = useState(initial);
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -71,6 +91,19 @@ export function TonightLive({ initial, viewer, topPlayers }: TonightLiveProps) {
   const onViewerChanged = useCallback(() => {
     startTransition(() => router.refresh());
   }, [router]);
+  /**
+   * The same re-read, for the same reason: `companion_commands` is service-role only, so the
+   * answer to "did the lobby open?" is a server render and not an event. One function, two
+   * callers, so a press and a self-link cannot end up refreshing two different things.
+   */
+  const refreshServer = onViewerChanged;
+  const startPending = lobbyStart?.status === 'pending' || lobbyStart?.status === 'sent';
+
+  useEffect(() => {
+    if (!startPending) return;
+    const timer = setInterval(refreshServer, START_POLL_MS);
+    return () => clearInterval(timer);
+  }, [startPending, refreshServer]);
   const refresh = useRef<() => void>(() => {});
   const nightStart = initial.nightStart;
   /**
@@ -162,7 +195,9 @@ export function TonightLive({ initial, viewer, topPlayers }: TonightLiveProps) {
       snapshot={snapshot}
       viewer={viewer}
       topPlayers={topPlayers}
+      lobbyStart={lobbyStart}
       onViewerChanged={onViewerChanged}
+      onLobbyStarted={refreshServer}
     />
   );
 }

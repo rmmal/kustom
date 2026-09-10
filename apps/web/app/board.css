@@ -475,6 +475,58 @@
   color: var(--cn-text);
 }
 
+/*
+ * "How you got here" (M5.15).
+ *
+ * Two quiet lines and no new furniture: the seed line above the chart, and one sentence per
+ * game under the head it explains. Both are `t-sm` `dim` prose — the same voice as the hint
+ * lines this page already carries — because they are the page explaining itself, not a second
+ * column of numbers. **Never a table**: the sentence wraps to two lines on a 390px screen and
+ * that is the correct outcome (`05-design.md`, M5.8 owns the dress).
+ */
+/*
+ * The seed line, above the chart. **`t-base` in `text`, not a hint**: it is the first half of
+ * the page's answer to "how did I get here", it is read once, and a sentence in caption grey
+ * under two large numbers is a sentence that reads as a footnote to them.
+ */
+.cn-seed-line {
+  margin: 0;
+  margin-block: var(--cn-sp-3);
+  font-size: var(--cn-t-base);
+  color: var(--cn-text);
+}
+
+/*
+ * One game's chance clause, in the head's own gutter, under the result it explains. `t-sm`
+ * `dim`, because the row's own words — `Won`, the date, `1512 (+43)` — are the line and this
+ * says why that number is the size it is. Padding rather than a negative margin: the head
+ * carries its own air and this simply takes the bottom of it.
+ */
+.cn-game-why {
+  margin: 0;
+  padding: 0 var(--cn-sp-3) var(--cn-sp-2);
+  font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+  line-height: 1.4;
+}
+
+/*
+ * The one explanation line under `Recent games`, in the tonight page's **explanation-strip**
+ * dress (the designer, 2026-09-10): a 3px `brand` leading rule and `sp-3` of padding. That rule
+ * means "the bot is explaining itself", which is exactly what this sentence is, and it is the
+ * same mark the split's explanation carries under the team cards.
+ *
+ * The class is `.cn-explain`, the tonight page's own, so the two surfaces cannot drift into two
+ * dresses for one idea. `tonight.css` adds a card, a flex column and a 720px row to it for the
+ * reroll button that sits inside it there; this page's line is a bare `<p>` and takes neither.
+ */
+.cn-explain {
+  border-inline-start: 3px solid var(--cn-brand);
+  padding: var(--cn-sp-3);
+  font-size: var(--cn-t-base);
+  color: var(--cn-text);
+}
+
 /* The five, in lane order: the same positions as the team cards and the result embed. */
 .cn-lineup-row {
   display: grid;

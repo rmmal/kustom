@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   NOT_RATED,
   NOT_RATED_HINT,
+  RATING_EXPLANATION,
   RATING_LABEL,
   RECENT_GAMES_HEADING,
   RECENT_RATING_LEGEND,
@@ -12,6 +13,7 @@ import {
   START_LABEL,
   WINDOW_EMPTY,
 } from '@/lib/board/copy';
+import { explainGame } from '@/lib/board/explain';
 import type { PlayerBoardView } from '@/lib/board/types';
 import { workedPlayer, workedRecentGame } from '@/lib/testing/boardFixtures';
 import { workedPuuid } from '@/lib/testing/workedExample';
@@ -44,11 +46,13 @@ describe('the two numbers', () => {
     expect(document.body.textContent).not.toMatch(/\bMMR\b|\bScore\b/);
   });
 
-  it('prints the record directly under them, the way a board row does', () => {
+  it('prints the record directly under them, without the count the seed line carries', () => {
     const { container } = draw();
 
-    // Hana: 37 games in the fixture, half of them won.
-    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('37 games · 19W 18L');
+    // Hana: 37 games in the fixture, half of them won. The `37 games` half moved into the seed
+    // sentence forty pixels below (the designer, 2026-09-10) — one page, one count.
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('19W 18L');
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('37 games since.');
     // Directly under: the two are one block, not two blocks a gap apart.
     const summary = container.querySelector('.cn-summary');
     expect([...(summary?.children ?? [])].map((child) => child.className)).toEqual([
@@ -60,7 +64,9 @@ describe('the two numbers', () => {
   it('says `1 game` for somebody with one, never `1 games`', () => {
     const { container } = draw(workedPlayer('Hana', { games: 1, wins: 1, losses: 0 }));
 
-    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('1 game · 1W 0L');
+    // The count is the seed line's now, and it is still `1 game`.
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('1W 0L');
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('1 game since.');
   });
 });
 
@@ -125,7 +131,9 @@ describe('the rating history chart', () => {
     expect(screen.queryByText(WINDOW_EMPTY['all-time'])).not.toBeInTheDocument();
     // Nothing to plot, so nothing is plotted — and nothing is claimed either.
     expect(container.querySelector('.cn-chart-svg')).not.toBeInTheDocument();
-    expect(container.querySelector('.cn-row-meta')?.textContent).toContain('37 games');
+    // The count is in the seed line now, and it still says forty games happened.
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('37 games since.');
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('19W 18L');
   });
 });
 
@@ -319,10 +327,12 @@ describe('a window on the player page', () => {
     expect(line?.textContent).not.toContain('games');
   });
 
-  it('counts the window games in the record, not a whole history', () => {
+  it('counts the window games, once: the record and the line under it are one count', () => {
     const { container } = draw(week);
 
-    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('6 games · 4W 2L');
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('4W 2L');
+    // The week's own count lives in the line that says what it is counted since.
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('6 games since.');
   });
 
   /** `seed` is where the board started them; `start` is where the week found them. */
@@ -516,5 +526,113 @@ describe('a game that moved nothing (M3.23)', () => {
 
     draw();
     expect(screen.queryByText(NOT_RATED_HINT)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * "How you got here" (M5.15). The page's own half of it: every row carries its sentence, the
+ * seed line sits above the chart, and the one explanation line is drawn once. The sentences
+ * themselves are `lib/board/explain.test.ts`; these are about what is on the screen.
+ */
+describe('why each change is the size it is', () => {
+  it('carries the chance its own side was given, on every row that has one', () => {
+    const { container } = draw(
+      workedPlayer('Hana', {
+        recent: [
+          workedRecentGame({ gameId: 'game-1', won: true, side: 200, blueWinProb: 0.58 }),
+          workedRecentGame({ gameId: 'game-2', won: false, side: 100, blueWinProb: 0.58 }),
+        ],
+      }),
+    );
+
+    const sentences = [...container.querySelectorAll('.cn-game-why')].map((node) => node.textContent);
+    // Red's chance on the first row, blue's on the second, from one split: 42 and 58.
+    expect(sentences).toEqual(['As the 42% side.', 'As the 58% side.']);
+    expect(sentences[0]).toBe(explainGame(workedRecentGame({ won: true, side: 200, blueWinProb: 0.58 })));
+    // And it says nothing the head above it already said.
+    expect(sentences.join(' ')).not.toMatch(/Won|Lost|[+−]/);
+  });
+
+  it('draws no caption at all on a backfilled row, and still prints the row', () => {
+    const { container } = draw(
+      workedPlayer('Hana', { recent: [workedRecentGame({ won: true, blueWinProb: null })] }),
+    );
+
+    expect(container.querySelector('.cn-game-why')).not.toBeInTheDocument();
+    // The row itself is untouched: result, date, duration, rating and delta.
+    expect(container.querySelector('.cn-game-head')?.textContent).toContain('Won');
+    expect(container.querySelector('.cn-delta')).toBeInTheDocument();
+  });
+
+  it('leaves an unrated row untouched: three words, and no sentence under them', () => {
+    const { container } = draw(
+      workedPlayer('Hana', {
+        recent: [workedRecentGame({ gameId: 'game-unrated', muBefore: null, muAfter: null })],
+      }),
+    );
+
+    expect(container.querySelector('.cn-game-rating')?.textContent).toBe(NOT_RATED);
+    expect(container.querySelector('.cn-game-why')).not.toBeInTheDocument();
+  });
+
+  it('prints the explanation line once per page, not once per row', () => {
+    draw(
+      workedPlayer('Hana', {
+        recent: [workedRecentGame({ gameId: 'a' }), workedRecentGame({ gameId: 'b' })],
+      }),
+    );
+
+    expect(screen.getAllByText(RATING_EXPLANATION)).toHaveLength(1);
+    // In the tonight page's explanation-strip dress: the 3px `brand` rule that means "the bot
+    // is explaining itself" (the designer, 2026-09-10).
+    expect(screen.getByText(RATING_EXPLANATION)).toHaveClass('cn-explain');
+  });
+});
+
+describe('the seed line', () => {
+  it('names the rank, the displayed seed and the games since, above the chart', () => {
+    const player = workedPlayer();
+    const { container } = draw(player);
+
+    const line = container.querySelector('.cn-seed-line');
+    expect(line?.textContent).toBe(`Seeded from Silver II at ${player.reference}, 37 games since.`);
+    // Above the chart, and it is the chart's own reference number: one value, read once, so
+    // the hairline and the sentence cannot disagree (M5.15, acceptance check 4).
+    expect(line?.nextElementSibling?.className).toContain('cn-chart');
+    expect(screen.getByText(SEED_LABEL)).toBeInTheDocument();
+  });
+
+  it('is the whole of a page for a player who has never played: no chart, no list, no zeros', () => {
+    const player = workedPlayer('Hana', {
+      games: 0,
+      wins: 0,
+      losses: 0,
+      history: [],
+      recent: [],
+      roles: [],
+      range: null,
+    });
+    const { container } = draw(player);
+
+    expect(container.querySelector('.cn-seed-line')?.textContent).toBe(
+      `Seeded from Silver II at ${player.reference}.`,
+    );
+    expect(container.querySelector('.cn-chart')).not.toBeInTheDocument();
+    expect(container.querySelector('.cn-games')).not.toBeInTheDocument();
+    expect(container.querySelector('.cn-row-meta')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('NaN');
+    // The window's own empty sentence is what says there is nothing here.
+    expect(screen.getByText(WINDOW_EMPTY['all-time'])).toBeInTheDocument();
+  });
+
+  it('says where the window found them, not where the board seeded them', () => {
+    const { container } = draw(
+      workedPlayer('Hana', { window: 'this-week', games: 6, wins: 4, losses: 2, reference: 1469 }),
+    );
+
+    expect(container.querySelector('.cn-seed-line')?.textContent).toBe(
+      'Started the week at 1469, 6 games since.',
+    );
+    expect(screen.getByText(START_LABEL)).toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import { provenRating, provenSortKey } from '../ratingDisplay';
 import type { PlayerName } from '../tonight/types';
-import { SETTLING_GAMES } from './copy';
+import { rankLabel, SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
 import { recentGames } from './recent';
 import { currentStreak } from './streak';
@@ -64,6 +64,12 @@ interface SeasonGame {
   startedAt: string;
   durationS: number;
   winningSide: SideValue;
+  /**
+   * The lobby this game was born in, or `null` for a backfilled one and for a game whose lobby
+   * row was cleared (`on delete set null`). It is the only way to the split the balancer chose,
+   * and therefore to the win chance M5.15 prints.
+   */
+  lobbyId: string | null;
 }
 
 interface PlayerRow {
@@ -351,6 +357,9 @@ export async function loadPlayerBoard(
   const window = options.window;
   const range = windowRange(window, options.now ?? new Date(), options.timeZone);
   const seed = displayRating(seedFromRank(player.rankTier, player.rankDivision).mu);
+  // The same two strings the seed was computed from, as words (M5.15): the line above the
+  // chart names the rank the number came from, so the two are read from one place.
+  const seedRank = rankLabel(player.rankTier, player.rankDivision);
   const season = await selectSeasonId(client);
 
   // No season row means no games and no ratings: the page is the person, their seed numbers
@@ -369,6 +378,7 @@ export async function loadPlayerBoard(
       wins: 0,
       losses: 0,
       settling: true,
+      seedRank,
       reference: seed,
       history: [],
       roles: [],
@@ -459,6 +469,7 @@ export async function loadPlayerBoard(
     losses: counted - wins,
     // The 30-game rule reads the whole history in every window (M3.8).
     settling: allTimeGames < SETTLING_GAMES,
+    seedRank,
     /**
      * The chart's hairline: the seed on `All time`, and in a window the rating carried
      * **into** it — the `mu_before` of the first counted game in it, which is where the week
@@ -525,6 +536,12 @@ async function loadRecentGames(
     client,
     rows.map((row) => row.playerId),
   );
+  // The win chance the balancer gave, per lobby (M5.15). Read for the five on screen and not
+  // for the season: it is a sentence on a row, and a row nobody is looking at needs no odds.
+  const odds = await loadChosenWinProbs(
+    client,
+    played.flatMap(({ game }) => (game.lobbyId === null ? [] : [game.lobbyId])),
+  );
 
   return played.map(({ row, game }) => {
     const team: RecentTeammate[] = rows
@@ -546,9 +563,41 @@ async function loadRecentGames(
       role: row.role,
       muBefore: row.muBefore,
       muAfter: row.muAfter,
+      // Blue's chance, as it was stored. The page turns it into this player's own side's.
+      blueWinProb: game.lobbyId === null ? null : (odds.get(game.lobbyId) ?? null),
       team: inLaneOrder(team),
     };
   });
+}
+
+/**
+ * The chance the balancer gave blue, per lobby: the **chosen** split's `blue_win_prob` (M5.15).
+ *
+ * `splits` is publicly readable and is the same row the tonight page and the teams embed read,
+ * so the percentage on a recent-games row is the one the group was shown on the night. A lobby
+ * with no chosen split — balanced and then rerolled into nothing, or never balanced at all —
+ * simply has no entry, and the row drops the clause.
+ */
+async function loadChosenWinProbs(
+  client: PublicClient,
+  lobbyIds: readonly string[],
+): Promise<Map<string, number>> {
+  const odds = new Map<string, number>();
+
+  for (const chunk of inChunks(lobbyIds)) {
+    const { data, error } = await client
+      .from('splits')
+      .select('lobby_id, blue_win_prob')
+      .in('lobby_id', chunk)
+      .eq('is_chosen', true);
+    if (error) throw new Error(`board: split lookup failed: ${error.message}`);
+
+    for (const row of data ?? []) {
+      if (row.blue_win_prob === null) continue;
+      odds.set(row.lobby_id, row.blue_win_prob);
+    }
+  }
+  return odds;
 }
 
 /**
@@ -729,7 +778,7 @@ async function loadSeasonGames(
 ): Promise<SeasonGame[]> {
   let query = client
     .from('games')
-    .select('id, started_at, duration_s, winning_side')
+    .select('id, started_at, duration_s, winning_side, lobby_id')
     .eq('season_id', seasonId);
   // **The window is a filter in the query, not a filter in memory** (M5.12): `Last month` on a
   // year of history would otherwise be read through the cap and come back empty.
@@ -746,6 +795,7 @@ async function loadSeasonGames(
             startedAt: row.started_at,
             durationS: row.duration_s,
             winningSide: row.winning_side as SideValue,
+            lobbyId: row.lobby_id,
           },
         ]
       : [],
