@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { WindowKind } from '../night';
 
 /**
@@ -15,13 +16,21 @@ import type { WindowKind } from '../night';
  * then the two months, then all time. Nearest window first, because the leaderboard opens on
  * `This week` and the tap most people make is one step away from it.
  */
-export const WINDOW_ORDER: readonly WindowKind[] = [
+export const WINDOW_ORDER = [
   'this-week',
   'last-week',
   'this-month',
   'last-month',
   'all-time',
-];
+] as const satisfies readonly WindowKind[];
+
+/**
+ * The parameter, as a schema — the same `zod` every other boundary in this app is validated
+ * with (CLAUDE.md), rather than an `includes` and a cast. It is built from
+ * {@link WINDOW_ORDER}, so the five words, the picker's order and what a URL may say are one
+ * list and cannot drift.
+ */
+export const windowKindSchema = z.enum(WINDOW_ORDER);
 
 /**
  * `/leaderboard` opens on the running week: the board is a thing that ends, and the page
@@ -55,8 +64,10 @@ export const STATS_WINDOW: WindowKind = 'this-month';
  */
 export function parseWindow(value: string | string[] | undefined, fallback: WindowKind): WindowKind | null {
   if (value === undefined) return fallback;
-  if (typeof value !== 'string') return null;
-  return (WINDOW_ORDER as readonly string[]).includes(value) ? (value as WindowKind) : null;
+  // A repeated parameter arrives as an array; `z.enum` refuses it, like anything else that is
+  // not one of the five, so it is a 404 rather than a silent first-element read.
+  const parsed = windowKindSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
