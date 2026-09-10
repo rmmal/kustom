@@ -35,14 +35,16 @@ export interface RatingChartProps {
   window: WindowKind;
 }
 
-export function RatingChart({ history, reference, window }: RatingChartProps) {
+// `window` is destructured under another name on purpose: a parameter called `window` shadows
+// the global one, and this file is one `'use client'` away from that mattering.
+export function RatingChart({ history, reference, window: kind }: RatingChartProps) {
   const geometry = chartGeometry(history, reference);
   /**
    * **`seed` is a fact about a whole history and `start` is a fact about a window** (M5.12,
    * `05-design.md`'s copy table): where the board first put this player, against where the
    * week found them. One word each, and the accessible label below says the same one.
    */
-  const referenceLabel = window === 'all-time' ? SEED_LABEL : START_LABEL;
+  const referenceLabel = kind === 'all-time' ? SEED_LABEL : START_LABEL;
   if (geometry === null) return null;
 
   const first = history[0] as number;
