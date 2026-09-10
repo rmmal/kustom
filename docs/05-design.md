@@ -673,6 +673,108 @@ black screen. v2:
 - The v1 `Last night and the board` link becomes the `Leaderboard` tab in the top bar. One destination, one
   place.
 
+#### `Start a lobby`, and the lobby a latecomer can still join (M4.7 (a) and M4.10, designer 2026-09-10)
+
+The one tap this product has. 21:00, an admin opens the page from the same WhatsApp link everybody else has,
+and this is the only thing on it they can press. The words are settled in "Copy — `Start a lobby`"; this is
+where the control sits, what it is dressed in, and — the part the first build got wrong — **which states it is
+drawn in at all**.
+
+**It is drawn in `idle` only.** `filling` means a live `lobbies` row exists, and `decideStart` refuses on
+exactly that with `There is already a lobby open.` A control whose only possible answer is a refusal is not a
+control — the same rule that already keeps it off `balanced`, applied one state earlier. In `filling` the block
+still renders, without the button, to carry `Invited 7 friends — waiting for them to accept.` and a failed
+create's nack: those are a readout, and a readout is not a control.
+
+**In `idle` it sits above the rack**, directly under the status strip's sentence. Below it the rack is ten 44px
+rows of `open`, and the button lands at y≈799 on a 390 × 844 phone — under the fold, on the one screen where it
+is the point of the page. The rack in `idle` is a picture of what the page will look like in an hour; the
+button is the thing that makes that happen, and it goes first. In `filling` the readout is **under** the rack,
+because there the rack is content and the line is about the seats in it.
+
+**No card.** No surface, no border, no padding box. A bordered card holding one button and one line is a fourth
+card in an idle column that already carries three, and at 1280 it renders as 1300 × 110px of empty surface with
+a 200px button in one corner — the sparse look Floodlit exists to end. The block is `display: flex;
+flex-direction: column; gap: var(--cn-sp-3)` and nothing else; the `.cn-block` gap above it is its only margin.
+Precedent: the reroll button has no card either — it sits on the strip whose sentence it re-rolls.
+
+**No mark.** Not the 2px `brand` inset rule, which means "this is about you" on the rack row and the role card;
+this is about the night, and a second meaning for one mark is worse than no mark. Not the 3px `brand` leading
+rule, which means "the bot's own sentence" on the explanation and sit-out strips. And not a mark meaning
+"admin": the route is admin-gated only until M3.6's third route class lands, and a mark that has to be removed
+in a month should not be drawn now.
+
+**The button is the amber `.cn-button`, unchanged** — outline, `brand` text, `radius-row`, 44px, full width
+below 720px and its own width above. It is the amber control on this page, and it never competes with the other
+one: `Start a lobby` is drawn in `idle`, `Reroll` in `balanced`, and the state table makes those disjoint. **It
+is never a filled amber block.** 358 × 44px of solid `brand` is more lit area than the live pill, a winner's
+ring and a 4px side rule put together, it breaks the one-lamp rule, and in light it reads as a warning banner —
+the same reason the sign-in control is an outline.
+
+**The three states, and what tells them apart.** One slot under the button, never a toast, never a banner,
+never the URL. They differ by **weight, not colour**: red would read as side 200 and there is no green in this
+palette.
+
+| State | Line | Type | Live region | The button |
+|---|---|---|---|---|
+| idle, nothing pressed | — | — | — | amber, live |
+| pending / sent | `Opening a lobby on Hana's PC…` | Archivo `t-sm` 400 `text` | `role="status"` | **quiet**: `dim` text, `line` border, `aria-disabled="true"` |
+| refused | one of the route's sentences | Archivo `t-sm` **600** `text` | `role="alert"` | amber, live — a refusal is a thing you retry |
+| acked, filling | `Invited 7 friends — waiting for them to accept.` | Archivo `t-sm` `dim` (`.cn-hint`) | `role="status"` | not drawn |
+
+- **The pending button is quiet but not `disabled`.** A second tap while a create is in flight can only return
+  `A lobby is already being opened.`, so the control must stop looking like an invitation — but `disabled`
+  moves focus off the button that was just pressed, which is the one thing M3.20 exists to prevent.
+  `aria-disabled` plus the `:disabled` dress plus a client-side short-circuit keeps the focus and kills the
+  press.
+- **Success prints nothing.** The lobby appearing is the answer.
+
+##### The number-in-a-sentence rule, and the one thing that breaks it
+
+**A quantity inside a sentence stays in the sentence's family.** The `7` in `Invited 7 friends`, the `1290` and
+the `37` in the seed line, the `58%` in a caption: all Archivo. Mono is for numbers **in a column**, where the
+tabular edge is the job; a mono number mid-Archivo-line changes x-height in the middle of a sentence and reads
+as code.
+
+**A token you have to transcribe is mono, sentence or not.** A lobby name and a four-digit password are not
+quantities being read in passing — they are characters being retyped into another application, which is
+exactly what the Type table already means by listing `lobby password` under mono, and where a distinguishable
+`1`/`l` and `0`/`O` is the whole point. Those two spans, and nothing else inside a sentence.
+
+##### `Missed the invite?` — the lobby line (M4.10)
+
+The invite fan-out runs **once**, on the create ack. There is no second wave and the button is not a doorman,
+so the friend who walks into voice at 21:20, and the one who swiped the popup away, have one way in that does
+not interrupt nine people: the lobby's name and its four digits, read off the page they are already holding.
+The words are product's; the gate is the lead's; this is the slot and the dress.
+
+- **It is not part of the `Start a lobby` block.** It is drawn in `filling` **and `balanced`**, and the control
+  is drawn in `idle`, so they are two objects that only ever share a screen in `filling`. There they stack in
+  that order — the readout about the invites that went out, then the way in for somebody they missed.
+- **Home: the last line of the primary block**, above `Your role tonight`. In `filling` that puts it under the
+  rack; in `balanced` under the explanation strip. One slot, one rule, both states — the alternative is a line
+  that moves between two blocks when the teams land, on the screen where a thumb is already resting.
+- **Gone from `in_game` on.** By then there is nothing to join, and a live password on a finished night is an
+  exposure that buys nobody anything.
+- **Signed-in and matched to a player row, or nothing at all.** An anonymous viewer sees no line; so does a
+  signed-in viewer the page has not matched to a player — the `That's me` list is two blocks below and is the
+  thing for them to do first. A link forwarded out of the group must not carry a live password with it, and a
+  latecomer is by definition one of the twenty who picked himself out of that list once already. This is a
+  **render gate, not a security boundary**: the same rule that decides the rack's `you` mark decides this line,
+  and the password is in the page's data for a viewer the server has already identified.
+- **Dress: one line, no card, no rule, no icon.** Archivo `t-sm` in **`text`** — not `dim`: it is a thing to
+  act on, and the page's grey is for footnotes. `Missed the invite?` opens it, which is what tells the nine who
+  are already in that the rest of the sentence is not for them. The name and the password are mono `t-sm`
+  `text`, tabular, per the rule above. It wraps to two lines at 390px and that is the correct outcome.
+- **`user-select: all` on the password span**, so a tap-and-hold on a phone grabs the four digits and nothing
+  around them. It is the one place in the product where somebody is expected to copy something.
+- **Never a card, never the display cut, never amber.** It is a sentence, not a headline and not a control; the
+  amber on this screen belongs to the reroll button or to nothing.
+
+**`/admin` renders the control and its own lobby line with the same words and none of the dress rules in this
+section** — the admin area stays plain, and there the name and password are ungated, because that page is
+already behind a session and an admin check.
+
 #### `Your role tonight`, and picking yourself (M3.6, designer 2026-09-10)
 
 The one thing on this page a friend can change about themselves. Somebody says in voice "I'll jungle
@@ -1110,6 +1212,60 @@ two type sizes in one row of meta. On `All time` there is no climb and the strea
 **The still-settling note sits below the board card**, not between the picker and the first row: with the
 picker in the header it pushed the first name past half the fold on a 390×844 phone, and a sentence about how
 the sort works is read after the numbers, not before them. Still once per page.
+
+#### "How you got here" on `/p/[puuid]` (M5.15, designer 2026-09-10)
+
+Somebody is sure the board is wrong about them. These are the three lines that answer it: where they started,
+what each game did, and why a game is worth what it is worth. They are **prose on a page of tables**, and the
+whole dress question is how prose earns its place beside a column of tabular numbers without becoming a second
+column of them.
+
+The type rule they run on — a quantity in a sentence stays Archivo, a token you have to transcribe is mono — is
+written once, under "The number-in-a-sentence rule", with the `Start a lobby` block. Nothing on this page is a
+token to transcribe, so every number in every sentence here is Archivo: `1290`, `37`, `58%`.
+
+**The seed line: `t-base`, `text`, above the chart, inside the rating card.** It is the first half of the
+answer, not a caption for it. At `t-sm` `dim` — what the first build shipped — it is the quietest text in the
+card it is the point of, wedged between a mono meta line and a mono chart label. `margin-block: var(--cn-sp-3)`
+so it is not glued to either.
+
+**The meta line above it drops its games count when the seed line is present.** `37 games · 19W 18L`
+twenty-four pixels above `…, 37 games since.` prints one number twice, which the copy table already forbids for
+the window slot. The record line becomes `19W 18L`; the count lives in the sentence, which is the more useful
+of the two places. At zero games there is no meta line and the seed line has already dropped its clause, so
+nothing here has a second case.
+
+**The per-game line is a caption on the head above it, and carries only what that head cannot say.** The head
+already prints `Lost`, `1392` and `(−42)`; the line beside it is `As the 58% side.` — their own side's chance,
+and nothing else. A game with no stored chance gets **no line at all**: with the result and the delta gone
+there is nothing left in that form but the head retyped. `not rated` rows keep their three words and no line,
+unchanged.
+
+- **Placement is unchanged and is not reopened**: under the head it explains, above the lineup, inside the game
+  block's leading side rule. It does **not** crowd the 44px lineup rows — it is outside them, and they keep
+  their height. `padding-bottom: var(--cn-sp-2)` so it hangs off the head rather than floating between the head
+  and the first seat.
+- **`t-sm` `dim`, and it stays `dim`.** Once it is four words and not a duplicate it is a caption, and a
+  caption does not compete with the number it is a caption for. This is the one line on the page that is
+  allowed to be quiet, because the head above it is already loud.
+- **It ends in a full stop**, because it is a caption and not a label. Every other run of prose on this page
+  closes the same way; an unstopped fragment in `dim` under a row of numbers reads as text that got cut off.
+  Labels — `rating`, `seed`, `not rated` — are the things without stops, and they are mono.
+
+**The explanation line, once per page, under the list, in the explanation strip's dress.** It is the same
+object as the tonight page's explanation line — the bot saying why it did what it did — so it gets the same
+treatment and no new token: `border-inline-start: 3px solid var(--cn-brand)`, `padding: var(--cn-sp-3)`,
+`t-base`, `var(--cn-text)`. Under the list and not above it, because it answers a question the rows raise.
+It is also now the only line on the page that explains the **size** of a change, since the per-game caption
+gave that job up — which is the argument for it being the loudest of the three and not the quietest.
+
+**The `not rated` footnote keeps `.cn-hint` and stays above it.** Two `dim` paragraphs stacked read as one grey
+block that nobody finishes; a footnote about three rows and the page's whole argument are not the same voice.
+One is `dim` prose, the other is a strip with a brand rule, and the difference is visible before either is
+read.
+
+**Light.** `dim` on light `surface` is 6.36 and the captions hold. Nothing in this section is light-specific
+and there is no second threshold.
 
 #### Copy — the board pages, final (product 2026-09-09)
 
