@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { playerLabel } from '@/lib/admin/playerName';
-import { listAdminPlayers } from '@/lib/admin/players';
+import { ADMIN_PLAYERS_MAX_PAGE_SIZE, listAdminPlayers } from '@/lib/admin/players';
 import { listAdminTokens } from '@/lib/admin/tokens';
 import { requireAdmin } from '@/lib/adminPage';
 import { RELEASE_EXE_SHA256_URL, RELEASE_EXE_URL } from '@/lib/nav';
@@ -26,7 +26,14 @@ export const metadata: Metadata = {
 export default async function AdminTokensPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [params] = await Promise.all([searchParams, requireAdmin()]);
   const client = getServiceClient();
-  const [tokens, players] = await Promise.all([listAdminTokens(client), listAdminPlayers(client, null)]);
+  // The mint dropdown needs every player, so it asks for one big page rather than the page
+  // size `/admin/players` uses — but it asks with an explicit range all the same (M3.25), so
+  // "the list stops here" is this number's doing and not PostgREST truncating in silence.
+  const [tokens, playerPage] = await Promise.all([
+    listAdminTokens(client),
+    listAdminPlayers(client, null, { pageSize: ADMIN_PLAYERS_MAX_PAGE_SIZE }),
+  ]);
+  const players = playerPage.rows;
 
   return (
     <main>

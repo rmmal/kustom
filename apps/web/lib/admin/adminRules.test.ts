@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { maskSecret } from './discordConfig';
 import { playerLabel, shortPuuid } from './playerName';
-import { isSelfDemotion } from './players';
+import {
+  ADMIN_PLAYERS_PAGE_SIZE,
+  isSelfDemotion,
+  normalizeSearch,
+  pageCountFor,
+  parsePageParam,
+  playerSearchFilter,
+} from './players';
 import { escapeHtml, renderMintedTokenPage } from './tokenPage';
 
 /** The rules the admin pages enforce that are not the database's to enforce. */
@@ -161,5 +168,68 @@ describe('renderMintedTokenPage', () => {
     // The wording this replaced must be gone, not merely joined by the new sentences.
     expect(html).not.toContain('first-run prompt');
     expect(html).not.toContain('Only its hash is stored');
+  });
+});
+
+/**
+ * The paging and search rules behind `/admin/players` (M3.25). Pure on purpose: the query is
+ * one `.range()` and one `.or()`, and what those two strings say is the whole of the feature.
+ */
+describe('the players page query (M3.25)', () => {
+  it('pages at fifty', () => {
+    expect(ADMIN_PLAYERS_PAGE_SIZE).toBe(50);
+  });
+
+  describe('normalizeSearch', () => {
+    it('trims, and reads an empty box as no filter', () => {
+      expect(normalizeSearch('  Hana  ')).toBe('Hana');
+      expect(normalizeSearch('   ')).toBeNull();
+      expect(normalizeSearch('')).toBeNull();
+      expect(normalizeSearch(null)).toBeNull();
+      expect(normalizeSearch(undefined)).toBeNull();
+    });
+
+    it('drops the characters PostgREST would read as filter syntax', () => {
+      // `,` and `()` end an `or=` term; `%` and `*` are wildcards nobody typed on purpose.
+      expect(normalizeSearch('Hana,Omar')).toBe('Hana Omar');
+      expect(normalizeSearch('(Hana)')).toBe('Hana');
+      expect(normalizeSearch('%Hana%')).toBe('Hana');
+      expect(normalizeSearch('Ha*na')).toBe('Ha na');
+      expect(normalizeSearch('"Hana"')).toBe('Hana');
+    });
+
+    it('stops at 64 characters, so a pasted PUUID list is not a query', () => {
+      expect(normalizeSearch('x'.repeat(200))).toHaveLength(64);
+    });
+  });
+
+  describe('playerSearchFilter', () => {
+    it('is contains on either name and prefix on the PUUID', () => {
+      expect(playerSearchFilter('han')).toBe(
+        'display_name.ilike.*han*,game_name.ilike.*han*,puuid.ilike.han*',
+      );
+    });
+  });
+
+  describe('parsePageParam', () => {
+    it('reads a page number and refuses anything that is not one', () => {
+      expect(parsePageParam('3')).toBe(3);
+      expect(parsePageParam(null)).toBe(1);
+      expect(parsePageParam('0')).toBe(1);
+      expect(parsePageParam('-2')).toBe(1);
+      expect(parsePageParam('1.5')).toBe(1);
+      expect(parsePageParam('two')).toBe(1);
+      expect(parsePageParam('')).toBe(1);
+    });
+  });
+
+  describe('pageCountFor', () => {
+    it('rounds up, and an empty list is still one page', () => {
+      expect(pageCountFor(0, 50)).toBe(1);
+      expect(pageCountFor(1, 50)).toBe(1);
+      expect(pageCountFor(50, 50)).toBe(1);
+      expect(pageCountFor(51, 50)).toBe(2);
+      expect(pageCountFor(1200, 50)).toBe(24);
+    });
   });
 });

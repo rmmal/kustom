@@ -3,7 +3,7 @@ import { type Database, SEASON_ONE_ID } from '@customs/db';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { playerLabel, shortPuuid } from '@/lib/admin/playerName';
-import { listAdminPlayers } from '@/lib/admin/players';
+import { ADMIN_PLAYERS_PAGE_SIZE, listAdminPlayers } from '@/lib/admin/players';
 import { listAdminTokens } from '@/lib/admin/tokens';
 import {
   type AdminAuthResult,
@@ -393,7 +393,9 @@ if (stack === null) {
         post({ action: 'set-name', playerId: memberPlayerId, displayName: 'Omar' }),
       );
 
-      const rows = await listAdminPlayers(db, null);
+      // Searched by this run's puuid prefix, not read off page one: the stack is shared and
+      // the page is fifty rows deep (M3.25).
+      const { rows } = await listAdminPlayers(db, null, { search: `it-${runId}` });
       const named = rows.find((row) => row.id === namedPlayerId);
       const member = rows.find((row) => row.id === memberPlayerId);
       if (!named || !member) throw new Error('the players this test set up are missing');
@@ -749,11 +751,108 @@ if (stack === null) {
         .upsert({ player_id: memberPlayerId, season_id: seasonId, mu: 24, sigma: 6, games: 3, wins: 2 });
       if (error) throw new Error(error.message);
 
-      const rows = await listAdminPlayers(db, seasonId);
+      const { rows } = await listAdminPlayers(db, seasonId, { search: `it-${runId}` });
       const member = rows.find((row) => row.id === memberPlayerId);
 
       expect(member?.rating).toEqual({ mu: 24, sigma: 6, games: 3, wins: 2 });
       expect(member?.discordId).toBe(memberDiscordId);
+    });
+  });
+
+  /**
+   * `/admin/players` past PostgREST's row cap (M3.25).
+   *
+   * The query used to have no `range` at all, so PostgREST answered with its `max_rows` (1000)
+   * and no error: past a thousand players, rows simply were not there, and the page said
+   * nothing about it. This seeds past that cap on purpose — the row it looks for sorts *after*
+   * the thousandth — so a regression to the unranged query fails here rather than on a Tuesday
+   * night when somebody cannot find a friend.
+   *
+   * All of it is deleted afterwards; the stack is shared.
+   */
+  describe('paging and search past the 1000-row cap (M3.25)', () => {
+    const BULK = 1_200;
+    const bulkPrefix = `it-${runId}-pg`;
+    // Sorts after every seeded name, so it is well past row 1000 in the page's own order.
+    const needlePuuid = `it-${runId}-needle`;
+    const needleName = `zzz ${runId} needle`;
+
+    beforeAll(async () => {
+      const rows = Array.from({ length: BULK }, (_, index) => ({
+        puuid: `${bulkPrefix}${String(index).padStart(4, '0')}`,
+        display_name: `Bulk ${runId} ${String(index).padStart(4, '0')}`,
+      }));
+      rows.push({ puuid: needlePuuid, display_name: needleName });
+
+      for (let start = 0; start < rows.length; start += 400) {
+        const { error } = await db.from('players').insert(rows.slice(start, start + 400));
+        if (error) throw new Error(`seeding ${BULK} players failed: ${error.message}`);
+      }
+    }, 60_000);
+
+    afterAll(async () => {
+      const { error } = await db.from('players').delete().like('puuid', `${bulkPrefix}%`);
+      if (error) throw new Error(`cleanup: deleting the bulk players failed: ${error.message}`);
+      const { error: needleError } = await db.from('players').delete().eq('puuid', needlePuuid);
+      if (needleError) throw new Error(`cleanup: deleting the needle failed: ${needleError.message}`);
+    }, 60_000);
+
+    it('reads fifty rows, and says how many there are in total', async () => {
+      const page = await listAdminPlayers(db, null);
+
+      expect(page.rows).toHaveLength(ADMIN_PLAYERS_PAGE_SIZE);
+      expect(page.pageSize).toBe(ADMIN_PLAYERS_PAGE_SIZE);
+      expect(page.page).toBe(1);
+      // The seed alone is past the cap, whatever else is in the shared stack.
+      expect(page.total).toBeGreaterThan(1_000);
+      expect(page.pageCount).toBe(Math.ceil(page.total / ADMIN_PLAYERS_PAGE_SIZE));
+      expect(page.search).toBeNull();
+    });
+
+    it('still has the row that sorts past the thousandth, on the page it belongs to', async () => {
+      const first = await listAdminPlayers(db, null);
+      const last = await listAdminPlayers(db, null, { page: first.pageCount });
+
+      const seat = last.rows.findIndex((row) => row.puuid === needlePuuid);
+      expect(seat).toBeGreaterThanOrEqual(0);
+      // Where it sits in the whole ordered list: past 1000, which is the row the old query
+      // would have stopped at.
+      expect((last.page - 1) * last.pageSize + seat + 1).toBeGreaterThan(1_000);
+      expect(last.page).toBe(first.pageCount);
+    });
+
+    it('finds it by display name', async () => {
+      const page = await listAdminPlayers(db, null, { search: `zzz ${runId}` });
+
+      expect(page.total).toBe(1);
+      expect(page.rows.map((row) => row.puuid)).toEqual([needlePuuid]);
+      expect(page.search).toBe(`zzz ${runId}`);
+    });
+
+    it('finds it by PUUID prefix, and a prefix that names the whole batch finds the batch', async () => {
+      const one = await listAdminPlayers(db, null, { search: needlePuuid });
+      expect(one.rows.map((row) => row.puuid)).toEqual([needlePuuid]);
+
+      const batch = await listAdminPlayers(db, null, { search: bulkPrefix });
+      expect(batch.total).toBe(BULK);
+      expect(batch.rows).toHaveLength(ADMIN_PLAYERS_PAGE_SIZE);
+      expect(batch.rows.every((row) => row.puuid.startsWith(bulkPrefix))).toBe(true);
+    });
+
+    it('answers a search nobody matches with an empty page, not an error', async () => {
+      const page = await listAdminPlayers(db, null, { search: `no-such-player-${runId}` });
+
+      expect(page.rows).toEqual([]);
+      expect(page.total).toBe(0);
+      expect(page.pageCount).toBe(1);
+    });
+
+    it('clamps a page past the end onto the last one', async () => {
+      const page = await listAdminPlayers(db, null, { search: bulkPrefix, page: 9_999 });
+
+      expect(page.page).toBe(page.pageCount);
+      expect(page.rows.length).toBeGreaterThan(0);
+      expect(page.total).toBe(BULK);
     });
   });
 }

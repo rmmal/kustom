@@ -1,12 +1,19 @@
 import { displayRating, ordinal } from '@customs/core';
-import type { Metadata } from 'next';
+import type { Metadata, Route } from 'next';
+import Link from 'next/link';
 import { playerLabel, shortPuuid } from '@/lib/admin/playerName';
-import { type AdminPlayerRow, formatInferredRoles, listAdminPlayers } from '@/lib/admin/players';
+import {
+  type AdminPlayerRow,
+  formatInferredRoles,
+  listAdminPlayers,
+  type AdminPlayersPage as PlayersPageData,
+  parsePageParam,
+} from '@/lib/admin/players';
 import { getActiveSeason } from '@/lib/admin/seasons';
 import { requireAdmin } from '@/lib/adminPage';
 import { getServiceClient } from '@/lib/supabase';
 import { AdminForm } from '../../_components/AdminForm';
-import { Empty, formatDay, InferredRoles, Notices, type SearchParams } from '../../_components/ui';
+import { Empty, formatDay, InferredRoles, Notices, readParam, type SearchParams } from '../../_components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,13 +37,18 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
   const [params, admin] = await Promise.all([searchParams, requireAdmin()]);
   const client = getServiceClient();
   const season = await getActiveSeason(client);
-  const players = await listAdminPlayers(client, season?.id ?? null);
+  const page = await listAdminPlayers(client, season?.id ?? null, {
+    search: readParam(params, 'q'),
+    page: parsePageParam(readParam(params, 'page')),
+  });
+  const players = page.rows;
 
   return (
     <main>
       <h1>Players</h1>
       <p className="admin-muted">
-        {players.length} player{players.length === 1 ? '' : 's'}. Ratings are the active season
+        {page.total} player{page.total === 1 ? '' : 's'}
+        {page.search === null ? '' : ` matching "${page.search}"`}. Ratings are the active season
         {season === null ? ' (none active)' : ` (${season.name})`}. A row appears on its own the first time a
         PUUID shows up in a lobby, a game or a rank report — there is no "add player". A name follows the Riot
         ID until you set one here; clear the field to put it back on automatic. Roles are worked out from the
@@ -51,11 +63,19 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
 
       <Notices params={params} />
 
+      <PlayerSearch search={page.search} />
+
       {players.length === 0 ? (
-        <Empty>
-          No players yet. Run the companion once, or post a lobby to{' '}
-          <span className="admin-mono">/api/companion/lobby</span>, and the rows appear here.
-        </Empty>
+        page.search === null ? (
+          <Empty>
+            No players yet. Run the companion once, or post a lobby to{' '}
+            <span className="admin-mono">/api/companion/lobby</span>, and the rows appear here.
+          </Empty>
+        ) : (
+          <Empty>
+            No player has that name or starts with that PUUID. <Link href="/admin/players">Show all</Link>.
+          </Empty>
+        )
       ) : (
         <div className="admin-scroll">
           <table>
@@ -80,8 +100,79 @@ export default async function AdminPlayersPage({ searchParams }: { searchParams:
           </table>
         </div>
       )}
+
+      <Pager page={page} />
     </main>
   );
+}
+
+/**
+ * The search box. A plain `GET` form: searching and paging are **reads**, so they navigate and
+ * leave a URL an admin can bookmark or send to someone. M3.20's in-place rule is about the
+ * writes on this page — the name field, the Discord field, the admin flag, backfill — and every
+ * one of those still posts through `AdminForm` and changes nothing about the URL.
+ *
+ * Dropping `page` on submit is deliberate: a new search starts at its own first page.
+ */
+function PlayerSearch({ search }: { search: string | null }) {
+  return (
+    <form method="get" action="/admin/players" className="admin-search">
+      <label>
+        <span className="admin-muted">search </span>
+        <input
+          type="search"
+          name="q"
+          size={24}
+          defaultValue={search ?? ''}
+          placeholder="name, or the start of a PUUID"
+          aria-label="Search players by name or PUUID"
+        />
+      </label>{' '}
+      <button type="submit">Search</button>
+      {search === null ? null : (
+        <>
+          {' '}
+          <Link href="/admin/players">Clear</Link>
+        </>
+      )}
+    </form>
+  );
+}
+
+/**
+ * `Page 2 of 24 · 1200 players`, with the two links that move.
+ *
+ * Links and not buttons: this is a read, and a link is what a browser already knows how to
+ * open in a new tab, bookmark and go back from. The search rides along in the href so paging a
+ * filtered list does not silently drop the filter.
+ */
+function Pager({ page }: { page: PlayersPageData }) {
+  if (page.pageCount <= 1) return null;
+  const first = (page.page - 1) * page.pageSize + 1;
+  const last = first + page.rows.length - 1;
+
+  return (
+    <nav className="admin-pager" aria-label="Player pages">
+      {page.page > 1 ? <Link href={pageHref(page, page.page - 1)}>← Previous</Link> : <span>← Previous</span>}{' '}
+      <span className="admin-muted">
+        {first}–{last} of {page.total} · page {page.page} of {page.pageCount}
+      </span>{' '}
+      {page.page < page.pageCount ? (
+        <Link href={pageHref(page, page.page + 1)}>Next →</Link>
+      ) : (
+        <span>Next →</span>
+      )}
+    </nav>
+  );
+}
+
+/** `/admin/players?q=…&page=…`, with `page=1` left off so the first page has one URL. */
+function pageHref(page: PlayersPageData, wanted: number): Route {
+  const params = new URLSearchParams();
+  if (page.search !== null) params.set('q', page.search);
+  if (wanted > 1) params.set('page', String(wanted));
+  const query = params.toString();
+  return (query === '' ? '/admin/players' : `/admin/players?${query}`) as Route;
 }
 
 function PlayerRow({ player, actingPlayerId }: { player: AdminPlayerRow; actingPlayerId: string }) {
