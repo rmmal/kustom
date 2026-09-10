@@ -4435,7 +4435,7 @@ Inside M5, after the 2026-09-10 reshape (seasons out, windows in), the order is:
 
 ```
 M5.9 (boundaries) ---- M5.12 (picker, pages, nightly post) ---- M5.4 (/stats + awards) ---- M5.10 (the embed) ---- M5.13 (the cron)
-                                                            \-- M5.8 (designer pass, after M5.4)
+                                                            \-- M5.8 (designer pass, after M5.4) ---- M5.20 (the player page's own sections, after M5.8)
 M5.14 (remove season creation) — independent, do it early; it is the smallest and it removes the only destructive button in the app.
 M5.16 (infer roles, core) ---- M5.17 (store them, admin selectors out)
 M5.18 (roles for backfilled games) — independent; it makes M5.4 and M5.17 richer, not correct.
