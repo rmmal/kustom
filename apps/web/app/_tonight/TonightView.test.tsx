@@ -433,24 +433,35 @@ describe('teams: balanced and in_game are the same block', () => {
    * what is asserted here is where it sits and which states draw it at all.
    */
   describe('the side line under the cards', () => {
-    it('is one line under both cards, in balanced and in game', () => {
-      for (const status of ['balanced', 'in_game'] as const) {
-        const { container, unmount } = draw(snapshot(lobbyView({ status, teams: workedTeams() })));
-        const lines = container.querySelectorAll('.cn-side-line');
+    it('is one line under both cards while the teams are set', () => {
+      const { container } = draw(snapshot(lobbyView({ status: 'balanced', teams: workedTeams() })));
+      const lines = container.querySelectorAll('.cn-side-line');
 
-        expect(lines).toHaveLength(1);
-        expect(lines[0]?.textContent).toBe(sideLine(SWITCH_SIDE_ENABLED));
-        // Under the cards and above the explanation: an instruction about the seats you have
-        // just read, before the sentence about why they are those seats.
-        const block = [...(container.querySelector('.cn-block')?.children ?? [])];
-        expect(block.findIndex((node) => node.classList.contains('cn-side-line'))).toBe(
-          block.findIndex((node) => node.classList.contains('cn-cards')) + 1,
-        );
-        expect(block.findIndex((node) => node.classList.contains('cn-explain'))).toBeGreaterThan(
-          block.findIndex((node) => node.classList.contains('cn-side-line')),
-        );
-        unmount();
-      }
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.textContent).toBe(sideLine(SWITCH_SIDE_ENABLED));
+      // Under the cards and above the explanation: an instruction about the seats you have
+      // just read, before the sentence about why they are those seats.
+      const block = [...(container.querySelector('.cn-block')?.children ?? [])];
+      expect(block.findIndex((node) => node.classList.contains('cn-side-line'))).toBe(
+        block.findIndex((node) => node.classList.contains('cn-cards')) + 1,
+      );
+      expect(block.findIndex((node) => node.classList.contains('cn-explain'))).toBeGreaterThan(
+        block.findIndex((node) => node.classList.contains('cn-side-line')),
+      );
+    });
+
+    /**
+     * **`balanced` only** (product, 2026-09-11). The game has launched, the lobby is gone, and
+     * `Move to your side in the lobby.` names a room that does not exist — so the line goes with
+     * the lobby, exactly as M4.10's `Missed the invite?` line does in the same block.
+     */
+    it('is gone the moment the game starts, with the same cards still up', () => {
+      const { container } = draw(snapshot(lobbyView({ status: 'in_game', teams: workedTeams() })));
+
+      expect(container.querySelector('.cn-side-line')).toBeNull();
+      // Nothing else about the teams moved: the cards are the balanced ones, unchanged.
+      expect(container.querySelectorAll('.cn-team')).toHaveLength(2);
+      expect(container.querySelector('.cn-explain-text')).not.toBeNull();
     });
 
     it('is gone once the game is over, including on a finish the fold did not rate', () => {

@@ -2,8 +2,14 @@ import { SWITCH_SIDE_ENABLED } from '@/lib/commands/gate';
 import { sideLine } from '@/lib/tonight/copy';
 
 /**
- * One line under the two team cards, in `balanced` and `in_game` (M4.7 (b), the words are
- * M4.3's).
+ * One line under the two team cards, in `balanced` and **only** in `balanced` (M4.7 (b), the
+ * words are M4.3's, the state is product's ruling of 2026-09-11).
+ *
+ * **It goes with the lobby.** Once the game has launched there is nothing to move in and
+ * `Move to your side in the lobby.` names a room that no longer exists, so the line ends where
+ * `in_game` begins — the same rule, in the same block, as M4.10's `Missed the invite?` line.
+ * Whether that state is reached is the caller's (`TonightView`), because the same `teams` block
+ * also draws an unrated finish.
  *
  * **One line under both cards, not one per card.** `05-design.md`'s "Teams" section places
  * everything else on this screen and is silent about this line, so it takes the section's own

@@ -316,13 +316,13 @@ function TeamsBlock({
         <TeamCard side="red" seats={teams.red} viewerPuuid={viewer.puuid} />
       </div>
       {/*
-       * The side line (M4.7 (b)): one line under both cards, while there is a lobby to move in.
-       * `teams` also draws a **finished** game the fold did not rate — the teams stay up under
-       * `GAME OVER` — and telling somebody to move to their side after the game is over is the
-       * one place this sentence would be wrong, so it is gated on the status like M4.10's line
-       * two elements down.
+       * The side line (M4.7 (b)), in **`balanced` only** (product, 2026-09-11): once the game has
+       * launched there is no lobby to move in, and `Move to your side in the lobby.` names a room
+       * that no longer exists. The same rule M4.10's line one element down follows, for the same
+       * reason — and `teams` also draws a **finished** game the fold did not rate, with the teams
+       * still up under `GAME OVER`, which the status gate rules out too.
        */}
-      {lobby.status === 'balanced' || lobby.status === 'in_game' ? <SideLine /> : null}
+      {lobby.status === 'balanced' ? <SideLine /> : null}
       <Explanation
         lobby={lobby}
         teams={teams}
