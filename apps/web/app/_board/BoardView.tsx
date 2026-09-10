@@ -1,8 +1,9 @@
-import { LEADERBOARD_LABEL, NO_GAMES_YET, NO_SEASON_BOARD } from '@/lib/board/copy';
+import { LEADERBOARD_LABEL, WINDOW_EMPTY, WINDOW_LABELS } from '@/lib/board/copy';
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
 import { isNameless } from '@/lib/tonight/copy';
 import { BoardCard } from '../_leaderboard/BoardCard';
 import { NamelessHint, SettlingNote } from './parts';
+import { WindowPicker } from './WindowPicker';
 
 /**
  * `/leaderboard` (M3.5, M3.8, M3.10; dressed for Floodlit in M3.19). A pure function of one
@@ -27,37 +28,36 @@ export interface BoardViewProps {
 export function BoardView({ board, viewerPuuid }: BoardViewProps) {
   const settling = board.rows.some((row) => row.settling);
   const nameless = board.rows.some((row) => isNameless(row.name));
+  /**
+   * **A window with nothing in it.** On `All time` the board still lists everybody the
+   * database knows, seeded from rank, so "no games" there is a board whose every row reads
+   * `0 games` — the same test the shipped page made. In a window, membership *is* the games,
+   * so an empty window is no rows at all.
+   */
   const noGamesYet = board.rows.length === 0 || board.rows.every((row) => row.games === 0);
 
   return (
     <main className="cn-page">
       <header className="cn-strip">
         {/*
-         * `Season 1 Leaderboard`, and `Leaderboard` alone when no season is active — at full
-         * weight, not as the dim sub-word (the designer's review, 2026-09-09). `cn-strip-sub`
-         * demotes the noun beside the season name it belongs to; with nothing beside it the
-         * page's only heading was a grey afterthought.
+         * `This week Leaderboard` (M5.12): the **window's** name at full weight with the
+         * page's noun beside it in `dim` — where the season's name used to be, in the shape
+         * the designer settled on 2026-09-09. A season's name is never printed to a friend
+         * again, and the heading and the picker say the same three words.
          */}
         <h1 className="cn-strip-title">
-          {board.season === null ? (
-            LEADERBOARD_LABEL
-          ) : (
-            <>
-              {board.season.name} <span className="cn-strip-sub">{LEADERBOARD_LABEL}</span>
-            </>
-          )}
+          {WINDOW_LABELS[board.window]} <span className="cn-strip-sub">{LEADERBOARD_LABEL}</span>
         </h1>
+        <WindowPicker path="/leaderboard" selected={board.window} />
       </header>
 
       {/* Once per page, under the heading, and never once per row (M3.8). */}
       {settling ? <SettlingNote /> : null}
 
-      {board.season === null ? <p className="cn-notice">{NO_SEASON_BOARD}</p> : null}
-
       <section className="cn-block">
-        {/* Not an empty page and not a spinner: one line, in `dim`, and the seeded rows below
-            it so a friend who has not played yet can still find themselves. */}
-        {board.season !== null && noGamesYet ? <p className="cn-empty">{NO_GAMES_YET}</p> : null}
+        {/* Not an empty page and not a spinner: one line, in `dim`, and — on `All time` — the
+            seeded rows below it, so a friend who has not played yet can still find themselves. */}
+        {noGamesYet ? <p className="cn-empty">{WINDOW_EMPTY[board.window]}</p> : null}
 
         {board.rows.length === 0 ? null : <BoardCard rows={board.rows} viewerPuuid={viewerPuuid} />}
       </section>

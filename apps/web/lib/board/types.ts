@@ -1,4 +1,5 @@
 import type { RoleValue, SideValue } from '@customs/db';
+import type { WindowKind } from '../night';
 import type { PlayerName } from '../tonight/types';
 import type { Streak } from './streak';
 
@@ -20,11 +21,6 @@ import type { Streak } from './streak';
  * precaution (`05-design.md`, "Rating delta").
  */
 
-export interface SeasonView {
-  id: string;
-  name: string;
-}
-
 /** One row of the board. `05-design.md`, "Leaderboard row", is the layout for exactly this. */
 export interface BoardRow {
   puuid: string;
@@ -43,18 +39,43 @@ export interface BoardRow {
   sortKey: number;
   /** `round(mu * 60)`. The number the embeds print beside a name. */
   rating: number;
+  /**
+   * The **window's** counted games (M5.12), which on `All time` is the fold's own total and
+   * therefore `ratings.games` to the number. One field and not two: a row that carried both
+   * would print two game counts on one line, and the reader would have to be told which.
+   */
   games: number;
   wins: number;
   losses: number;
-  /** `null` for a player with no rated games this season. */
+  /**
+   * The run at the front of their history. **`All time` only**: in a window the row's line 2
+   * is the window line (`6 games · 4W 2L · +58`), which product fixed and which has no streak
+   * in it. `null` also for a player with no rated games at all.
+   */
   streak: Streak | null;
-  /** Fewer than 30 recorded games (M3.8). */
+  /**
+   * What the window did to their rating: the two mu values it is computed from, never a
+   * formatted delta (`-0` does not survive the `JSON.stringify` the rail's rows make). `null`
+   * on `All time`, where the row is exactly today's row and gains nothing.
+   */
+  climb: Climb | null;
+  /**
+   * Fewer than 30 recorded games (M3.8) — **always the all-time count**, in every window. The
+   * chip is a fact about the rating, not about the window: a player with one game this week
+   * and two hundred behind them has not become unsettled by the calendar.
+   */
   settling: boolean;
 }
 
+/** `mu_before` of the first counted game in the window and `mu_after` of the last. */
+export interface Climb {
+  muBefore: number;
+  muAfter: number;
+}
+
 export interface BoardView {
-  /** `null` when no season is active: the page says so and lists nobody. */
-  season: SeasonView | null;
+  /** Which of the five this board was read through. The page's heading is its name. */
+  window: WindowKind;
   /** Ordered by `proven` descending. Reading the primary column top to bottom never goes up. */
   rows: BoardRow[];
 }
@@ -90,49 +111,50 @@ export interface RoleRecord {
 }
 
 /**
- * `/p/[puuid]` has **two shapes, not one shape with zeros in it** (M3.5 review, 2026-09-09).
+ * `/p/[puuid]`, read through one window (M3.5, windowed by M5.12).
  *
- * Ratings are per season. With no active season there is no rating, no Proven, no history and
- * no games — not `0` of any of them — and the first cut of this type said `rating: number` and
- * filled it with zeros, so the page printed `Rating 0 · Proven 0 · settling` above a sentence
- * saying there was no board. Zero is a number the model never produced.
+ * **One shape, not two.** Until 2026-09-10 this was a discriminated union whose second arm was
+ * "no season is active": the page then printed a name and one sentence, because ratings were
+ * per season and there was no number to show. Seasons are gone (`04-decisions.md`), that
+ * sentence is deleted with the button behind it (**M5.14**), and a deployment with no season
+ * row has no games either — so the honest page is the ordinary one with the window's empty
+ * line on it, exactly like a player who has not played this week.
  *
- * So the shape is a discriminated union and the numbers live only on the arm that has a season.
- * The view cannot print a rating for a player who has none, because there is no field to print.
+ * What the union was defending against still holds, enforced differently: the numbers here are
+ * never zeros standing in for "we do not know". A player with no games carries the rating the
+ * balancer would seed them with — the number `/leaderboard` already shows on their row — and
+ * `history` is empty, so no chart is drawn.
  */
-export type PlayerBoardView = PlayerSeasonView | PlayerNoSeasonView;
-
-/** Who the page is about. Both arms carry it, and it is all the no-season arm carries. */
-interface PlayerIdentity {
+export interface PlayerBoardView {
   puuid: string;
   name: PlayerName;
-}
-
-/** A season is active: the two numbers, the `Rating` history, the record, the last few games. */
-export interface PlayerSeasonView extends PlayerIdentity {
-  kind: 'season';
-  season: SeasonView;
-  /** `round(mu * 60)`, the number the chart plots and line 2 of the board names. */
+  /** Which of the five this page was read through. Its name is beside the picker. */
+  window: WindowKind;
+  /**
+   * `round(mu * 60)` **as of their last counted game inside the window** — their current
+   * rating on `All time` and on `This week`, and where the week left them on `Last week`. With
+   * no counted game in the window it is their current rating: the page is a person, and the
+   * empty line under it is what says the window has nothing in it.
+   */
   rating: number;
-  /** `round(ordinal * 60)`, beside it, under the same label the board uses. */
+  /** `round(ordinal * 60)`, from the same game, under the same label the board uses. */
   proven: number;
+  /** The window's counted games. `All time` is the fold's own total. */
   games: number;
   wins: number;
   losses: number;
+  /** The 30-game rule, always on the all-time count (M3.8). Never a fact about the window. */
   settling: boolean;
-  /** `round(seedMu * 60)`: the chart's reference line, in the series' own units. */
-  seed: number;
+  /**
+   * The chart's reference line, in the series' own units: `round(seedMu * 60)` on `All time`,
+   * and the rating carried **into** the window on the other four. {@link PlayerBoardView.window}
+   * decides whether it is labelled `seed` or `start`.
+   */
+  reference: number;
   /** The `Rating` series in `started_at` order, oldest first. Empty for no games. */
   history: number[];
-  /** Lane order, and only roles the scoreboard actually gave them. */
+  /** Lane order, and only roles the scoreboard actually gave them, inside the window. */
   roles: RoleRecord[];
+  /** The window's last few games, rated or not (M3.23). */
   recent: RecentGame[];
-}
-
-/**
- * No season is active. The page is the player's name and one sentence, and nothing else
- * (product, 2026-09-09): no numbers, no chip, no chart, no record, no games.
- */
-export interface PlayerNoSeasonView extends PlayerIdentity {
-  kind: 'no-season';
 }

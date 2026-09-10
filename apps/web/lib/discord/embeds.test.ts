@@ -1,5 +1,6 @@
 import { displayRating, type Rating, rateGame } from '@customs/core';
 import { describe, expect, it } from 'vitest';
+import { WINDOW_LABELS } from '../board/copy';
 import { displayDelta } from '../ratingDisplay';
 import { workedBoardRows } from '../testing/boardFixtures';
 import { WORKED_ROSTER, workedBalance, workedNames, workedPool, workedPuuid } from '../testing/workedExample';
@@ -452,14 +453,16 @@ describe('the small formatters', () => {
  */
 function workedLeaderboardInput(overrides: Partial<LeaderboardEmbedInput> = {}): LeaderboardEmbedInput {
   return {
-    seasonName: 'Season 1',
+    // The **window's** name, never a season's (M5.12): the title, the board heading and the
+    // picker's option are the same three words.
+    windowLabel: WINDOW_LABELS['this-week'],
     entries: workedBoardRows().map((row) => ({
       puuid: row.puuid,
       name: row.name,
       proven: row.proven,
       games: row.games,
     })),
-    url: `${SITE_URL}/leaderboard`,
+    url: `${SITE_URL}/leaderboard?window=this-week`,
     timestamp: TIMESTAMP,
     ...overrides,
   };
@@ -532,9 +535,20 @@ describe('leaderboardEmbed, the worked example', () => {
     const embed = leaderboardEmbed(workedLeaderboardInput()).embeds[0];
 
     expect(embed?.color).toBe(ACCENT_COLOR);
-    expect(embed?.title).toBe('Season 1 · leaderboard');
-    expect(embed?.url).toBe(`${SITE_URL}/leaderboard`);
+    // `This week · leaderboard`, linking to the board it just printed (M5.12).
+    expect(embed?.title).toBe('This week · leaderboard');
+    expect(embed?.title.toLowerCase()).not.toContain('season');
+    expect(embed?.url).toBe(`${SITE_URL}/leaderboard?window=this-week`);
     expect(embed?.description).toBeUndefined();
+  });
+
+  /** Every one of the five can title one of these posts: M5.10's Monday post is `Last week`. */
+  it('titles itself with whichever window it printed', () => {
+    for (const [kind, label] of Object.entries(WINDOW_LABELS)) {
+      const embed = leaderboardEmbed(workedLeaderboardInput({ windowLabel: label })).embeds[0];
+      expect(embed?.title).toBe(`${label} · leaderboard`);
+      expect(kind).toBeTruthy();
+    }
   });
 
   it('drops the url when there is no honest one, and keeps the footer', () => {

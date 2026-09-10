@@ -24,8 +24,8 @@ exports[`leaderboardEmbed, the worked example > is the design doc's nightly post
         "text": "Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.",
       },
       "timestamp": "2026-09-08T20:15:00.000Z",
-      "title": "Season 1 · leaderboard",
-      "url": "https://customs.example/leaderboard",
+      "title": "This week · leaderboard",
+      "url": "https://customs.example/leaderboard?window=this-week",
     },
   ],
 }

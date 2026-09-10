@@ -1,39 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import type { BoardView } from '../board/types';
-import { workedBoardRows } from '../testing/boardFixtures';
+import { workedBoardRows, workedWindowRows } from '../testing/boardFixtures';
 import { nightlyLeaderboardSkip } from './post';
 
 /**
- * When the nightly board is not worth posting (M3.5, product 2026-09-09).
+ * When the nightly board is not worth posting (M3.5, product 2026-09-09; windowed by M5.12).
  *
- * The rule is the result embed's: a message that says nothing is worse than silence. The third
- * case is the one that only shows up on the first morning of a season, which is exactly when
- * nobody is watching the channel for a bug.
+ * The rule is the result embed's: a message that says nothing is worse than silence. With the
+ * board read through `This week`, a week nobody has played simply has no rows — membership is
+ * the games — and the seeded-board rule is what still guards a caller reading `All time`.
  */
 
-const SEASON = { id: 'season-1', name: 'Season 1' };
-
 function board(overrides: Partial<BoardView> = {}): BoardView {
-  return { season: SEASON, rows: workedBoardRows(), ...overrides };
+  return { window: 'this-week', rows: workedWindowRows(), ...overrides };
 }
 
 describe('nightlyLeaderboardSkip', () => {
-  it('posts a season that has been played', () => {
+  it('posts a window that has been played', () => {
     expect(nightlyLeaderboardSkip(board())).toBeNull();
   });
 
-  it('says nothing when no season is active', () => {
-    expect(nightlyLeaderboardSkip(board({ season: null, rows: [] }))).toBe('no active season');
-  });
-
-  it('says nothing when nobody is on the board', () => {
+  it('says nothing when nobody has played in the window', () => {
+    // A week with no games has no rows at all: on a window, membership *is* the games.
     expect(nightlyLeaderboardSkip(board({ rows: [] }))).toBe('nobody on the board');
   });
 
-  it('says nothing on the first morning of a season nobody has played yet', () => {
-    // Every known player is seeded from their rank, so this board is ten real names with real
-    // Proven numbers and `0 games` against every one of them — a ranking of a season that has
-    // not happened, while `/leaderboard` says `No games this season yet.`
+  it('says nothing on a board of seeded players nobody has played with', () => {
+    // `All time` seeds every known player from their rank, so this is ten real names with real
+    // Proven numbers and `0 games` against every one of them — a ranking of games that have
+    // not happened, while `/leaderboard` says `No games yet.`
     const seeded = workedBoardRows().map((row) => ({
       ...row,
       games: 0,
@@ -43,7 +38,9 @@ describe('nightlyLeaderboardSkip', () => {
       settling: true,
     }));
 
-    expect(nightlyLeaderboardSkip(board({ rows: seeded }))).toBe('no games this season');
+    expect(nightlyLeaderboardSkip(board({ window: 'all-time', rows: seeded }))).toBe(
+      'nobody has played in this window',
+    );
   });
 
   it('posts again after one rated game', () => {

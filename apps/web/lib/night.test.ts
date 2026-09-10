@@ -139,16 +139,10 @@ describe('the week a game belongs to', () => {
   it('gives a Monday 05:59 game to the week that is ending, and 06:01 to the new one', () => {
     // 2026-09-07 is a Monday. 05:59 Cairo (UTC+3) is 02:59Z; the week that is ending opened on
     // Monday 2026-08-31 at 06:00 Cairo, which is 03:00Z.
-    expect(weekStart(new Date('2026-09-07T02:59:00Z'), CAIRO).toISOString()).toBe(
-      '2026-08-31T03:00:00.000Z',
-    );
-    expect(weekStart(new Date('2026-09-07T03:01:00Z'), CAIRO).toISOString()).toBe(
-      '2026-09-07T03:00:00.000Z',
-    );
+    expect(weekStart(new Date('2026-09-07T02:59:00Z'), CAIRO).toISOString()).toBe('2026-08-31T03:00:00.000Z');
+    expect(weekStart(new Date('2026-09-07T03:01:00Z'), CAIRO).toISOString()).toBe('2026-09-07T03:00:00.000Z');
     // And 06:00 exactly is the new week, not a second before it.
-    expect(weekStart(new Date('2026-09-07T03:00:00Z'), CAIRO).toISOString()).toBe(
-      '2026-09-07T03:00:00.000Z',
-    );
+    expect(weekStart(new Date('2026-09-07T03:00:00Z'), CAIRO).toISOString()).toBe('2026-09-07T03:00:00.000Z');
   });
 
   it('keeps a Sunday night and the 01:40 that follows it in the same week', () => {

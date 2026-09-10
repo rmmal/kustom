@@ -154,7 +154,11 @@ export interface LeaderboardEntry {
 }
 
 export interface LeaderboardEmbedInput {
-  seasonName: string;
+  /**
+   * The window's own name — `This week` (M5.12), never a season's name. The title reads
+   * `This week · leaderboard`, in the same five words the picker and the board heading use.
+   */
+  windowLabel: string;
   /** Already ordered by Proven, descending. {@link TOP_N} is the most that will be printed. */
   entries: readonly LeaderboardEntry[];
   /** The board, or `undefined` when there is no honest URL to post. */
@@ -278,6 +282,12 @@ export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
  * by a number it does not show is exactly the complaint this rule exists to prevent (M3.5
  * brief). `Rating` is on the web page, where there is a column for it.
  *
+ * **The title names the window, not a season** (M5.12): `This week · leaderboard`, linking to
+ * `?window=this-week`. A season name in a Discord title was always going to read as
+ * `gamesd · leaderboard` on the deployment that exists; more to the point, "the season" is no
+ * longer a thing the product has. The field-name rule (M3.22) and the ten-line cap are
+ * untouched.
+ *
  * The footer is the short still-settling sentence, on **every** one of these posts and not
  * just the first: the reason Yuki is last by more than her rating suggests is her sigma, and a
  * post without the sentence is a post that invites the question again (M3.8). There is no
@@ -291,7 +301,7 @@ export function leaderboardEmbed(input: LeaderboardEmbedInput): WebhookPayload {
     embeds: [
       {
         color: ACCENT_COLOR,
-        title: `${input.seasonName} · ${LEADERBOARD_LABEL.toLowerCase()}`,
+        title: `${input.windowLabel} · ${LEADERBOARD_LABEL.toLowerCase()}`,
         ...(input.url === undefined ? {} : { url: input.url }),
         fields: [
           {

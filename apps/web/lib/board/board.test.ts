@@ -1,19 +1,23 @@
+import { displayRating } from '@customs/core';
 import { describe, expect, it, vi } from 'vitest';
-import { provenRating } from '../ratingDisplay';
-import { workedBoardRows } from '../testing/boardFixtures';
+import { displayDelta, formatWebDelta, provenRating } from '../ratingDisplay';
+import { workedBoardRows, workedWindowRows } from '../testing/boardFixtures';
 import { CHART_HEIGHT, CHART_WIDTH, chartGeometry } from './chart';
 import {
   BOARD_LEGEND,
   gamesLabel,
-  NO_GAMES_YET,
   NOT_RATED,
   NOT_RATED_HINT,
   PROVEN_LABEL,
   RATING_LABEL,
   RECENT_RATING_LEGEND,
+  SEED_LABEL,
   SETTLING_GAMES,
   SETTLING_SENTENCE,
   SETTLING_SENTENCE_SHORT,
+  START_LABEL,
+  WINDOW_EMPTY,
+  WINDOW_LABELS,
   winLossLabel,
 } from './copy';
 import { loadTopPlayers, loadTopPlayersOrNone } from './load';
@@ -21,6 +25,14 @@ import { compareBoardRows, sortBoardRows } from './order';
 import { isRated, recentGames } from './recent';
 import { currentStreak, formatStreak } from './streak';
 import type { BoardRow } from './types';
+import {
+  LEADERBOARD_WINDOW,
+  PLAYER_WINDOW,
+  parseWindow,
+  STATS_WINDOW,
+  WINDOW_ORDER,
+  windowHref,
+} from './window';
 
 /**
  * The pure half of the board (M3.5, M3.8): the sort, the streak, the chart's geometry and the
@@ -39,6 +51,7 @@ function row(overrides: Partial<BoardRow>): BoardRow {
     losses: 20,
     sortKey: 15,
     streak: null,
+    climb: null,
     settling: false,
     ...overrides,
   };
@@ -86,8 +99,56 @@ describe('the copy product owns', () => {
     expect(winLossLabel(13, 15)).toBe('13W 15L');
   });
 
-  it('has one line for a season with no games and a player with none', () => {
-    expect(NO_GAMES_YET).toBe('No games this season yet.');
+  /**
+   * The five windows (M5.12, `05-design.md`'s copy table). The same five words are the option,
+   * the board heading and the Discord title, and **a running window says `yet` while a closed
+   * one does not** — nothing more is coming to last week.
+   */
+  it('names the five windows the way product spells them', () => {
+    expect(Object.values(WINDOW_LABELS)).toEqual([
+      'This week',
+      'Last week',
+      'This month',
+      'Last month',
+      'All time',
+    ]);
+    expect(WINDOW_ORDER.map((kind) => WINDOW_LABELS[kind])).toEqual(Object.values(WINDOW_LABELS));
+  });
+
+  it('has one empty line per window, and only the running ones say `yet`', () => {
+    expect(WINDOW_EMPTY).toEqual({
+      'this-week': 'No games this week yet.',
+      'last-week': 'No games last week.',
+      'this-month': 'No games this month yet.',
+      'last-month': 'No games last month.',
+      'all-time': 'No games yet.',
+    });
+    expect(WINDOW_EMPTY['this-week']).toContain('yet');
+    expect(WINDOW_EMPTY['last-week']).not.toContain('yet');
+    expect(WINDOW_EMPTY['last-month']).not.toContain('yet');
+  });
+
+  /**
+   * **The word `season` leaves the friend-facing vocabulary entirely** with M5.12 and M5.14:
+   * `No games this season yet.` and `No season is active…` are deleted, and nothing that
+   * replaced them may put the word back.
+   */
+  it('says the word season nowhere a friend can read it', () => {
+    const strings = [
+      ...Object.values(WINDOW_LABELS),
+      ...Object.values(WINDOW_EMPTY),
+      SETTLING_SENTENCE,
+      SETTLING_SENTENCE_SHORT,
+      NOT_RATED_HINT,
+    ];
+
+    for (const sentence of strings) expect(sentence.toLowerCase()).not.toContain('season');
+  });
+
+  /** The hairline is a seed over a whole history and a start over a window. Two words. */
+  it('does not let a window borrow the word `seed`', () => {
+    expect(SEED_LABEL).toBe('seed');
+    expect(START_LABEL).toBe('start');
   });
 
   /**
@@ -301,7 +362,7 @@ describe('the rail board read', () => {
   it('is an empty rail and one log line, not a failed page', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(loadTopPlayersOrNone(broken, { limit: 5 })).resolves.toEqual([]);
+    await expect(loadTopPlayersOrNone(broken, { limit: 5, window: 'this-week' })).resolves.toEqual([]);
     expect(logged).toHaveBeenCalledTimes(1);
 
     logged.mockRestore();
@@ -310,7 +371,7 @@ describe('the rail board read', () => {
   it('still throws for anybody who asks for the board itself', async () => {
     // `/leaderboard` is the board: an empty page there would be a lie, so the unguarded read is
     // what that page uses and this guard is the rail's alone.
-    await expect(loadTopPlayers(broken, { limit: 5 })).rejects.toThrow();
+    await expect(loadTopPlayers(broken, { limit: 5, window: 'this-week' })).rejects.toThrow();
   });
 });
 
@@ -378,5 +439,92 @@ describe('the rating chart', () => {
 
     const y = (point: string | undefined): number => Number((point ?? '').split(',')[1]);
     expect(y(last)).toBeLessThan(y(first));
+  });
+});
+
+/**
+ * The window parameter (M5.12). The boundaries are `lib/night.test.ts`'s; this is the reading
+ * of a URL, the three defaults and the link behind an option.
+ */
+describe('the window a page is read through', () => {
+  it('defaults per page: the board opens on the week, a person on all time, stats on the month', () => {
+    expect(LEADERBOARD_WINDOW).toBe('this-week');
+    expect(PLAYER_WINDOW).toBe('all-time');
+    expect(STATS_WINDOW).toBe('this-month');
+  });
+
+  it('takes the page default when the parameter is absent', () => {
+    expect(parseWindow(undefined, LEADERBOARD_WINDOW)).toBe('this-week');
+    expect(parseWindow(undefined, PLAYER_WINDOW)).toBe('all-time');
+  });
+
+  it('takes any of the five, spelled the way the URL spells them', () => {
+    for (const kind of WINDOW_ORDER) expect(parseWindow(kind, LEADERBOARD_WINDOW)).toBe(kind);
+  });
+
+  /**
+   * **An unknown value is `null`, which every page turns into a 404** — never a silent
+   * fallback to the default. It can only come from a typed or mangled URL, and a page that
+   * quietly showed a different window than the URL names is a page whose links cannot be
+   * trusted.
+   */
+  it('refuses anything that is not one of the five, including a repeated parameter', () => {
+    expect(parseWindow('this-year', LEADERBOARD_WINDOW)).toBeNull();
+    expect(parseWindow('', LEADERBOARD_WINDOW)).toBeNull();
+    expect(parseWindow('This week', LEADERBOARD_WINDOW)).toBeNull();
+    expect(parseWindow('season-1', LEADERBOARD_WINDOW)).toBeNull();
+    // `?window=this-week&window=all-time` arrives as an array and is not one of the five.
+    expect(parseWindow(['this-week', 'all-time'], LEADERBOARD_WINDOW)).toBeNull();
+  });
+
+  it('links every option, the page default included, so a copied URL says which board it is', () => {
+    expect(windowHref('/leaderboard', 'last-week')).toBe('/leaderboard?window=last-week');
+    expect(windowHref('/leaderboard', 'this-week')).toBe('/leaderboard?window=this-week');
+    expect(windowHref('/p/puuid-a', 'all-time')).toBe('/p/puuid-a?window=all-time');
+  });
+});
+
+/**
+ * The window line on a row: `6 games · 4W 2L · +58` (M5.12).
+ *
+ * The change is `displayDelta` over the window's first and last counted game — the difference
+ * of two **displayed** numbers, `00-product.md`'s rule — and it is asserted through
+ * `lib/ratingDisplay.ts` here rather than recomputed, which is the acceptance check.
+ */
+describe('what a window did to a row', () => {
+  it('is the two displayed ratings subtracted, never the raw mu difference', () => {
+    const climb = workedWindowRows()[0]?.climb as { muBefore: number; muAfter: number };
+
+    expect(displayDelta(climb.muBefore, climb.muAfter)).toBe(58);
+    expect(formatWebDelta(displayDelta(climb.muBefore, climb.muAfter))).toBe('+58');
+    // The rule, spelled out: round both, then subtract.
+    expect(displayDelta(climb.muBefore, climb.muAfter)).toBe(
+      displayRating(climb.muAfter) - displayRating(climb.muBefore),
+    );
+  });
+
+  it('keeps a week that lost less than half a point pointing down', () => {
+    // `-0` is a real value on this row and it is why the pair of mu values travels instead of
+    // a formatted string: `JSON.stringify` would turn it into `0` and print `+0`.
+    expect(formatWebDelta(displayDelta(23.9, 23.896))).toBe('−0');
+  });
+
+  it('carries no streak, because product fixed the line without one', () => {
+    for (const row of workedWindowRows()) {
+      expect(row.streak).toBeNull();
+      expect(row.games).toBe(6);
+      expect(`${gamesLabel(row.games)} · ${winLossLabel(row.wins, row.losses)}`).toBe('6 games · 4W 2L');
+    }
+  });
+
+  /** The sort is the window's only untouched thing: Proven descending, on every window. */
+  it('does not reorder a window by who climbed most in it', () => {
+    const rows = workedWindowRows();
+    const climber = { ...(rows.at(-1) as (typeof rows)[number]), climb: { muBefore: 20, muAfter: 26 } };
+    const sorted = sortBoardRows([climber, ...rows.slice(0, -1)]);
+
+    // Yuki climbed 360 display points and is still last, because Proven is what sorts.
+    expect(sorted.at(-1)?.name).toBe('Yuki');
+    expect(sorted[0]?.name).toBe('Lena');
   });
 });

@@ -1,6 +1,7 @@
 import { displayRating, type Rating, seedFromRank } from '@customs/core';
 import type { RoleValue, SideValue } from '@customs/db';
 import { inLaneOrder, LANE_ORDER } from '../laneOrder';
+import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import { provenRating, provenSortKey } from '../ratingDisplay';
 import type { PlayerName } from '../tonight/types';
@@ -8,15 +9,7 @@ import { SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
 import { recentGames } from './recent';
 import { currentStreak } from './streak';
-import type {
-  BoardRow,
-  BoardView,
-  PlayerBoardView,
-  RecentGame,
-  RecentTeammate,
-  RoleRecord,
-  SeasonView,
-} from './types';
+import type { BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate, RoleRecord } from './types';
 
 /**
  * Everything `/leaderboard` and `/p/[puuid]` show, read with the **anon key** (M3.5).
@@ -79,19 +72,52 @@ interface RatingRow {
 }
 
 /**
- * The board. One row per player the database knows, ordered by Proven descending.
+ * What a page is asking the loader for: which of the five windows, and — for a test — the
+ * instant and the zone the boundaries are computed from (M5.9).
  *
- * Nobody is filtered out: a friend seeded last night who cannot find themselves will ask why,
- * and a board that hides its newest players is the board M3.8 exists to explain.
+ * The zone defaults to `night.ts`'s, not to `nightTimeZone()`: this module is imported by the
+ * Discord post and by the tonight page's rail, and the one place `CUSTOMS_NIGHT_TZ` is read is
+ * `lib/tonight/night.ts`. Callers that have it pass it in.
  */
-export async function loadBoard(client: PublicClient): Promise<BoardView> {
-  const season = await selectSeason(client);
-  if (season === null) return { season: null, rows: [] };
+export interface BoardOptions {
+  window: WindowKind;
+  /** Injected in tests; `new Date()` otherwise. Never read inside the pure helpers. */
+  now?: Date;
+  timeZone?: string;
+}
+
+/**
+ * The board, read through one window (M3.5, windowed by M5.12). Ordered by Proven descending,
+ * and **the window changes who is on the board, not how boards are sorted** — a weekly board
+ * sorted by "who climbed most this week" would be a second ranking with a second meaning, and
+ * the group already has one number to argue about.
+ *
+ * Two membership rules, and they are not the same rule:
+ *
+ * - **`All time`** is every player the database knows, seeded from rank when they have no
+ *   `ratings` row — unchanged since M3.5, down to the integer. A friend seeded last night who
+ *   cannot find themselves will ask why, and a board that hides its newest players is the
+ *   board M3.8 exists to explain.
+ * - **A window** is the players with at least one *counted* game inside it. Not greyed out and
+ *   not at the bottom: the board is who played. A player with no game this week is simply not
+ *   on `This week`.
+ */
+export async function loadBoard(client: PublicClient, options: BoardOptions): Promise<BoardView> {
+  const window = options.window;
+  const season = await selectSeasonId(client);
+  // No season row means no games — `games.season_id` is not null — so there is nothing to put
+  // on any window. The page prints the window's empty line, which is true and is enough.
+  if (season === null) return { window, rows: [] };
+
+  if (window !== 'all-time') {
+    const range = windowRange(window, options.now ?? new Date(), options.timeZone);
+    return { window, rows: sortBoardRows(await windowRows(client, season, range)) };
+  }
 
   const [players, ratings, results] = await Promise.all([
     loadAllPlayers(client),
-    loadRatings(client, season.id),
-    loadRecentResults(client, season.id),
+    loadRatings(client, season),
+    loadRecentResults(client, season),
   ]);
 
   const rows: BoardRow[] = players.map((player) => {
@@ -110,11 +136,87 @@ export async function loadBoard(client: PublicClient): Promise<BoardView> {
       wins,
       losses: games - wins,
       streak: currentStreak(results.get(player.id) ?? []),
+      climb: null,
       settling: games < SETTLING_GAMES,
     };
   });
 
-  return { season, rows: sortBoardRows(rows) };
+  return { window, rows: sortBoardRows(rows) };
+}
+
+/**
+ * One window's rows: the players who played inside it, with their numbers **as of their last
+ * counted game in it** (M5.12).
+ *
+ * On `Last week` that is the board as it stood when the week closed, which is what makes the
+ * Monday post reproducible on Tuesday and after a late backfill. On `This week` it is also
+ * their current rating, because their last game in the running week *is* their last game — one
+ * rule, no special case.
+ *
+ * A counted game is one the fold counted, which on a stored row is `mu_after is not null`.
+ * An unrated game in the window counts nowhere here, exactly as on `/leaderboard` today.
+ */
+async function windowRows(client: PublicClient, seasonId: string, range: WindowRange): Promise<BoardRow[]> {
+  const games = await loadSeasonGames(client, seasonId, { limit: SEASON_GAME_LIMIT, range });
+  if (games.length === 0) return [];
+
+  const byGame = new Map(games.map((game) => [game.id, game]));
+  const rows = await loadGameRows(
+    client,
+    games.map((game) => game.id),
+  );
+
+  // Oldest first, per player: the climb is the first game's `mu_before` and the last one's
+  // `mu_after`, and `game_players` comes back in whatever order Postgres feels like.
+  const byPlayer = new Map<string, { row: PlayerGameRow; game: SeasonGame }[]>();
+  for (const row of rows) {
+    const game = byGame.get(row.gameId);
+    if (game === undefined || row.muAfter === null || row.muBefore === null) continue;
+    const played = byPlayer.get(row.playerId) ?? [];
+    played.push({ row, game });
+    byPlayer.set(row.playerId, played);
+  }
+  for (const played of byPlayer.values()) {
+    played.sort((a, b) => Date.parse(a.game.startedAt) - Date.parse(b.game.startedAt));
+  }
+
+  const playerIds = [...byPlayer.keys()];
+  const [players, ratings] = await Promise.all([
+    loadPlayersByIds(client, playerIds),
+    loadRatings(client, seasonId, playerIds),
+  ]);
+
+  return playerIds.flatMap((playerId) => {
+    const player = players.get(playerId);
+    const played = byPlayer.get(playerId) ?? [];
+    const first = played[0];
+    const last = played[played.length - 1];
+    // A scoreboard row whose player `players_public` cannot answer for is not a row we can
+    // draw. The foreign key says it cannot happen.
+    if (player === undefined || first === undefined || last === undefined) return [];
+
+    const rating: Rating = { mu: last.row.muAfter as number, sigma: last.row.sigmaAfter as number };
+    const wins = played.filter(({ row, game }) => row.side === game.winningSide).length;
+
+    return [
+      {
+        puuid: player.puuid,
+        name: player.name,
+        proven: provenRating(rating),
+        sortKey: provenSortKey(rating),
+        rating: displayRating(rating.mu),
+        games: played.length,
+        wins,
+        losses: played.length - wins,
+        // The window line replaces line 2's meta, and product fixed its shape without a
+        // streak in it: `6 games · 4W 2L · +58`.
+        streak: null,
+        climb: { muBefore: first.row.muBefore as number, muAfter: last.row.muAfter as number },
+        // **The all-time count**, not the window's: the chip is a fact about the rating.
+        settling: (ratings.get(playerId)?.games ?? played.length) < SETTLING_GAMES,
+      },
+    ];
+  });
 }
 
 /**
@@ -126,8 +228,11 @@ export async function loadBoard(client: PublicClient): Promise<BoardView> {
  * page it links to about who is first is worse than a rail with nothing in it. The group is
  * twenty rows; there is nothing to save by reading fewer.
  */
-export async function loadTopPlayers(client: PublicClient, options: { limit: number }): Promise<BoardRow[]> {
-  const board = await loadBoard(client);
+export async function loadTopPlayers(
+  client: PublicClient,
+  options: BoardOptions & { limit: number },
+): Promise<BoardRow[]> {
+  const board = await loadBoard(client, options);
   return board.rows.slice(0, Math.max(0, options.limit));
 }
 
@@ -144,7 +249,7 @@ export async function loadTopPlayers(client: PublicClient, options: { limit: num
  */
 export async function loadTopPlayersOrNone(
   client: PublicClient,
-  options: { limit: number },
+  options: BoardOptions & { limit: number },
 ): Promise<BoardRow[]> {
   try {
     return await loadTopPlayers(client, options);
@@ -158,22 +263,45 @@ export async function loadTopPlayersOrNone(
  * One player's page: the two numbers, the `Rating` history, the role record and the last few
  * games. `null` when no `players_public` row has that puuid, which the page turns into a 404.
  */
-export async function loadPlayerBoard(client: PublicClient, puuid: string): Promise<PlayerBoardView | null> {
+export async function loadPlayerBoard(
+  client: PublicClient,
+  puuid: string,
+  options: BoardOptions,
+): Promise<PlayerBoardView | null> {
   const player = await selectPlayer(client, puuid);
   if (player === null) return null;
 
-  const season = await selectSeason(client);
-  // **Not zeros.** Ratings are per season, so with no active season this player has no rating,
-  // no Proven and no history — and a `0` in those fields is a number the model never produced.
-  // The no-season arm carries the name and nothing else, and the page has nothing to print.
-  if (season === null) return { kind: 'no-season', puuid: player.puuid, name: player.name };
-
+  const window = options.window;
+  const range = windowRange(window, options.now ?? new Date(), options.timeZone);
   const seed = displayRating(seedFromRank(player.rankTier, player.rankDivision).mu);
+  const season = await selectSeasonId(client);
+
+  // No season row means no games and no ratings: the page is the person, their seed numbers
+  // and the window's empty line. (Until 2026-09-10 this was a separate shape carrying one
+  // sentence about starting a season; there is no such button now — M5.14.)
+  if (season === null) {
+    const seeded = seedFromRank(player.rankTier, player.rankDivision);
+    return {
+      puuid: player.puuid,
+      name: player.name,
+      window,
+      rating: displayRating(seeded.mu),
+      proven: provenRating(seeded),
+      games: 0,
+      wins: 0,
+      losses: 0,
+      settling: true,
+      reference: seed,
+      history: [],
+      roles: [],
+      recent: [],
+    };
+  }
 
   const [ratings, games, rows] = await Promise.all([
-    loadRatings(client, season.id, [player.id]),
-    loadSeasonGames(client, season.id, { limit: SEASON_GAME_LIMIT }),
-    loadPlayerGameRows(client, player.id, season.id),
+    loadRatings(client, season, [player.id]),
+    loadSeasonGames(client, season, { limit: SEASON_GAME_LIMIT, range }),
+    loadPlayerGameRows(client, player.id, season, range),
   ]);
 
   const byGame = new Map(games.map((game) => [game.id, game]));
@@ -195,9 +323,8 @@ export async function loadPlayerBoard(client: PublicClient, puuid: string): Prom
   const played = all.filter(({ row }) => row.muAfter !== null);
 
   const stored = ratings.get(player.id);
-  const rating = stored?.rating ?? seedFromRank(player.rankTier, player.rankDivision);
-  const gamesPlayed = stored?.games ?? 0;
-  const wins = stored?.wins ?? 0;
+  const current = stored?.rating ?? seedFromRank(player.rankTier, player.rankDivision);
+  const allTimeGames = stored?.games ?? 0;
 
   const recent = await loadRecentGames(
     client,
@@ -207,18 +334,46 @@ export async function loadPlayerBoard(client: PublicClient, puuid: string): Prom
     ),
   );
 
+  /**
+   * **The two numbers, and where they come from** (M5.12).
+   *
+   * On `All time` they are the `ratings` row — the fold's own totals, byte-identical to what
+   * M3.5 shipped and to the row on `/leaderboard`. In a window they are this player as of
+   * their last counted game inside it, from that game's `mu_after` / `sigma_after`, and the
+   * record counts the window's games.
+   *
+   * With no counted game in the window they fall back to the current rating: the page is a
+   * person, not a board row, and printing nothing where a number goes would say something the
+   * empty line under it already says better.
+   */
+  const last = played[played.length - 1];
+  const first = played[0];
+  const windowed = window !== 'all-time' && last !== undefined;
+  const rating: Rating = windowed
+    ? { mu: last.row.muAfter as number, sigma: last.row.sigmaAfter as number }
+    : current;
+  const windowWins = played.filter(({ row, game }) => row.side === game.winningSide).length;
+  const counted = window === 'all-time' ? allTimeGames : played.length;
+  const wins = window === 'all-time' ? (stored?.wins ?? 0) : windowWins;
+
   return {
-    kind: 'season',
     puuid: player.puuid,
     name: player.name,
-    season,
+    window,
     rating: displayRating(rating.mu),
     proven: provenRating(rating),
-    games: gamesPlayed,
+    games: counted,
     wins,
-    losses: gamesPlayed - wins,
-    settling: gamesPlayed < SETTLING_GAMES,
-    seed,
+    losses: counted - wins,
+    // The 30-game rule reads the whole history in every window (M3.8).
+    settling: allTimeGames < SETTLING_GAMES,
+    /**
+     * The chart's hairline: the seed on `All time`, and in a window the rating carried
+     * **into** it — the `mu_before` of the first counted game in it, which is where the week
+     * found them. That is not a seed and does not borrow the word (`start`, M5.12).
+     */
+    reference:
+      window === 'all-time' || first === undefined ? seed : displayRating(first.row.muBefore as number),
     history: historySeries(played),
     roles: roleRecord(played),
     recent,
@@ -304,16 +459,24 @@ async function loadRecentGames(
   });
 }
 
-/** The active season, or `null`: the page then says so and lists nobody. */
-async function selectSeason(client: PublicClient): Promise<SeasonView | null> {
+/**
+ * The one season row's id — the all-time container every `games.season_id` points at — or
+ * `null` for a database that is missing it.
+ *
+ * **Its name is never read**, because a season's name is never printed to a friend again
+ * (M5.12): the board's heading is the window's name. `0001_init.sql` inserts this row and
+ * nothing can make a second (M5.14), so `null` here means a broken deployment, not a state the
+ * product has.
+ */
+async function selectSeasonId(client: PublicClient): Promise<string | null> {
   const { data, error } = await client
     .from('seasons')
-    .select('id, name')
+    .select('id')
     .eq('is_active', true)
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`board: season lookup failed: ${error.message}`);
-  return data ?? null;
+  return data?.id ?? null;
 }
 
 /** `players_public`: `players` minus `discord_id`, and the only players relation anon can read. */
@@ -355,6 +518,34 @@ function toPlayer(row: PublicPlayerRow): PlayerRow {
     rankTier: row.rank_tier,
     rankDivision: row.rank_division,
   };
+}
+
+/**
+ * The players on a window's board, by the ids their scoreboard rows carry — name **and** rank,
+ * because a row needs the same fields `loadAllPlayers` gives the all-time board.
+ *
+ * Read by id and not as "everybody": a window's membership is the games, so asking for the
+ * whole roster and throwing most of it away would make the two boards two different reads of
+ * the same table.
+ */
+async function loadPlayersByIds(
+  client: PublicClient,
+  playerIds: readonly string[],
+): Promise<Map<string, PlayerRow>> {
+  if (playerIds.length === 0) return new Map();
+
+  const { data, error } = await client
+    .from('players_public')
+    .select('id, puuid, display_name, game_name, rank_tier, rank_division')
+    .in('id', [...playerIds]);
+  if (error) throw new Error(`board: player lookup failed: ${error.message}`);
+
+  const players = new Map<string, PlayerRow>();
+  for (const row of data ?? []) {
+    if (row.id === null || row.puuid === null) continue;
+    players.set(row.id, toPlayer(row));
+  }
+  return players;
 }
 
 /** Names for a set of player ids, from `players_public`, for the ids being rendered. */
@@ -411,14 +602,17 @@ async function loadRatings(
 async function loadSeasonGames(
   client: PublicClient,
   seasonId: string,
-  options: { limit: number },
+  options: { limit: number; range?: WindowRange },
 ): Promise<SeasonGame[]> {
-  const { data, error } = await client
+  let query = client
     .from('games')
     .select('id, started_at, duration_s, winning_side')
-    .eq('season_id', seasonId)
-    .order('started_at', { ascending: false })
-    .limit(options.limit);
+    .eq('season_id', seasonId);
+  // **The window is a filter in the query, not a filter in memory** (M5.12): `Last month` on a
+  // year of history would otherwise be read through the cap and come back empty.
+  query = withRange(query, 'started_at', options.range);
+
+  const { data, error } = await query.order('started_at', { ascending: false }).limit(options.limit);
   if (error) throw new Error(`board: game lookup failed: ${error.message}`);
 
   return (data ?? []).flatMap((row) =>
@@ -442,6 +636,8 @@ interface PlayerGameRow {
   role: RoleValue | null;
   muBefore: number | null;
   muAfter: number | null;
+  /** Beside `mu_after`, because a window's Proven is `mu - 2σ` **as of that game** (M5.12). */
+  sigmaAfter: number | null;
 }
 
 /**
@@ -464,16 +660,44 @@ async function loadPlayerGameRows(
   client: PublicClient,
   playerId: string,
   seasonId: string,
+  range?: WindowRange,
 ): Promise<PlayerGameRow[]> {
-  const { data, error } = await client
+  let query = client
     .from('game_players')
-    .select('game_id, player_id, side, role, mu_before, mu_after, games!inner(started_at, season_id)')
+    .select(
+      'game_id, player_id, side, role, mu_before, mu_after, sigma_after, games!inner(started_at, season_id)',
+    )
     .eq('player_id', playerId)
-    .eq('games.season_id', seasonId)
+    .eq('games.season_id', seasonId);
+  // The window filters the **embedded** column, the same spelling the order below uses: the
+  // alternative is reading a year of rows to throw all but a week of them away.
+  query = withRange(query, 'games.started_at', range);
+
+  const { data, error } = await query
     .order('games(started_at)', { ascending: false })
     .limit(SEASON_GAME_LIMIT);
   if (error) throw new Error(`board: game player lookup failed: ${error.message}`);
   return (data ?? []).map(toGameRow);
+}
+
+/**
+ * The window, as two PostgREST filters: `[start, end)`, half-open, with `all-time`'s nulls
+ * adding nothing (M5.9). One helper, so the two reads that take a range cannot disagree about
+ * which end is inclusive.
+ *
+ * Generic over the builder rather than typed to one table: `PostgrestFilterBuilder`'s type
+ * parameters differ per query and every caller passes the builder straight back to itself.
+ */
+function withRange<Q extends { gte(column: string, value: string): Q; lt(column: string, value: string): Q }>(
+  query: Q,
+  column: string,
+  range: WindowRange | undefined,
+): Q {
+  if (range === undefined) return query;
+  let next = query;
+  if (range.start !== null) next = next.gte(column, range.start.toISOString());
+  if (range.end !== null) next = next.lt(column, range.end.toISOString());
+  return next;
 }
 
 /** `game_players` for a set of games, in chunks, so no response is silently truncated. */
@@ -483,7 +707,7 @@ async function loadGameRows(client: PublicClient, gameIds: readonly string[]): P
     const chunk = gameIds.slice(start, start + GAME_ID_CHUNK);
     const { data, error } = await client
       .from('game_players')
-      .select('game_id, player_id, side, role, mu_before, mu_after')
+      .select('game_id, player_id, side, role, mu_before, mu_after, sigma_after')
       .in('game_id', chunk);
     if (error) throw new Error(`board: game player lookup failed: ${error.message}`);
     rows.push(...(data ?? []).map(toGameRow));
@@ -498,6 +722,7 @@ interface RawGamePlayerRow {
   role: RoleValue | null;
   mu_before: number | null;
   mu_after: number | null;
+  sigma_after?: number | null;
 }
 
 function toGameRow(row: RawGamePlayerRow): PlayerGameRow {
@@ -508,6 +733,7 @@ function toGameRow(row: RawGamePlayerRow): PlayerGameRow {
     role: row.role,
     muBefore: row.mu_before,
     muAfter: row.mu_after,
+    sigmaAfter: row.sigma_after ?? null,
   };
 }
 
