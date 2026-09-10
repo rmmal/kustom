@@ -515,6 +515,9 @@
 .cn-player-award {
   margin: 0;
   font-size: var(--cn-t-base);
+  /* 600, so one line of prose between two cards reads as a statement and not as a caption on
+     the chart above it (the designer, 2026-09-11). */
+  font-weight: 600;
   color: var(--cn-text);
 }
 

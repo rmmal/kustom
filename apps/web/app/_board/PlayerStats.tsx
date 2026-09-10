@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { gamesLabel, ROLE_RECORD_HEADING, winLossLabel } from '@/lib/board/copy';
 import { formatStreak, type Streak } from '@/lib/board/streak';
 import {
+  averageGameLine,
   BEST_TOGETHER,
   CURRENT_STREAK,
   capLine,
@@ -11,7 +12,6 @@ import {
   noRoleFootnote,
   PARTNERS_HEADING,
   percentLabel,
-  playerAverageGameLine,
   SIDE_LABELS,
   SIDE_RECORD_HEADING,
   STREAKS_HEADING,
@@ -79,15 +79,16 @@ export function PlayerStats({ stats }: PlayerStatsProps) {
       <Streaks streaks={stats.streaks} />
 
       {/*
-       * Their mean game, in one sentence and one card — the `/stats` group-statement recipe
-       * with one line in it instead of three. **Never `0 min` and never `NaN`**: `null` is a
-       * player with no counted game, and this whole band is undrawn there.
+       * Their mean game: **one sentence and no card** (the designer, 2026-09-11). `/stats`'
+       * card holds three statements about one subject; one sentence in the same box is a card
+       * with a line in it, which is the empty-card failure at its smallest. It is the same
+       * string as the group's since product took the count out of both (M5.22) — one function,
+       * two pages. **Never `0 min` and never `NaN`**: `null` is a player with no counted game,
+       * and this whole band is undrawn there.
        */}
       {stats.averageMinutes === null ? null : (
         <section className="cn-block">
-          <section className="cn-card cn-stats-lines">
-            <p className="cn-stats-line">{playerAverageGameLine(stats.averageMinutes)}</p>
-          </section>
+          <p className="cn-stats-answer">{averageGameLine(stats.averageMinutes)}</p>
         </section>
       )}
 
@@ -124,7 +125,7 @@ function Roles({ stats }: { stats: PlayerStatsView }) {
           <ul className="cn-records">
             {stats.roles.map((record) => (
               <li key={record.role} className="cn-record cn-stats-duo">
-                <RoleName role={record.role} size={20} />
+                <RoleName role={record.role} size={16} />
                 <Record record={record} />
               </li>
             ))}
@@ -160,13 +161,16 @@ function Sides({ sides }: { sides: PlayerSideRecord[] }) {
           {sides.map(({ side, record }) => (
             <li key={side} className="cn-record cn-stats-duo">
               {/*
-               * **A name read as language, so Archivo** (product, 2026-09-11): every side this
-               * product prints to a friend is capitalised, and the mono lower-case exception is
-               * the roles' alone — which is also why this is not `.cn-lineup-role`, a role and
-               * its icon. No tint: a coloured row here would be the tonight page's team card
-               * meaning something else.
+               * **A capitalised name, in Archivo, in its own side's colour**: product's casing
+               * (2026-09-11 — every side this product prints to a friend is capitalised) and the
+               * designer's colour (`blue` / `red` on the word, not `dim`). The mono lower-case
+               * register stays the roles' alone, which is also why this is not
+               * `.cn-lineup-role`, a role and its icon. The colour is on the **word** and never
+               * a tint behind the row: a tint means "which team" on the tonight page.
                */}
-              <span className="cn-stats-side">{SIDE_LABELS[side]}</span>
+              <span className={side === 100 ? 'cn-stats-side cn-side-blue' : 'cn-stats-side cn-side-red'}>
+                {SIDE_LABELS[side]}
+              </span>
               <Record record={record} />
             </li>
           ))}
@@ -181,6 +185,12 @@ function Sides({ sides }: { sides: PlayerSideRecord[] }) {
  *
  * A game the two of them played against each other is in neither list — it is not a game they
  * played together, and rivalries are a different question the milestone put out of scope.
+ *
+ * **Nobody over the bar is one sentence with no labels over it** (the designer, 2026-09-11): a
+ * group label is a promise of rows, and `Best together` above `Nobody has 5 games with them
+ * yet.` above `Worst together` above the same line again says one true thing four times.
+ * `Worst together` is drawn only when there is something under it, which is also what the
+ * fold's split guarantees at three qualifying partners or fewer.
  */
 function Partners({ best, worst }: { best: PartnerRecord[]; worst: PartnerRecord[] }) {
   return (
@@ -189,8 +199,16 @@ function Partners({ best, worst }: { best: PartnerRecord[]; worst: PartnerRecord
         <header className="cn-card-head cn-list-head">
           <h2 className="cn-board-title">{PARTNERS_HEADING}</h2>
         </header>
-        <PartnerList title={BEST_TOGETHER} partners={best} />
-        <PartnerList title={WORST_TOGETHER} partners={worst} />
+        {best.length === 0 ? (
+          <div className="cn-role-block">
+            <p className="cn-stats-empty">{NO_PARTNERS}</p>
+          </div>
+        ) : (
+          <>
+            <PartnerList title={BEST_TOGETHER} partners={best} />
+            {worst.length === 0 ? null : <PartnerList title={WORST_TOGETHER} partners={worst} />}
+          </>
+        )}
       </section>
     </section>
   );
@@ -200,21 +218,17 @@ function PartnerList({ title, partners }: { title: string; partners: PartnerReco
   return (
     <div className="cn-role-block">
       <p className="cn-stats-subtitle">{title}</p>
-      {partners.length === 0 ? (
-        <p className="cn-stats-empty">{NO_PARTNERS}</p>
-      ) : (
-        <ul className="cn-records">
-          {partners.map((partner) => (
-            <li key={partner.puuid} className="cn-record cn-stats-duo">
-              {/* Every other name on this page is a link to their page; so is this one. */}
-              <Link className="cn-stats-name" href={`/p/${partner.puuid}`}>
-                {renderWebName(partner.name)}
-              </Link>
-              <Record record={partner} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="cn-records">
+        {partners.map((partner) => (
+          <li key={partner.puuid} className="cn-record cn-stats-duo">
+            {/* Every other name on this page is a link to their page; so is this one. */}
+            <Link className="cn-stats-name" href={`/p/${partner.puuid}`}>
+              {renderWebName(partner.name)}
+            </Link>
+            <Record record={partner} />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

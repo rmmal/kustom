@@ -1,13 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
+  averageGameLine,
   CURRENT_STREAK,
   LONGEST_LOSS,
   LONGEST_WIN,
   NO_PARTNERS,
   noRoleFootnote,
   PARTNERS_HEADING,
-  playerAverageGameLine,
   SIDE_RECORD_HEADING,
 } from '@/lib/stats/copy';
 import type { PlayerStatsView } from '@/lib/stats/types';
@@ -118,18 +118,45 @@ describe('partners', () => {
       'Theo6W 4L · 60%',
       'Bilal2W 9L · 18%',
       'Omar3W 8L · 27%',
-      'Theo6W 4L · 60%',
     ]);
+    // No name is in both lists (the designer, 2026-09-11).
+    expect(rowsOf(container, 2).filter((row) => row.startsWith('Theo'))).toHaveLength(1);
     expect(screen.getAllByRole('link', { name: 'Iris' })[0]).toHaveAttribute(
       'href',
       `/p/${workedPuuid('Iris')}`,
     );
   });
 
-  it('says the empty line, twice, when nobody has five games with them', () => {
-    draw(workedPlayerStats({ bestPartners: [], worstPartners: [] }));
+  /**
+   * **One sentence, and no group label over it** (the designer, 2026-09-11): a label promises
+   * rows, and `Best together` / `Worst together` around two copies of one line says one true
+   * thing four times.
+   */
+  it('says the empty line once, with neither group label, when nobody qualifies', () => {
+    const { container } = draw(workedPlayerStats({ bestPartners: [], worstPartners: [] }));
 
-    expect(screen.getAllByText(NO_PARTNERS)).toHaveLength(2);
+    expect(screen.getAllByText(NO_PARTNERS)).toHaveLength(1);
+    const partners = [...container.querySelectorAll('.cn-list-card')][2];
+    expect(partners?.querySelectorAll('.cn-stats-subtitle')).toHaveLength(0);
+  });
+
+  /** Three or fewer over the bar: `Best together` is the whole truth and prints alone. */
+  it('draws Best together alone when there is no remainder to be worst', () => {
+    const { container } = draw(
+      workedPlayerStats({
+        bestPartners: [
+          { puuid: 'a', name: 'Iris', games: 12, wins: 9, losses: 3, winRate: 75 },
+          { puuid: 'b', name: 'Karim', games: 11, wins: 7, losses: 4, winRate: 64 },
+        ],
+        worstPartners: [],
+      }),
+    );
+
+    const partners = [...container.querySelectorAll('.cn-list-card')][2];
+    expect([...(partners?.querySelectorAll('.cn-stats-subtitle') ?? [])].map((n) => n.textContent)).toEqual([
+      'Best together',
+    ]);
+    expect(screen.queryByText(NO_PARTNERS)).not.toBeInTheDocument();
   });
 });
 
@@ -167,8 +194,10 @@ describe('their average game length', () => {
   it('is one sentence, in a card, with no count the seed line already carries', () => {
     draw();
 
-    const line = screen.getByText(playerAverageGameLine(32));
-    expect(line).toHaveClass('cn-stats-line');
+    // One sentence and no card (the designer, 2026-09-11), in the group line's own string.
+    const line = screen.getByText(averageGameLine(32));
+    expect(line).toHaveClass('cn-stats-answer');
+    expect(line.closest('.cn-card')).toBeNull();
     expect(line.textContent).toBe('Average game 32 min.');
   });
 

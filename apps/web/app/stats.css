@@ -121,17 +121,28 @@
 /*
  * A side as the subject of a row (M5.20, `/p/[puuid]`): `Blue`, `Red`.
  *
- * **Archivo, in `text`, like a name** (product, 2026-09-11): a side is a word this product
- * capitalises on every surface a friend reads, so it is language and not a token — the mono
- * lower-case register belongs to the roles alone, and `.cn-lineup-role` is a role and its icon.
- * No tint and no colour: that mark means "which team" on the tonight page.
+ * **Archivo and capitalised** (product, 2026-09-11): a side is a word this product capitalises
+ * on every surface a friend reads, so it is language and not a token — the mono lower-case
+ * register belongs to the roles alone, and `.cn-lineup-role` is a role and its icon.
+ *
+ * **In its own side's colour** (the designer, 2026-09-11): the two words are the one place on
+ * this page where a side is the subject, and `dim` on both makes them a pair of grey labels
+ * with nothing to tell them apart at a glance. The colour is on the **word** — never a tint
+ * behind the row, which is the tonight page's "which team" and a different question.
  */
 .cn-stats-side {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--cn-text);
+}
+
+.cn-side-blue {
+  color: var(--cn-blue);
+}
+
+.cn-side-red {
+  color: var(--cn-red);
 }
 
 /* Mono, `dim`, and never `brand`: rank 1 on this page is not the top of the board. */

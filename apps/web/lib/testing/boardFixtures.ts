@@ -183,8 +183,10 @@ export function workedPlayerStats(overrides: Partial<PlayerStatsView> = {}): Pla
         record: { puuid: workedPuuid('Hana'), name: 'Hana', games: 4, wins: 3, losses: 1, winRate: null },
       },
     ],
+    // Five qualifying partners: the top three, then the bottom of what is left, so no name is
+    // in both lists (the designer, 2026-09-11).
     bestPartners: [partner('Iris', 9, 3), partner('Karim', 7, 4), partner('Theo', 6, 4)],
-    worstPartners: [partner('Bilal', 2, 9), partner('Omar', 3, 8), partner('Theo', 6, 4)],
+    worstPartners: [partner('Bilal', 2, 9), partner('Omar', 3, 8)],
     streaks: {
       puuid: workedPuuid('Hana'),
       name: 'Hana',

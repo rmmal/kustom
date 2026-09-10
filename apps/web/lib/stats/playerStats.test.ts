@@ -230,10 +230,42 @@ describe('their partners', () => {
 
     // Rate descending: Iris 100, Bilal 80, Karim 60, Theo 33.
     expect(named(player.bestPartners)).toEqual([puuidOf('iris'), puuidOf('bilal'), puuidOf('karim')]);
-    expect(named(player.worstPartners)).toEqual([puuidOf('theo'), puuidOf('karim'), puuidOf('bilal')]);
+    // The bottom of what is left, not the best three reversed — so Theo alone.
+    expect(named(player.worstPartners)).toEqual([puuidOf('theo')]);
     // Four games together is not a partner at all, at either end of the list.
     expect(named([...player.bestPartners, ...player.worstPartners])).not.toContain(puuidOf('omar'));
     expect(player.bestPartners[0]).toMatchObject({ games: 5, wins: 5, losses: 0, winRate: 100 });
+  });
+
+  /**
+   * **No name is in both lists** (the designer, 2026-09-11): `Best together` is the top three
+   * and `Worst together` is the bottom three of the remainder, so at three qualifying partners
+   * or fewer the worst list is empty and the page draws `Best together` alone.
+   */
+  it('splits one ranked list in two, and repeats nobody', () => {
+    const seven = [
+      ...withPartner('iris', 5, 0, 1),
+      ...withPartner('bilal', 4, 1, 10),
+      ...withPartner('karim', 3, 2, 20),
+      ...withPartner('theo', 2, 3, 30),
+      ...withPartner('omar', 1, 4, 40),
+      ...withPartner('nadia', 0, 5, 50),
+      ...withPartner('yuki', 2, 4, 60),
+    ];
+
+    const player = view(seven, 'lena');
+    const best = player.bestPartners.map((entry) => entry.puuid);
+    const worst = player.worstPartners.map((entry) => entry.puuid);
+
+    expect(best).toHaveLength(3);
+    expect(worst).toHaveLength(3);
+    expect(best.filter((puuid) => worst.includes(puuid))).toEqual([]);
+    // Seven qualify, six are printed: the fourth-best is in neither list, which is honest.
+    expect([...best, ...worst]).toHaveLength(6);
+
+    const three = view([...withPartner('iris', 5, 0, 1), ...withPartner('theo', 2, 3, 20)], 'lena');
+    expect(three.bestPartners).toHaveLength(2);
+    expect(three.worstPartners).toEqual([]);
   });
 
   /** `A pair that played 5 games together and 40 against each other`: only same-side games count. */

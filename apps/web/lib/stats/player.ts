@@ -89,6 +89,19 @@ export function playerStatsView(input: PlayerStatsInput): PlayerStatsView {
 
   const streaks = playerStreaks(mine, [player])[0] ?? null;
   const partners = partnerRecords(mine, input.players, player);
+  /**
+   * **One list, cut in two, and nobody is in both** (the designer, 2026-09-11).
+   *
+   * `Best together` takes the top three; `Worst together` takes the bottom three **of what is
+   * left**, so with four qualifying partners the worst list holds one name and with three it
+   * holds none — and `Best together` is then the whole truth, printed alone. A name in both
+   * lists is a page saying `Theo · 6W 4L · 60%` twice, forty pixels apart, under two headings
+   * that contradict each other; on a group of twenty most people will have four or five
+   * partners over the bar, so it is the common case and not the edge.
+   */
+  const ranked = [...partners].sort(compareRecordsWithSelf);
+  const best = ranked.slice(0, PARTNERS_SHOWN);
+  const rest = ranked.slice(PARTNERS_SHOWN);
 
   return {
     ...empty,
@@ -96,13 +109,13 @@ export function playerStatsView(input: PlayerStatsInput): PlayerStatsView {
     roles: playerRoleRecords(mine, player),
     noRoleGames: playerNoRoleGames(mine, player),
     sides: playerSideRecords(mine, player),
-    bestPartners: [...partners].sort(compareRecordsWithSelf).slice(0, PARTNERS_SHOWN),
+    bestPartners: best,
     /**
-     * The same list read from the other end, **not the three best reversed**: with fewer than
-     * six qualifying partners a name is honestly in both lists, and with more than six a name
-     * can be in neither.
+     * The remainder read from the other end, **not the best three reversed**: the worst list is
+     * ordered rate ascending, then games descending, so a partner they have lost eleven with
+     * outranks one they have lost four with.
      */
-    worstPartners: [...partners].sort(compareRecordsWorst).slice(0, PARTNERS_SHOWN),
+    worstPartners: [...rest].sort(compareRecordsWorst).slice(0, PARTNERS_SHOWN),
     streaks,
     averageMinutes: averageGameMinutes(mine),
     awards: awardsWon(input, counted),
