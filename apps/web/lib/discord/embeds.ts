@@ -322,6 +322,93 @@ function leaderboardLine(entry: LeaderboardEntry, index: number): string {
 }
 
 /**
+ * One award line of the closed window's post (M5.4, M5.10).
+ *
+ * **A seam, deliberately empty for now.** The awards are M5.4's — most improved, best
+ * off-role, cursed duo — and M5.4 has not shipped: this type is the shape the post will take
+ * them in, and `windowSummaryEmbed` prints an `Awards` field only when it is given some. The
+ * weekly post therefore ships as the closed window's board alone, and the day M5.4 lands, the
+ * loader hands three of these over and nothing else about the post changes.
+ *
+ * The line is **quoted from the awards, never re-derived here** — including the sentence an
+ * award nobody won prints (`Nobody played 6 games this week.`), so the block always has three
+ * lines and the group can see the bar it missed.
+ */
+export interface WindowAward {
+  /** `Most improved`. Rendered bold, at the front of the line. */
+  label: string;
+  /** `Nadia · +212 · 1266 → 1478`, or the "nobody qualifies" sentence, verbatim. */
+  line: string;
+}
+
+/** The awards block's field name (M5.10). */
+export const AWARDS_FIELD = 'Awards';
+
+export interface WindowSummaryEmbedInput {
+  /** `Last week` or `Last month` — {@link WINDOW_LABELS}, the same words the picker uses. */
+  windowLabel: string;
+  /** `Monday 1 Sep to Sunday 7 Sep · 14 games` (`windowRange.ts`), the window's own dates. */
+  description: string;
+  /** The window's board, ordered by Proven. {@link TOP_N} is the most that will print. */
+  entries: readonly LeaderboardEntry[];
+  /** M5.4's three lines when they exist. Undefined or empty prints no field at all. */
+  awards?: readonly WindowAward[] | undefined;
+  /** `/leaderboard?window=last-week`, or `undefined` when there is no honest URL to post. */
+  url?: string | undefined;
+  /** When the post was made — not when the window closed; the description says that. */
+  timestamp: string;
+}
+
+/**
+ * The post a closed week or month makes of itself (M5.10, fired by M5.13).
+ *
+ * Monday morning: nobody is in voice, nobody opened anything, and there is a post in the
+ * channel that says who won the week. It is the nightly embed's twin and shares its rules on
+ * purpose — the same colour, the same ten-line cap, the same field-name rule (M3.22), the same
+ * footer — with two differences that are the whole task:
+ *
+ * - **the description**, which names the window's own days (`Monday 1 Sep to Sunday 7 Sep · 14
+ *   games`), because a post that arrives unasked has to say which seven days it is about;
+ * - **the awards field**, when there are awards to print (see {@link WindowAward}).
+ *
+ * The board is the **window's** board (M5.12): the players who played inside it, each with
+ * their rating as of their last counted game in it, which is what makes Monday's post
+ * reproducible on Tuesday and after a late backfill.
+ *
+ * `week` and `month` appear nowhere in this function: the noun arrives in `windowLabel` and in
+ * `description`, so the monthly post is this builder with different strings and not a copy.
+ */
+export function windowSummaryEmbed(input: WindowSummaryEmbedInput): WebhookPayload {
+  const entries = input.entries.slice(0, TOP_N);
+  const awards = input.awards ?? [];
+
+  return {
+    embeds: [
+      {
+        color: ACCENT_COLOR,
+        title: `${input.windowLabel} · ${LEADERBOARD_LABEL.toLowerCase()}`,
+        ...(input.url === undefined ? {} : { url: input.url }),
+        description: input.description,
+        fields: [
+          {
+            name: leaderboardFieldName(entries.length),
+            value: entries.map(leaderboardLine).join('\n'),
+          },
+          ...(awards.length === 0 ? [] : [{ name: AWARDS_FIELD, value: awards.map(awardLine).join('\n') }]),
+        ],
+        footer: { text: SETTLING_SENTENCE_SHORT },
+        timestamp: input.timestamp,
+      },
+    ],
+  };
+}
+
+/** `**Most improved** Nadia · +212 · 1266 → 1478`. The label is bold; the rest is quoted. */
+function awardLine(award: WindowAward): string {
+  return `**${award.label}** ${award.line}`;
+}
+
+/**
  * `Teams are set`, and `Teams are set · reroll 1 of 2` when an admin has promoted split 2
  * (M3.2, `05-design.md` "The title on a reroll").
  *

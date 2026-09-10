@@ -73,6 +73,13 @@ if (stack === null) {
   const puuidB = `${runId}-b`;
   const partyId = `${runId}-party`;
   const gameId = Math.floor(Math.random() * 1_000_000_000) + 9_000_000_000;
+  /**
+   * A `window_posts` key of this run's own (M5.13). Deep in the past, because a real one is a
+   * Monday 06:00 the cron route computed and nothing here may collide with it.
+   */
+  const windowStart = new Date(
+    Date.UTC(1990, 0, 1) + Math.floor(Math.random() * 1_000_000_000),
+  ).toISOString();
 
   let playerAId = '';
   let playerBId = '';
@@ -98,6 +105,9 @@ if (stack === null) {
   });
 
   afterAll(async () => {
+    await rest('service', `window_posts?window_start=eq.${encodeURIComponent(windowStart)}`, {
+      method: 'DELETE',
+    });
     await rest('service', `games?lcu_game_id=eq.${gameId}`, { method: 'DELETE' });
     await rest('service', `lobbies?lcu_party_id=like.${runId}*`, { method: 'DELETE' });
     await rest('service', `players?puuid=like.${runId}*`, { method: 'DELETE' });
@@ -371,7 +381,7 @@ if (stack === null) {
     });
 
     it('does not let anon read the private tables', async () => {
-      for (const table of ['companion_tokens', 'companion_commands', 'discord_config']) {
+      for (const table of ['companion_tokens', 'companion_commands', 'discord_config', 'window_posts']) {
         const result = await rest('anon', `${table}?select=*&limit=1`);
         expect(result.ok, `${table} must not be readable by anon`).toBe(false);
       }
@@ -392,6 +402,43 @@ if (stack === null) {
 
       const stillOpen = await rest('service', `lobbies?id=eq.${lobbyId}&select=id`);
       expect(rows(stillOpen.body)).toHaveLength(1);
+    });
+  });
+
+  /**
+   * The whole point of `0011_window_posts.sql`: the primary key is what makes
+   * `GET /api/cron/window` safe to call at any cadence. The route's own logic is tested in
+   * `apps/web`; this is the guarantee underneath it (M5.13).
+   */
+  describe('window_posts', () => {
+    it('takes one claim per (kind, window_start) and refuses the second', async () => {
+      const first = await insert('window_posts', { kind: 'last-week', window_start: windowStart });
+      expect(first.status).toBe(201);
+      expect(rows(first.body)[0]?.posted_at).toBeNull();
+      expect(rows(first.body)[0]?.attempts).toBe(1);
+
+      const second = await insert('window_posts', { kind: 'last-week', window_start: windowStart });
+      expect(second.ok).toBe(false);
+      // 23505, the unique violation PostgREST answers 409 for: the loser of two calls in the
+      // same second posts nothing.
+      expect(second.status).toBe(409);
+
+      // The same start under the other kind is a different window and is allowed: a Monday the
+      // 1st claims a week and a month, and they are two rows.
+      const month = await insert('window_posts', { kind: 'last-month', window_start: windowStart });
+      expect(month.status).toBe(201);
+
+      const all = await rest(
+        'service',
+        `window_posts?window_start=eq.${encodeURIComponent(windowStart)}&select=kind`,
+      );
+      expect(rows(all.body)).toHaveLength(2);
+    });
+
+    it('refuses a kind that is not one of the two closed windows', async () => {
+      // `this-week` never closes, so nothing can have posted it.
+      const result = await insert('window_posts', { kind: 'this-week', window_start: windowStart });
+      expect(result.ok).toBe(false);
     });
   });
 

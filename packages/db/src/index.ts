@@ -27,6 +27,8 @@ export type GamePlayerRow = Tables<'game_players'>;
 export type CompanionTokenRow = Tables<'companion_tokens'>;
 export type CompanionCommandRow = Tables<'companion_commands'>;
 export type DiscordConfigRow = Tables<'discord_config'>;
+/** One closed window the weekly/monthly Discord post has claimed (M5.13). */
+export type WindowPostRow = Tables<'window_posts'>;
 
 /**
  * `players` without `discord_id`. This is the only players relation anon and authenticated
@@ -46,6 +48,7 @@ export type GamePlayerInsert = TablesInsert<'game_players'>;
 export type CompanionTokenInsert = TablesInsert<'companion_tokens'>;
 export type CompanionCommandInsert = TablesInsert<'companion_commands'>;
 export type DiscordConfigInsert = TablesInsert<'discord_config'>;
+export type WindowPostInsert = TablesInsert<'window_posts'>;
 
 /** Update shapes. */
 export type PlayerUpdate = TablesUpdate<'players'>;
@@ -54,6 +57,7 @@ export type LobbyUpdate = TablesUpdate<'lobbies'>;
 export type SplitUpdate = TablesUpdate<'splits'>;
 export type CompanionCommandUpdate = TablesUpdate<'companion_commands'>;
 export type DiscordConfigUpdate = TablesUpdate<'discord_config'>;
+export type WindowPostUpdate = TablesUpdate<'window_posts'>;
 
 /** The season every rating and game hangs off before an admin starts a new one (M5.3). */
 export const SEASON_ONE_ID = '00000000-0000-0000-0000-000000000001';

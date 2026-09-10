@@ -1,0 +1,411 @@
+import { randomUUID } from 'node:crypto';
+import { createServer, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { Database } from '@customs/db';
+import { createClient } from '@supabase/supabase-js';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensurePlayers } from '@/lib/ingest/players';
+import { type ClosedWindow, closedWindow } from '@/lib/night';
+import { resolveLocalStack } from '@/lib/testing/localStack';
+
+/**
+ * `GET /api/cron/window` against the local Supabase stack (M5.13): the whole point of the
+ * route, which is that **the week posts itself exactly once** however often the thing outside
+ * the app decides to call it.
+ *
+ * What is only provable here, with a real `window_posts` table and a real webhook:
+ *
+ * - three calls across one Monday post one message and write one row;
+ * - a window with no games is recorded and never posted, and never retried;
+ * - a webhook that refuses leaves the row unposted, so a later call sends the week late.
+ *
+ * The clock is faked to a Monday in 2025 and every window this file touches is a week or a
+ * month nothing else in the suite has games in. Only `Date` is faked: the sockets to Supabase
+ * and to the webhook are real.
+ *
+ * Skipped, not failed, without the local stack (`pnpm db:start`).
+ */
+
+const stack = await resolveLocalStack();
+
+if (stack === null) {
+  describe.skip('the window post against the local Supabase stack', () => {
+    it('needs the local stack: run `pnpm db:start`', () => {
+      expect(true).toBe(true);
+    });
+  });
+} else {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = stack.url;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = stack.serviceRoleKey;
+  process.env.BOOTSTRAP_ADMIN_PUUID = '';
+  process.env.CUSTOMS_NIGHT_TZ = 'Africa/Cairo';
+  process.env.CRON_SECRET = 'it-window-secret';
+  // The post links to the board it printed, and `siteOrigin` drops a localhost request origin:
+  // without a configured site URL the embed would carry no link at all. `siteOrigin` reads it
+  // through `readAuthEnv`, which wants the anon key beside it.
+  process.env.NEXT_PUBLIC_SITE_URL = 'https://customs.example';
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = stack.anonKey;
+
+  const { GET } = await import('./route');
+
+  const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+
+  const TIME_ZONE = 'Africa/Cairo';
+  const runId = randomUUID().slice(0, 8);
+  const guildId = `it-${runId}-window`;
+  const puuids = Array.from({ length: 10 }, (_, index) => `it-${runId}-w${String(index).padStart(2, '0')}`);
+
+  /**
+   * Four Mondays (and one 1st) in 2025, one per case, so no two cases share a window and
+   * nothing else in the suite has a game anywhere near them.
+   */
+  const MONDAY = new Date('2025-09-08T07:00:00Z'); // 10:00 Cairo, Monday 8 September
+  const EMPTY_MONDAY = new Date('2025-07-14T07:00:00Z'); // 10:00 Cairo, Monday 14 July
+  const FLAKY_MONDAY = new Date('2025-05-12T07:00:00Z'); // 10:00 Cairo, Monday 12 May
+  const FIRST_OF_MONTH = new Date('2025-11-01T12:00:00Z'); // Saturday 1 November, after 06:00
+
+  const windowsTouched: ClosedWindow[] = [
+    closedWindow('last-week', MONDAY, TIME_ZONE),
+    closedWindow('last-week', EMPTY_MONDAY, TIME_ZONE),
+    closedWindow('last-week', FLAKY_MONDAY, TIME_ZONE),
+    closedWindow('last-week', FIRST_OF_MONTH, TIME_ZONE),
+    closedWindow('last-month', FIRST_OF_MONTH, TIME_ZONE),
+  ];
+
+  let playerIds: string[] = [];
+  let seasonId = '';
+  let webhookUrl = '';
+  let server: Server | null = null;
+  let posts: Record<string, unknown>[] = [];
+  const gameIds: number[] = [];
+  /** What the webhook does with the next post. The failure case flips it. */
+  let answer: (response: ServerResponse) => void = (response) => response.writeHead(204).end();
+
+  function request(bearer = 'it-window-secret'): Request {
+    return new Request('http://localhost/api/cron/window', {
+      headers: { authorization: `Bearer ${bearer}` },
+    });
+  }
+
+  interface RouteBody {
+    ok: boolean;
+    posted: string[];
+    skipped: { kind: string; reason: string }[];
+  }
+
+  /**
+   * One call, with the clock at `instant`. Only `Date` is faked — the route's `now` and every
+   * `claimed_at` it writes are that instant, while the sockets underneath stay real.
+   */
+  async function callAt(instant: Date, bearer?: string): Promise<RouteBody> {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(instant);
+    try {
+      const response = await GET(request(bearer));
+      return (await response.json()) as RouteBody;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  async function rowsFor(window: ClosedWindow) {
+    const { data } = await db
+      .from('window_posts')
+      .select('kind, window_start, posted_at, attempts, reason')
+      .eq('kind', window.kind)
+      .eq('window_start', window.key);
+    return data ?? [];
+  }
+
+  /** A rated game inside a window: ten players, five a side, every rating column written. */
+  async function seedGame(startedAt: Date): Promise<void> {
+    const lcuGameId = Math.floor(Math.random() * 1_000_000_000) + 8_000_000_000;
+    gameIds.push(lcuGameId);
+    const { data, error } = await db
+      .from('games')
+      .insert({
+        lcu_game_id: lcuGameId,
+        season_id: seasonId,
+        started_at: startedAt.toISOString(),
+        duration_s: 1_800,
+        winning_side: 100,
+        source: 'eog',
+        raw: { gameId: lcuGameId },
+      })
+      .select('id')
+      .single();
+    if (error) throw new Error(`seeding a game: ${error.message}`);
+
+    const { error: playersError } = await db.from('game_players').insert(
+      playerIds.map((playerId, index) => ({
+        game_id: data.id,
+        player_id: playerId,
+        side: index < 5 ? 100 : 200,
+        kills: 3,
+        deaths: 3,
+        assists: 3,
+        // Rated: this is what "the fold counted this game" looks like on a stored row, and it
+        // is what puts the player on the window's board.
+        mu_before: 25,
+        sigma_before: 8.333,
+        mu_after: index < 5 ? 26 : 24,
+        sigma_after: 8.1,
+      })),
+    );
+    if (playersError) throw new Error(`seeding a scoreboard: ${playersError.message}`);
+  }
+
+  /** The embed of the last post, or undefined. */
+  function embedOf(index: number): Record<string, unknown> | undefined {
+    const embeds = posts[index]?.embeds as Record<string, unknown>[] | undefined;
+    return embeds?.[0];
+  }
+
+  beforeAll(async () => {
+    const ids = await ensurePlayers(
+      db,
+      puuids.map((puuid, index) => ({ puuid, gameName: `Window${index}`, tagLine: 'EUW' })),
+    );
+    playerIds = puuids.map((puuid) => ids.get(puuid) ?? '');
+
+    const { data: season, error } = await db.from('seasons').select('id').eq('is_active', true).single();
+    if (error) throw new Error(`no active season: ${error.message}`);
+    seasonId = season.id;
+
+    server = createServer((incoming, response) => {
+      const chunks: Buffer[] = [];
+      incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
+      incoming.on('end', () => {
+        posts.push(JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>);
+        answer(response);
+      });
+    });
+    const listening = server;
+    await new Promise<void>((resolve) => listening.listen(0, '127.0.0.1', resolve));
+    webhookUrl = `http://127.0.0.1:${(listening.address() as AddressInfo).port}/webhook`;
+
+    // Leftovers from an interrupted run would win the "oldest row with a webhook" rule.
+    await db.from('discord_config').delete().like('guild_id', 'it-%');
+    const { count } = await db
+      .from('discord_config')
+      .select('guild_id', { count: 'exact', head: true })
+      .not('webhook_url', 'is', null);
+    if ((count ?? 0) > 0) {
+      throw new Error(
+        'a discord_config row with a webhook already exists; this test would not be the one used',
+      );
+    }
+    await db.from('discord_config').insert({ guild_id: guildId, webhook_url: webhookUrl });
+
+    // A window is keyed by its own start, so it cannot be namespaced by run: clear the rows a
+    // previous interrupted run of this file left behind before claiming anything.
+    for (const window of windowsTouched) {
+      await db.from('window_posts').delete().eq('kind', window.kind).eq('window_start', window.key);
+    }
+
+    // Two games in the week that closed on `MONDAY`, one in the flaky week, and one that is in
+    // both windows the 1st of November considers.
+    await seedGame(new Date('2025-09-03T18:00:00Z'));
+    await seedGame(new Date('2025-09-05T19:00:00Z'));
+    await seedGame(new Date('2025-05-07T19:00:00Z'));
+    await seedGame(new Date('2025-10-22T19:00:00Z'));
+  });
+
+  afterAll(async () => {
+    vi.useRealTimers();
+    for (const window of windowsTouched) {
+      await db.from('window_posts').delete().eq('kind', window.kind).eq('window_start', window.key);
+    }
+    await db.from('games').delete().in('lcu_game_id', gameIds);
+    await db.from('players').delete().in('puuid', puuids);
+    await db.from('discord_config').delete().eq('guild_id', guildId);
+    await new Promise<void>((resolve) => {
+      if (server === null) return resolve();
+      server.close(() => resolve());
+    });
+  });
+
+  beforeEach(() => {
+    posts = [];
+    answer = (response) => response.writeHead(204).end();
+  });
+
+  describe('the week posts itself exactly once', () => {
+    /**
+     * The acceptance check the whole task is written for: **call it at any cadence.** Three
+     * calls across one Monday, and the group sees one message.
+     */
+    it('posts on the first call of a Monday and nothing on the next two', async () => {
+      const window = closedWindow('last-week', MONDAY, TIME_ZONE);
+
+      const first = await callAt(MONDAY);
+      expect(first).toEqual({ ok: true, posted: ['last-week'], skipped: [] });
+
+      const second = await callAt(new Date(MONDAY.getTime() + 60 * 60 * 1_000));
+      const third = await callAt(new Date(MONDAY.getTime() + 5 * 60 * 60 * 1_000));
+      expect(second).toEqual({
+        ok: true,
+        posted: [],
+        skipped: [{ kind: 'last-week', reason: 'already posted' }],
+      });
+      expect(third).toEqual(second);
+
+      // One message in the channel and one row in the table, after three calls.
+      expect(posts).toHaveLength(1);
+      const rows = await rowsFor(window);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.posted_at).not.toBeNull();
+      expect(rows[0]?.reason).toBeNull();
+
+      /**
+       * And the one message names its own week: the description is the same line the page
+       * prints under its picker, and the count is the window's counted games — the two seeded
+       * inside it, never a lifetime total.
+       */
+      const embed = embedOf(0);
+      expect(embed?.title).toBe('Last week · leaderboard');
+      expect(embed?.description).toBe('Monday 1 Sep to Sunday 7 Sep · 2 games');
+      expect(String(embed?.url ?? '')).toContain('/leaderboard?window=last-week');
+      // Ten players, five a side, two games each: the board is the window's, not all time.
+      const fields = (embed?.fields ?? []) as { value: string }[];
+      const lines = String(fields[0]?.value ?? '').split('\n');
+      expect(lines).toHaveLength(10);
+      expect(lines[0]).toContain('· 2 games');
+    });
+  });
+
+  /**
+   * **A window with no games produces no post** and is recorded anyway (M5.13, edge case 2):
+   * unstamped, an empty week would be retried every hour for seven days, and there is nothing
+   * there to find.
+   */
+  describe('a window with no games', () => {
+    it('writes the row, posts nothing, and is not retried', async () => {
+      const window = closedWindow('last-week', EMPTY_MONDAY, TIME_ZONE);
+
+      const first = await callAt(EMPTY_MONDAY);
+      expect(first).toEqual({
+        ok: true,
+        posted: [],
+        skipped: [{ kind: 'last-week', reason: 'no games in the window' }],
+      });
+      expect(posts).toHaveLength(0);
+
+      const rows = await rowsFor(window);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.posted_at).not.toBeNull();
+      expect(rows[0]?.reason).toBe('no games in the window');
+
+      // An hour later, and a day later: still nothing, and still one row.
+      const later = await callAt(new Date(EMPTY_MONDAY.getTime() + 60 * 60 * 1_000));
+      expect(later.skipped).toEqual([{ kind: 'last-week', reason: 'already posted' }]);
+      expect(posts).toHaveLength(0);
+      expect(await rowsFor(window)).toHaveLength(1);
+    });
+  });
+
+  /**
+   * **A webhook failure is not a posted week** (M5.13, acceptance 2). The claim row stays
+   * unposted so a later call sends the week late — and a call *while the first is still in
+   * flight* posts nothing, which is the other half of the same rule.
+   */
+  describe('a webhook that would not take it', () => {
+    it('leaves the week retryable, and a later call posts it', async () => {
+      const window = closedWindow('last-week', FLAKY_MONDAY, TIME_ZONE);
+      answer = (response) => response.writeHead(500).end();
+
+      const failed = await callAt(FLAKY_MONDAY);
+      expect(failed.posted).toEqual([]);
+      expect(failed.skipped[0]?.kind).toBe('last-week');
+      expect(failed.skipped[0]?.reason).toBe('HTTP 500');
+      // One try and one retry, both refused: nothing landed.
+      expect(posts).toHaveLength(2);
+
+      const claimed = await rowsFor(window);
+      expect(claimed).toHaveLength(1);
+      expect(claimed[0]?.posted_at).toBeNull();
+      expect(claimed[0]?.reason).toBe('HTTP 500');
+
+      // A call a minute later must not race the one that may still be talking to Discord.
+      answer = (response) => response.writeHead(204).end();
+      posts = [];
+      const tooSoon = await callAt(new Date(FLAKY_MONDAY.getTime() + 60 * 1_000));
+      expect(tooSoon.skipped).toEqual([
+        { kind: 'last-week', reason: 'a post for this window is already in flight' },
+      ]);
+      expect(posts).toHaveLength(0);
+
+      // The next hourly call, with Discord back: the week goes out late and correct.
+      const retried = await callAt(new Date(FLAKY_MONDAY.getTime() + 60 * 60 * 1_000));
+      expect(retried.posted).toEqual(['last-week']);
+      expect(posts).toHaveLength(1);
+      expect(embedOf(0)?.description).toBe('Monday 5 May to Sunday 11 May · 1 game');
+
+      const stamped = await rowsFor(window);
+      expect(stamped).toHaveLength(1);
+      expect(stamped[0]?.posted_at).not.toBeNull();
+      expect(stamped[0]?.attempts).toBe(2);
+
+      // And it stays posted: the retry does not reopen the window.
+      const after = await callAt(new Date(FLAKY_MONDAY.getTime() + 2 * 60 * 60 * 1_000));
+      expect(after.skipped).toEqual([{ kind: 'last-week', reason: 'already posted' }]);
+      expect(posts).toHaveLength(1);
+    });
+  });
+
+  /**
+   * **On the 1st, the week and the month, week first** (M5.13, acceptance 3): on a Monday the
+   * 1st the group gets two posts in the order they read in. Here it is a Saturday the 1st, so
+   * the week is one that closed five days earlier and the month is the one that closed today —
+   * and, because Cairo left daylight saving between them, the two boundaries are at different
+   * UTC offsets, which is exactly the case `lib/night.ts` owns and this must not re-solve.
+   */
+  describe('the 1st of a month', () => {
+    it('posts both, week first, and each of them once', async () => {
+      const week = closedWindow('last-week', FIRST_OF_MONTH, TIME_ZONE);
+      const month = closedWindow('last-month', FIRST_OF_MONTH, TIME_ZONE);
+
+      const first = await callAt(FIRST_OF_MONTH);
+      expect(first.posted).toEqual(['last-week', 'last-month']);
+      expect(posts).toHaveLength(2);
+      expect(embedOf(0)?.title).toBe('Last week · leaderboard');
+      expect(embedOf(0)?.description).toBe('Monday 20 Oct to Sunday 26 Oct · 1 game');
+      expect(embedOf(1)?.title).toBe('Last month · leaderboard');
+      expect(embedOf(1)?.description).toBe('October · 1 game');
+
+      expect(await rowsFor(week)).toHaveLength(1);
+      expect(await rowsFor(month)).toHaveLength(1);
+
+      const again = await callAt(new Date(FIRST_OF_MONTH.getTime() + 3 * 60 * 60 * 1_000));
+      expect(again.posted).toEqual([]);
+      expect(again.skipped).toEqual([
+        { kind: 'last-week', reason: 'already posted' },
+        { kind: 'last-month', reason: 'already posted' },
+      ]);
+      expect(posts).toHaveLength(2);
+    });
+
+    /** On the 2nd only the week is considered: yesterday's month is no longer news. */
+    it('looks at the week alone on the 2nd', async () => {
+      const body = await callAt(new Date('2025-11-02T12:00:00Z'));
+
+      expect([...body.posted, ...body.skipped.map((skip) => skip.kind)]).toEqual(['last-week']);
+    });
+  });
+
+  describe('the door', () => {
+    it('answers 401 for the wrong secret and writes nothing', async () => {
+      const window = closedWindow('last-week', new Date('2025-06-09T07:00:00Z'), TIME_ZONE);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2025-06-09T07:00:00Z'));
+      const response = await GET(request('not-the-secret'));
+      vi.useRealTimers();
+
+      expect(response.status).toBe(401);
+      expect(posts).toHaveLength(0);
+      expect(await rowsFor(window)).toHaveLength(0);
+    });
+  });
+}

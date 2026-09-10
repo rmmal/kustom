@@ -166,13 +166,60 @@ if (stack === null) {
     expect(seasonId).toBeTruthy();
   });
 
+  /**
+   * **The stack is handed back the way it was found, including when a case above failed**
+   * (M3.29). Two `it-<run> rebuild` seasons were left behind on 2026-09-10 by runs that failed
+   * mid-file, and the reason was not that this hook did not run — it did — but that it deleted
+   * the file's games *by id*, and a case that fails before its own cleanup leaves a game this
+   * list does not name (the fence game is inserted inside a case and deleted at the end of it).
+   * `games.season_id` has no `on delete cascade`, so the season delete then failed silently on
+   * a foreign key and left an inactive season on a shared database forever.
+   *
+   * So: delete **every game of this season**, whatever inserted it, and shout if the season
+   * still will not go. Every step runs even if an earlier one throws, and the active season is
+   * put back first, because a stack with no active season breaks every other file in the suite.
+   */
   afterAll(async () => {
+    const problems: string[] = [];
+    // `PromiseLike`, because a PostgREST builder is a thenable and not a `Promise`, and this
+    // has to take one without awaiting it first: the point of the helper is that every step
+    // runs whatever the one before it did.
+    const attempt = async (what: string, step: () => PromiseLike<unknown>) => {
+      try {
+        const result = (await step()) as { error?: { message?: string } | null } | null;
+        if (result?.error) problems.push(`${what}: ${result.error.message ?? 'failed'}`);
+      } catch (thrown) {
+        problems.push(`${what}: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
+      }
+    };
+
     // Season 1 back in one statement (0002), so there is never a window with no active season.
-    await db.rpc('set_active_season', { p_id: SEASON_ONE_ID });
-    await db.from('games').delete().in('lcu_game_id', allGameIds);
-    await db.from('ratings').delete().eq('season_id', seasonId);
-    await db.from('seasons').delete().eq('id', seasonId);
-    await db.from('players').delete().in('puuid', puuids);
+    await attempt('restoring season 1', () => db.rpc('set_active_season', { p_id: SEASON_ONE_ID }));
+    if (seasonId !== '') {
+      // By season, not by id: a case that failed before its own cleanup leaves a game behind,
+      // and one such row is enough to make the season undeletable.
+      await attempt('deleting this season’s games', () =>
+        db.from('games').delete().eq('season_id', seasonId),
+      );
+    }
+    await attempt('deleting this run’s games', () => db.from('games').delete().in('lcu_game_id', allGameIds));
+    if (seasonId !== '') {
+      await attempt('deleting this season’s ratings', () =>
+        db.from('ratings').delete().eq('season_id', seasonId),
+      );
+      await attempt('deleting this season', () => db.from('seasons').delete().eq('id', seasonId));
+    }
+    await attempt('deleting this run’s players', () => db.from('players').delete().in('puuid', puuids));
+
+    // The season really is gone: a silent failure here is what M3.29 was raised for, so it is
+    // an error the next run reads rather than a row the next person finds by hand. `seasonId`
+    // is empty only when `beforeAll` failed before starting one, and then there is nothing to
+    // look for — and nothing to shout about that is not already failing louder.
+    if (seasonId !== '') {
+      const { data: left } = await db.from('seasons').select('id, name').eq('id', seasonId);
+      if ((left ?? []).length > 0) problems.push(`the season ${seasonName} is still there`);
+    }
+    if (problems.length > 0) throw new Error(`rebuild cleanup: ${problems.join('; ')}`);
   });
 
   describe('the rebuild reproduces the incremental fold', () => {

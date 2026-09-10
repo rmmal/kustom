@@ -26,6 +26,8 @@ import {
   roleSchema,
   sideSchema,
   summonerIdSchema,
+  WINDOW_POST_KINDS,
+  windowPostKindSchema,
   ZERO_PUUID,
 } from './index';
 
@@ -502,5 +504,24 @@ describe('command queue contract (M4.1)', () => {
     expect(COMPANION_COMMAND_TTL_MS).toEqual({ create_lobby: 60_000, invite: 300_000, switch_side: 180_000 });
     const tooMany = Array.from({ length: COMMANDS_PAGE_SIZE + 1 }, () => page.commands[0]);
     expect(companionCommandsResponseSchema.safeParse({ ok: true, commands: tooMany }).success).toBe(false);
+  });
+});
+
+/**
+ * The two words `window_posts.kind` may hold (M5.13). The migration's check constraint carries
+ * the same pair, and the cron route's response schema is built from this one — so a third
+ * closed window is a change in one place.
+ */
+describe('windowPostKindSchema', () => {
+  it('is the two windows that close', () => {
+    expect(WINDOW_POST_KINDS).toEqual(['last-week', 'last-month']);
+    expect(windowPostKindSchema.parse('last-week')).toBe('last-week');
+    expect(windowPostKindSchema.parse('last-month')).toBe('last-month');
+  });
+
+  it('refuses a window that never closes', () => {
+    for (const kind of ['this-week', 'this-month', 'all-time', '', 'LAST-WEEK']) {
+      expect(windowPostKindSchema.safeParse(kind).success, kind).toBe(false);
+    }
   });
 });

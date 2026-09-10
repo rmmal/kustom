@@ -1,11 +1,11 @@
-import { WINDOW_LABELS } from '../board/copy';
+import { WINDOW_LABELS, windowSlotLine } from '../board/copy';
 import { loadBoard } from '../board/load';
 import type { BoardView } from '../board/types';
 import { LEADERBOARD_WINDOW } from '../board/window';
 import { activeSeasonId, loadPool } from '../ingest/balance';
 import type { GameFinishedEvent, LobbyBalancedEvent, LobbyHook } from '../ingest/hooks';
 import { compareForSitOut, type PoolMember, planSeats } from '../ingest/selection';
-import { DEFAULT_NIGHT_TIME_ZONE } from '../night';
+import { type ClosedWindow, DEFAULT_NIGHT_TIME_ZONE } from '../night';
 import { leaderboardPageUrl, tonightPageUrl } from '../siteUrl';
 import { getServiceClient, type ServiceClient } from '../supabase';
 import {
@@ -17,7 +17,14 @@ import {
   type TeamsSource,
   teamsPuuids,
 } from './assemble';
-import { type LeaderboardEntry, leaderboardEmbed, resultEmbed, TOP_N, teamsEmbed } from './embeds';
+import {
+  type LeaderboardEntry,
+  leaderboardEmbed,
+  resultEmbed,
+  TOP_N,
+  teamsEmbed,
+  windowSummaryEmbed,
+} from './embeds';
 import { postToWebhook, type WebhookOptions, type WebhookOutcome } from './webhook';
 
 /**
@@ -180,6 +187,76 @@ export function nightlyLeaderboardSkip(board: BoardView): string | null {
   if (board.rows.length === 0) return 'nobody on the board';
   if (board.rows.every((row) => row.games === 0)) return 'nobody has played in this window';
   return null;
+}
+
+/**
+ * The reason a closed window is not worth posting, and the one reason the caller must be able
+ * to recognise (M5.13): a window with no games is stamped posted rather than retried hourly
+ * for seven days, because there is nothing there to find. Every other skip is retryable.
+ */
+export const NO_GAMES_IN_WINDOW = 'no games in the window';
+
+/**
+ * The post a closed week or month makes of itself (M5.10). One embed: the window's board,
+ * under the days it covers, linking to the same board on the web.
+ *
+ * `GET /api/cron/window` (M5.13) decides **when** this runs and that it runs once; this
+ * decides what it says. The window is passed in rather than computed here so that the row
+ * written in `window_posts` and the board printed in the channel cannot be two different
+ * weeks.
+ *
+ * **Silence when the window is empty**, `skipped` with {@link NO_GAMES_IN_WINDOW}: the nightly
+ * post's rule (a message that says nothing is worse than silence) applies harder here, because
+ * `No games last week.` is a true sentence for a page somebody chose to open and a bad one for
+ * a channel it arrives in unasked.
+ *
+ * **Awards are a seam.** M5.10's embed carries three award lines under the board; M5.4, which
+ * computes them, has not shipped. `windowSummaryEmbed` prints the field only when it is given
+ * awards, so the post ships as the board today and gains the block the day the loader can fill
+ * it — no string in it is written twice and nothing else about the post changes.
+ */
+export async function postClosedWindow(
+  client: ServiceClient,
+  window: ClosedWindow,
+  options: PostOptions = {},
+): Promise<WebhookOutcome> {
+  const board = await loadBoard(client, {
+    window: window.kind,
+    // The board recomputes the window's bounds from `now` the same way `closedWindow` did, so
+    // the row written in `window_posts` and the board printed in the channel are one week by
+    // construction.
+    now: options.now ?? new Date(),
+    timeZone: options.timeZone ?? DEFAULT_NIGHT_TIME_ZONE,
+  });
+
+  // Membership in a window *is* its counted games, so the board answers "was anything played"
+  // without a second query. `range` is null on exactly that case (M5.12's slot), and the three
+  // are checked together because a post with any one of them missing would be a message that
+  // says nothing.
+  if (board.rows.length === 0 || board.games === 0 || board.range === null) {
+    return SKIPPED(NO_GAMES_IN_WINDOW);
+  }
+
+  const entries: LeaderboardEntry[] = board.rows.slice(0, TOP_N).map((row) => ({
+    puuid: row.puuid,
+    name: row.name,
+    proven: row.proven,
+    games: row.games,
+  }));
+
+  const payload = windowSummaryEmbed({
+    windowLabel: WINDOW_LABELS[window.kind],
+    // **The page's line, not a second one** (M5.12, M5.10): the slot under the picker and this
+    // description are the same words about the same window, so the tap out of the channel
+    // lands on a page that agrees with the post it came from.
+    description: windowSlotLine(board.range, board.games),
+    entries,
+    url: leaderboardPageUrl(options.requestOrigin, window.kind),
+    // The moment the post is made, not the moment the window closed: Discord prints this as
+    // "when this message is from", and the description is what says which week it covers.
+    timestamp: (options.now ?? new Date()).toISOString(),
+  });
+  return postToWebhook(client, payload, `${window.kind} embed`, options);
 }
 
 /**
