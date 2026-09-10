@@ -249,7 +249,7 @@ function PickYourself({
               <input type="hidden" name="redirectTo" value="/" />
               <button
                 type="submit"
-                className="cn-button cn-pick-button"
+                className="cn-pick-button"
                 onClick={(event) => void submit(event, member.puuid)}
               >
                 {/* The name is in the row above the button in reading order, but a screen

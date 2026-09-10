@@ -850,11 +850,26 @@
   overflow-wrap: anywhere;
 }
 
-/* Ten of these full width would be ten amber bars; the name is the row and this is the act. */
+/*
+ * Dressed like a role word, not like the reroll button: ten `brand`-outlined bars stacked down
+ * a card is a column of amber with nothing to point at, and this is a list of equal options —
+ * the same thing the five role words are. The name is the row; this is only the act.
+ */
 .cn-pick-button {
-  width: auto;
+  min-height: 44px;
   padding: 0 var(--cn-sp-3);
+  font: inherit;
   font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+  background: var(--cn-raise);
+  border: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius-row);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.cn-pick-button:active {
+  background: var(--cn-pressed);
 }
 
 .cn-signin {
