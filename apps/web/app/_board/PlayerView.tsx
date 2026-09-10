@@ -10,7 +10,6 @@ import {
   RATING_LABEL,
   RECENT_GAMES_HEADING,
   RECENT_RATING_LEGEND,
-  WINDOW_EMPTY,
   WON,
   winLossLabel,
 } from '@/lib/board/copy';
@@ -28,6 +27,7 @@ import { PlayerStats } from './PlayerStats';
 import { NamelessHint, RoleName, SettlingChip, SettlingNote } from './parts';
 import { RatingChart } from './RatingChart';
 import { WindowPicker } from './WindowPicker';
+import { WindowSlot } from './WindowSlot';
 
 /**
  * `/p/[puuid]` (M3.5, M3.8, M3.10; dressed for Floodlit in M3.19): the two numbers, the
@@ -81,19 +81,16 @@ export function PlayerView({ player, stats }: PlayerViewProps) {
         <WindowPicker path={`/p/${player.puuid}`} selected={player.window} />
 
         {/*
-         * The same slot the board's header carries (the designer, 2026-09-10): the window's one
-         * line, under the chips and above the hairline. A player with no counted game in the
-         * window says so here rather than inside the card, where it used to sit between the two
-         * numbers and the chart.
+         * The same slot the board's header carries, and the same component since M5.23 (the
+         * designer, 2026-09-10 and 2026-09-11): the window's one line, under the chips and above
+         * the hairline. A player with no counted game in the window says so here rather than
+         * inside the card, where it used to sit between the two numbers and the chart.
          *
          * **The range half prints alone here** (product, 2026-09-10): the record under the two
-         * numbers already says `6 games · 4W 2L`, and no page says one number twice.
+         * numbers already says `6 games · 4W 2L`, and no page says one number twice — which is
+         * why this caller passes `player.range` and not a composed slot line.
          */}
-        {player.range === null ? (
-          <p className="cn-empty">{WINDOW_EMPTY[player.window]}</p>
-        ) : (
-          <p className="cn-num cn-window-line">{player.range}</p>
-        )}
+        <WindowSlot window={player.window} line={player.range} />
       </header>
 
       <PlayerWindow player={player} stats={stats} />
