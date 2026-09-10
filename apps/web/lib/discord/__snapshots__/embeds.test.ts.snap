@@ -128,3 +128,35 @@ exports[`teamsEmbed, the worked example > matches the layout in 05-design.md 1`]
   ],
 }
 `;
+
+exports[`windowSummaryEmbed, the closed window > is the milestone's weekly post 1`] = `
+{
+  "embeds": [
+    {
+      "color": 14721854,
+      "description": "Monday 1 Sep to Sunday 7 Sep · 14 games",
+      "fields": [
+        {
+          "name": "Top ten",
+          "value": "\`1\` Lena · 1548 · 41 games
+\`2\` Bilal · 1137 · 44 games
+\`3\` Rami · 1062 · 39 games
+\`4\` Iris · 990 · 38 games
+\`5\` Karim · 987 · 40 games
+\`6\` Omar · 917 · 42 games
+\`7\` Hana · 882 · 37 games
+\`8\` Theo · 831 · 38 games
+\`9\` Nadia · 654 · 28 games
+\`10\` Yuki · 534 · 24 games",
+        },
+      ],
+      "footer": {
+        "text": "Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.",
+      },
+      "timestamp": "2026-09-08T20:15:00.000Z",
+      "title": "Last week · leaderboard",
+      "url": "https://customs.example/leaderboard?window=last-week",
+    },
+  ],
+}
+`;

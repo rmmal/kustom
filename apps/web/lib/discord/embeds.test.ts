@@ -22,6 +22,8 @@ import {
   type TeamsEmbedInput,
   teamsEmbed,
   teamsTitle,
+  type WindowSummaryEmbedInput,
+  windowSummaryEmbed,
 } from './embeds';
 
 /**
@@ -601,5 +603,116 @@ describe('leaderboardEmbed, the worked example', () => {
     ).embeds[0]?.fields[0]?.value;
 
     expect(value).toBe('`1` Someone · 700 · 12 games');
+  });
+});
+
+/**
+ * The post a closed week makes of itself (M5.10, fired by M5.13): the same ten and the same
+ * numbers as the nightly example, under the days they were played on.
+ *
+ * The description is built by `windowRange.ts` from the window itself and is passed in here as
+ * a string, because this builder is pure and knows nothing about calendars.
+ */
+function workedWindowInput(overrides: Partial<WindowSummaryEmbedInput> = {}): WindowSummaryEmbedInput {
+  return {
+    windowLabel: WINDOW_LABELS['last-week'],
+    description: 'Monday 1 Sep to Sunday 7 Sep · 14 games',
+    entries: workedBoardRows().map((row) => ({
+      puuid: row.puuid,
+      name: row.name,
+      proven: row.proven,
+      games: row.games,
+    })),
+    url: `${SITE_URL}/leaderboard?window=last-week`,
+    timestamp: TIMESTAMP,
+    ...overrides,
+  };
+}
+
+describe('windowSummaryEmbed, the closed window', () => {
+  it("is the milestone's weekly post", () => {
+    expect(windowSummaryEmbed(workedWindowInput())).toMatchSnapshot();
+  });
+
+  /**
+   * **The title, the url and the description name the same window.** A post that arrives
+   * unasked has to say which seven days it is about, and the tap out of the channel has to
+   * land on the board it printed.
+   */
+  it('names the window in the title, the link and the dates', () => {
+    const embed = windowSummaryEmbed(workedWindowInput()).embeds[0];
+
+    expect(embed?.title).toBe('Last week · leaderboard');
+    expect(embed?.url).toBe(`${SITE_URL}/leaderboard?window=last-week`);
+    // Byte for byte the copy table's window slot (`05-design.md`).
+    expect(embed?.description).toBe('Monday 1 Sep to Sunday 7 Sep · 14 games');
+    expect(embed?.color).toBe(ACCENT_COLOR);
+  });
+
+  /**
+   * **The noun is a parameter, not a copy-paste** (M5.10, acceptance 5): the monthly post is
+   * this builder with different strings, and no line of it is written twice.
+   */
+  it('is the same builder for the month', () => {
+    const embed = windowSummaryEmbed(
+      workedWindowInput({ windowLabel: WINDOW_LABELS['last-month'], description: 'September · 34 games' }),
+    ).embeds[0];
+
+    expect(embed?.title).toBe('Last month · leaderboard');
+    expect(embed?.description).toBe('September · 34 games');
+    // The board is untouched by which window it came from.
+    expect(embed?.fields[0]?.value).toBe(windowSummaryEmbed(workedWindowInput()).embeds[0]?.fields[0]?.value);
+  });
+
+  it('prints the same board lines, and the same field-name rule, as the nightly post', () => {
+    const embed = windowSummaryEmbed(workedWindowInput()).embeds[0];
+
+    expect(embed?.fields[0]?.name).toBe('Top ten');
+    expect(embed?.fields[0]?.value.split('\n')[0]).toBe('`1` Lena · 1548 · 41 games');
+    expect(embed?.fields[0]?.value.split('\n')).toHaveLength(10);
+    expect(embed?.footer.text).toBe(leaderboardEmbed(workedLeaderboardInput()).embeds[0]?.footer.text);
+
+    const eight = windowSummaryEmbed(workedWindowInput({ entries: workedWindowInput().entries.slice(0, 8) }))
+      .embeds[0];
+    expect(eight?.fields[0]?.name).toBe('The board');
+  });
+
+  /**
+   * **The awards are a seam** (M5.4 has not shipped): with none given, the post is the board
+   * and there is no empty field where the block will go.
+   */
+  it('prints one field until there are awards to print', () => {
+    expect(windowSummaryEmbed(workedWindowInput()).embeds[0]?.fields).toHaveLength(1);
+    expect(windowSummaryEmbed(workedWindowInput({ awards: [] })).embeds[0]?.fields).toHaveLength(1);
+  });
+
+  it('prints the awards block when it is given one, with the label bold and the line quoted', () => {
+    const embed = windowSummaryEmbed(
+      workedWindowInput({
+        awards: [
+          { label: 'Most improved', line: 'Nadia · +212 · 1266 → 1478' },
+          { label: 'Best off-role', line: 'Omar · 9W 3L · 75% · his main is top' },
+          // An award nobody won prints its sentence rather than being dropped, so the block
+          // always has three lines and the group can see the bar it missed (M5.10).
+          { label: 'Cursed duo', line: 'Nobody played 6 games this week.' },
+        ],
+      }),
+    ).embeds[0];
+
+    expect(embed?.fields).toHaveLength(2);
+    expect(embed?.fields[1]?.name).toBe('Awards');
+    expect(embed?.fields[1]?.value.split('\n')).toEqual([
+      '**Most improved** Nadia · +212 · 1266 → 1478',
+      '**Best off-role** Omar · 9W 3L · 75% · his main is top',
+      '**Cursed duo** Nobody played 6 games this week.',
+    ]);
+  });
+
+  it('caps the board at ten lines and renders a nameless player as `Someone`', () => {
+    const value = windowSummaryEmbed(
+      workedWindowInput({ entries: [{ puuid: 'puuid-x', name: null, proven: 700, games: 1 }] }),
+    ).embeds[0]?.fields[0]?.value;
+
+    expect(value).toBe('`1` Someone · 700 · 1 game');
   });
 });
