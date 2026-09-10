@@ -107,6 +107,28 @@ describe('idle: no lobby tonight', () => {
     expect(screen.queryByText(ALL_FLEXIBLE_HINT)).not.toBeInTheDocument();
   });
 
+  /**
+   * M3.30: at 1280 the idle column is 44rem, not the 1300px the two-column grid gives it.
+   * The class is the whole of the mechanism — `tonight.css` caps `.cn-grid-idle > .cn-col`
+   * inside the ≥1080px block — so what a test can check is that it is on the idle page and on
+   * no other, and that the rail's own track is untouched.
+   */
+  it('caps its column at 44rem beside the rail, and only in idle', () => {
+    const { container, unmount } = draw(snapshot(null));
+    expect(container.querySelector('.cn-grid')?.className).toBe('cn-grid cn-grid-rail cn-grid-idle');
+    unmount();
+
+    for (const state of [
+      snapshot(lobbyView({ members: workedMembers(3) })),
+      snapshot(lobbyView({ status: 'balanced', teams: workedTeams() })),
+      snapshot(lobbyView({ status: 'finished', teams: workedTeams(), result: workedResult() })),
+    ]) {
+      const busy = draw(state);
+      expect(busy.container.querySelector('.cn-grid')?.className).toBe('cn-grid cn-grid-rail');
+      busy.unmount();
+    }
+  });
+
   it('carries the two cards inline, because there is nothing else to read', () => {
     draw(snapshot(null));
 

@@ -68,6 +68,15 @@
   padding-bottom: var(--cn-sp-3);
 }
 
+/*
+ * The same strip with no rule under it, for a header with nothing beneath it to close over
+ * (the designer, 2026-09-10): `/stats` on an empty window is a heading, a picker and one
+ * sentence, and a hairline between the picker and that sentence draws a box around nothing.
+ */
+.cn-strip-bare {
+  border-bottom: 0;
+}
+
 .cn-strip-title {
   margin: 0;
   font-size: var(--cn-t-lg);
@@ -336,16 +345,13 @@
 }
 
 /* ---------------------------------------------------------------------------
- * `By role` and `Recent games`: mono micro-labels in a `raise` card header.
+ * `By role` and `Recent games`, in a `raise` card header.
+ *
+ * Their titles are `.cn-board-title` in `board-parts.css` since M5.4 (the designer,
+ * 2026-09-10): **a card title is language, so it is Archivo**, and the mono micro-label is for
+ * legends — `rating`, `SEATS`, `Proven`. `.cn-list-title` is deleted with the last use of it;
+ * `/stats` was never allowed to be the second answer to the same question.
  * ------------------------------------------------------------------------- */
-
-.cn-list-title {
-  margin: 0;
-  font-size: var(--cn-t-xs);
-  font-weight: 400;
-  letter-spacing: 0.08em;
-  color: var(--cn-dim);
-}
 
 .cn-records,
 .cn-games,

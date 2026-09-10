@@ -37,8 +37,18 @@ describe('the top bar', () => {
     draw('/');
 
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toContain('Tonight');
-    expect(screen.queryByRole('link', { name: 'Stats' })).not.toBeInTheDocument();
+    // `Stats` is a route since M5.4, so it is a tab; the rule is unchanged and the list is
+    // still the routes that exist.
+    expect(screen.getByRole('link', { name: 'Stats' })).toHaveAttribute('href', '/stats');
     expect(screen.getByRole('link', { name: 'Tonight' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Leaderboard' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Stats' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('underlines Stats on the stats page', () => {
+    draw('/stats');
+
+    expect(screen.getByRole('link', { name: 'Stats' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Leaderboard' })).not.toHaveAttribute('aria-current');
   });
 

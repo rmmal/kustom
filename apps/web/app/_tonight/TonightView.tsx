@@ -135,8 +135,18 @@ export function TonightView({
    */
   const linked = viewer.kind === 'linked';
 
+  /**
+   * **The idle page keeps the 44rem column it has at 720px** (M3.30, the designer, from the
+   * M4.7 review). At 1080px the grid hands the main column everything the 20rem rail does not
+   * take, which on a 1280px screen is a 1300px-wide empty rack with `open` at the far left and
+   * a name would be, later, 700px from its rating. `filling`, `balanced` and `result` fill that
+   * width with content and are untouched; the empty rack does not, so it keeps the cap the
+   * grid table gives every other single column.
+   */
+  const idle = state.kind === 'idle';
+
   return (
-    <div className="cn-grid cn-grid-rail">
+    <div className={idle ? 'cn-grid cn-grid-rail cn-grid-idle' : 'cn-grid cn-grid-rail'}>
       <main className="cn-col">
         <StatusStrip snapshot={snapshot} header={header} />
 

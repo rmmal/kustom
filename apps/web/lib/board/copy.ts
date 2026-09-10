@@ -60,10 +60,12 @@ export const SETTLING_GAMES = 30;
 export const SETTLING_CHIP = 'settling';
 
 /**
- * The sentence, once per page — under the leaderboard heading, under the rating chart on the
- * player page — and never once per row (product, **2026-09-10**, amending the 2026-09-08
- * wording; {@link SETTLING_SENTENCE_SHORT} was amended in the same pass and for the same
- * reason, so the page and the nightly post say one thing).
+ * The sentence, once per page under the leaderboard heading and never once per row (product,
+ * **2026-09-10**, amending the 2026-09-08 wording; {@link SETTLING_SENTENCE_SHORT} was amended
+ * in the same pass and for the same reason, so the page and the nightly post say one thing).
+ *
+ * **`/leaderboard`'s, from M3.26.** The player page prints {@link SETTLING_SENTENCE_PLAYER}
+ * instead; `you` is right here, because everyone reading a board is on it.
  *
  * The 2026-09-08 wording said new players `start low on purpose and climb as they play`, which
  * is false on a season's first board, where every row is a rank seed and nobody has climbed
@@ -79,9 +81,32 @@ export const SETTLING_SENTENCE =
   `The board sorts on ${PROVEN_LABEL}: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about ${SETTLING_GAMES} games.` as const;
 
 /**
+ * The same two sentences on `/p/[puuid]`, in the **third person and with no name in them**
+ * (M3.26, product 2026-09-10; the copy table in `05-design.md`).
+ *
+ * On Yuki's page `your rating` names the number printed twenty pixels above it, and that
+ * number is Yuki's, not the reader's — the one page in the product where the board's own
+ * `you` is wrong. It is not deleted instead: M5.15's explanation strip says why a *change* is
+ * the size it is and names neither Proven nor Rating, so with this gone the biggest number on
+ * the page and the `settling` chip beside it would have nothing anywhere saying what they are.
+ *
+ * **No name is interpolated.** A nameless player is `Someone` (M3.10), a name can change
+ * between two page loads, and the possessive of every name in the group is not one rule.
+ *
+ * Same shape, same two interpolations and the same `settles`-not-`closes` rule as the board's,
+ * so a reader arriving from `/leaderboard` meets the same explanation rather than a second one.
+ * Neither constant may be edited into the other.
+ */
+export const SETTLING_SENTENCE_PLAYER =
+  `The board sorts on ${PROVEN_LABEL}: a player's rating, minus how unsure the board still is about them. That gap shrinks as they play and settles after about ${SETTLING_GAMES} games.` as const;
+
+/**
  * The short form, for the one-line Discord footer where two sentences will not fit. Amended
  * with the long one (product, 2026-09-10): **the gap settles, it never closes** — σ falls with
  * every game and does not reach zero, so neither sentence may say `until` or `catches up`.
+ *
+ * **Second person, and it stays** (M3.26): it is addressed to a channel where every reader is
+ * a player, and it points at no number on a screen.
  */
 export const SETTLING_SENTENCE_SHORT =
   `${PROVEN_LABEL} is your rating minus how unsure the board still is about you, and it settles after about ${SETTLING_GAMES} games.` as const;

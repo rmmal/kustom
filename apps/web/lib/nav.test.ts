@@ -7,9 +7,9 @@ import { isCurrentTab, NAV_ITEMS, RELEASE_EXE_URL, RELEASES_URL, WORDMARK } from
  */
 
 describe('the nav list', () => {
-  it('is the four product settled, minus the routes that do not exist yet', () => {
-    // `Stats` is M5.4 and is deliberately absent: a tab that 404s is worse than a missing one.
-    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Tonight', 'Leaderboard', 'Companion ↗']);
+  it('is the four product settled, now that every route exists', () => {
+    // `Stats` joined with M5.4, which is the rule working: a tab appears the day its route does.
+    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Tonight', 'Leaderboard', 'Stats', 'Companion ↗']);
   });
 
   it('sends the companion tab at the releases page, never at the exe', () => {
@@ -44,6 +44,14 @@ describe('which tab is current', () => {
     expect(isCurrentTab(tab('Leaderboard'), '/leaderboard')).toBe(true);
     expect(isCurrentTab(tab('Leaderboard'), '/p/abc')).toBe(true);
     expect(isCurrentTab(tab('Leaderboard'), '/')).toBe(false);
+  });
+
+  it('underlines Stats on its own page and never on the board', () => {
+    expect(isCurrentTab(tab('Stats'), '/stats')).toBe(true);
+    expect(isCurrentTab(tab('Stats'), '/leaderboard')).toBe(false);
+    expect(isCurrentTab(tab('Leaderboard'), '/stats')).toBe(false);
+    // A player page is still the leaderboard's, which is where those links come from.
+    expect(isCurrentTab(tab('Stats'), '/p/abc')).toBe(false);
   });
 
   it('never underlines an external destination', () => {
