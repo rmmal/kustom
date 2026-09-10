@@ -3317,6 +3317,10 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
 
 - [ ] **M5.4** Stats pages: win rate by role, by side, by duo pairing (min five games together), average game length, longest streaks. Awards when a window closes: most improved, best off-role, cursed duo. **Picker (lead, 2026-09-10):** `/stats` mounts the same `WindowPicker` in the same header slot as the board pages, default `This month`, with the window slot (date range or empty sentence) beneath it; it invents no second control.
 
+    **Scope split (product, 2026-09-10):** this task is **`/stats` and the awards**. The brief's per-player sections on `/p/[puuid]` — role record, side record, partners, streaks, average game length and the `Most improved, September.` line — are **M5.20**, owner `web-engineer`, after **M5.8** draws them. Nothing is softened by the split: every clause and every acceptance check below that names `/p/[puuid]` is quoted verbatim in M5.20 and is owed there, and the pure functions those sections need shipped with this task (`playerRoleRecords`, `playerSideRecords`, `duoRecords`, `playerStreaks` in `apps/web/lib/stats/fold.ts`), so M5.20 is a rendering task and not a second fold.
+
+    **Copy ruling (product, 2026-09-10):** the seven strings this brief asked for by name and did not write are ruled in `05-design.md`, "Copy — `/stats`, the strings the brief did not write" — five keep as the engineer wrote them, `On a run now` becomes **`On a streak now`** and `Nobody is on a run of three or more.` becomes **`Nobody is on a streak of 3 or more.`** (one thing, one name: the section is `Streaks`). The best off-role winner line is **`Omar · 9W 3L · 75% · their main is top`**: that row supersedes the `his` written below, and **acceptance check 7 reads the copy table for that line**, not this brief. `apps/web/lib/stats/copy.ts` is the code half of that table and the two may not drift.
+
     > **Brief (product, 2026-09-09)**
     >
     > **Amended for windows (product, 2026-09-10).** Seasons are gone — **M5.3** is dropped and ratings never
@@ -4319,6 +4323,93 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     >
     > **Out of scope.** Champion, KDA or any other backfilled column. Re-reading games already stored.
     > Anything about the live end-of-game block, which already carries the position.
+
+- [ ] **M5.20** The per-player stats sections on `/p/[puuid]`: their role record, their side record, their partners, their streaks, their average game length, and the award line. *(owner: web-engineer; after **M5.8**)*
+
+    > **Split out of M5.4 (product, 2026-09-10).** M5.4 shipped `/stats`, the awards and every pure
+    > function these sections need; it did not render them on the player page. This task is the rendering,
+    > and it waits for **M5.8**, which is the pass that says what they look like under a rating chart
+    > ("the per-player stats sections on `/p/[puuid]` below the rating chart" is already in M5.8's list).
+    > **Nothing here is new work product invented.** Every clause below is quoted from the M5.4 brief of
+    > 2026-09-09 as amended for windows on 2026-09-10, and the numbers, the minimums and the tie rule are
+    > that brief's — read it for them.
+    >
+    > **The scene.** Still not the ten-in-voice scene. This is the friend who lost four in a row, opened
+    > their own page to work out whether it is them or the teams, and found a chart and a list of games.
+    > `/stats` answers "who is best on jungle"; this answers "how do **I** do on jungle", which is the
+    > question the M3.5 brief already said belongs on this page and not in a second board.
+    >
+    > ### What renders, quoted
+    >
+    > - **Where:** "Per-player sections on `/p/[puuid]`, below the rating chart: their role record, their
+    >   side record, their partners, their streaks, their average game length."
+    > - **How:** "The player page calls the same loader and picks one player out of the answer" —
+    >   `apps/web/lib/stats/load.ts`, `STATS_MAX_GAMES`, `revalidate = 300`, and the shared gate
+    >   `gateGame`. No second query path, no predicate re-implemented in SQL, no precomputed table.
+    > - **Role record:** `game_players.role`; null-role rows "are excluded from every role number";
+    >   "**Minimum 5 rows for a percentage**; under 5 the record prints without one (`3W 1L`)".
+    > - **Side record:** "their rows on side 100 and on side 200, same 5-row minimum for the percentage".
+    >   The group's blue rate is `/stats`'s headline and is not repeated here.
+    > - **Partners:** "`/p/[puuid]` shows that player's three best and three worst partners" — same side
+    >   only, "**Minimum 5 games together** to appear at all", ordered by the brief's tie rule.
+    > - **Streaks:** "**Current streak**: the run ending at their most recent counted game, printed `W3` /
+    >   `L2`", plus "**Longest win streak** and **longest losing streak** of the season, per player". The
+    >   helper is the one that already exists; "two definitions of a streak in one app is a bug".
+    > - **Average game length:** "the mean over their counted games", rounded to the minute. "Zero games →
+    >   the empty line, never `NaN` and never `0 min`."
+    > - **The award line:** "On `/p/[puuid]`, a player who won an award in a closed window gets one line in
+    >   that window's section: `Most improved, week of 1 Sep.` / `Most improved, September.` No badge, no
+    >   icon." `All time` has no awards, so this line exists only on `Last week` and `Last month`.
+    > - **The window:** every section is read through the page's selected window (**M5.12**), which
+    >   defaults to `All time` here. The sections follow the picker like the rest of the page does.
+    >
+    > ### Edge cases (the brief's, and the two this page adds)
+    >
+    > - **A player with no counted game in the selected window.** The sections print their empty lines;
+    >   the page still renders its header, the seed line's window rule (**M5.15**) is unchanged, and
+    >   nothing is a spinner and nothing is a blank card — the M3.5 rule.
+    > - **Every role null** (a player whose games are all backfilled): the role section prints the
+    >   footnote's per-player equivalent and no role rows. The footnote's words are `/stats`'s; a
+    >   per-player form is copy and comes to product.
+    > - **A player with no main role** (`flexible`, M5.17) has no off-role anything on this page; the
+    >   off-role award is `/stats`'s and is not recomputed here.
+    > - "A player with no display name uses the same fallback as every other surface, never a raw PUUID."
+    > - "A pair that played 5 games together and 40 against each other" — only same-side games count.
+    >
+    > ### Acceptance check
+    >
+    > 1. **The loader.** The page reads `lib/stats/load.ts` and selects one player out of its answer;
+    >    `grep` finds no second stats query and no second copy of `gateGame`'s predicate.
+    > 2. **Role.** A player 12W 5L on jungle and 1W 0L on mid shows `71%` for jungle and the bare record
+    >    `1W 0L` for mid; null-role rows change no number on the page.
+    > 3. **Side.** A player with 4 games on red shows a record and no percentage; at 5 the percentage
+    >    appears.
+    > 4. **Partners.** Three best and three worst; a partner at 4 games together is absent and at 5 is
+    >    present; a game played on opposite sides counts for neither numerator nor denominator.
+    > 5. **Streaks.** The current streak reads `W3` / `L2` and equals the `W3` the leaderboard row prints
+    >    for the same player on the same window, from the same helper; longest win and longest losing
+    >    streak match a hand-computed fixture under shuffled insert orders (the `lcu_game_id` tie-break).
+    > 6. **Average game length** equals the mean of `duration_s` over that player's counted games, rounded
+    >    to the minute; a player with no counted games in the window prints the empty line, never `0 min`
+    >    and never `NaN`.
+    > 7. **The award line.** On `Last month`, September's most-improved winner's page prints
+    >    `Most improved, September.` and nobody else's does; on `This month` and on `All time` no page
+    >    prints it. No badge, no icon.
+    > 8. **The window.** Switching the picker changes every section on the page; `All time` is the default
+    >    with no parameter.
+    > 9. **Copy.** Every friend-facing string these sections add — the section labels and the empty lines —
+    >    is in `05-design.md`'s copy table before merge, written by product, and lives in
+    >    `lib/board/copy.ts` or `lib/stats/copy.ts` and not in a component.
+    > 10. **The dress is M5.8's**, and this task ships what M5.8 drew rather than a layout of its own.
+    > 11. `pnpm -r typecheck` and `pnpm -r test` pass; the status table row is updated.
+    >
+    > ### Out of scope
+    >
+    > Everything M5.4 put out of scope, unchanged: champion stats, KDA, gold, damage, CS, head-to-head
+    > and rivalries, anything per-night, filters, search, sorting, CSV, a precomputed table. Also: any
+    > change to `/stats` itself, to the awards, to the rating model or to the two names `Proven` and
+    > `Rating`.
+
 
 Acceptance: after a backfill of one player's history, games appear once each, ratings rebuild deterministically (same output on two runs), the stats pages render with real numbers, the leaderboard reads through `This week` / `This month` / `All time` with no rating ever reset, last week's board and awards arrive in Discord on Monday with nobody pressing anything, and every player's main and backup come from the games they played.
 

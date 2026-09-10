@@ -1361,6 +1361,50 @@ invents a third. `Won` and `Lost` are the only strings in this table that do not
 `apps/web/lib/board/copy.ts` today — they are two module constants in `app/_board/PlayerView.tsx`, and the
 next engineer to touch that file moves them, so this table has one code half and not two.
 
+#### Copy — `/stats`, the strings the brief did not write (M5.4, product 2026-09-10)
+
+The M5.4 brief fixed every number on this page and most of its words: the awards, the cap line, the no-role
+footnote, the two group lines and the section intros are in the table above or in the brief itself, and the
+window's own words — the five labels, the slot, the five empty sentences — are the board's and are imported,
+never retyped. They live as one constant each in `apps/web/lib/stats/copy.ts`, which is the code half of this
+table exactly as `lib/board/copy.ts` is the code half of the one above it, and the two may not drift: the
+awards are printed on a page **and** in a Discord post, and one of them saying `Cursed duo` while the other
+said `Worst duo` is a bug nobody would find until somebody won it.
+
+What is below is the remainder: the seven strings the web engineer wrote because the brief asked for the line
+and not the words, one pronoun the database cannot know, and one line the brief wrote only in the plural.
+**Of the seven, five keep and two are replaced.** A kept string is
+product's now — it is not "the engineer's, tolerated" — and the `(engineer)` markers in `copy.ts` come out
+with the next touch of that file.
+
+| Where | String | Ruling |
+|---|---|---|
+| the window's third fact, with the two group statements | `12 players played.` — `1 player played.` at one, and **no line at all** in a window with no games | **keep, product 2026-09-10 (M5.4)** — the brief's page order asks the header for "counted games, players who played" and the slot (`September · 34 games`) is fixed byte for byte by M5.10's post, so the players number needs its own sentence and this is the plainest true one. `players` is the app's noun for these twenty people everywhere else on the page (`Players with no main role are not in this one`); `people` would be a second noun for one thing. The singular is the same rule `gamesLabel` follows, and the zero case never renders, because an empty window prints its own sentence in the slot and draws no card |
+| a role block with nobody over the minimum | `Nobody has 5 games on jungle yet.` — the role in the app's own lowercase word, so `adc` and `mid` read as they do in every other line; the `5` interpolated from the same constant the list filters on | **keep, product 2026-09-10 (M5.4)** — the empty-state voice this product already has: the fact, in six words, with nothing to tap (`Nobody in the lobby yet.`, `No games this week yet.`). It names the role rather than saying `here` because the five blocks are read as one column on a phone and a quiet block one thumb-length below its heading has to say what it is quiet about. `yet` is right: it is a running count, and the brief's own quiet-week rule is that no threshold moves to make the page look full |
+| duos, nothing qualifies | `No pair has 5 games together yet.` | **keep, product 2026-09-10 (M5.4)** — same shape, and it is deliberately the award's noun (`No pair played 4 games together this week.`) with the browsing table's number in it, so a reader who meets both lines on one page reads one rule at two bars and not two rules |
+| streaks, the two the window holds | `Longest win streak` · `Longest losing streak` | **keep, product 2026-09-10 (M5.4)** — product's own words out of the brief ("longest win streak and longest losing streak of the season, per player, and on `/stats` the group's best and worst with the holder's name"), promoted to labels in the sentence case the page's other sections use (`Best together`, `By role`). `losing`, not `loss`: it is the streak a person is on, not a column head |
+| streaks, the third block | ~~`On a run now`~~ → `On a streak now` | **replaced, product 2026-09-10 (M5.4)** — see below |
+| streaks, nobody qualifies | ~~`Nobody is on a run of three or more.`~~ → `Nobody is on a streak of 3 or more.` | **replaced, product 2026-09-10 (M5.4)** — see below |
+| best off-role, the winner line | `Omar · 9W 3L · 75% · their main is top` | **keep, product 2026-09-10 (M5.4), and this row supersedes the brief's `his main is top`** — the database holds a PUUID, a name a player can change between two page loads, and no pronoun; `his` is a fact this product does not have about nineteen of the twenty people it prints. `their` is the pronoun the board pages already settled on for the same reason (M3.26's `how unsure the board still is about them`). **Acceptance check 7 of M5.4 reads this row for this line**, not the brief's sentence. Decision row: `04-decisions.md`, 2026-09-10 |
+| the no-role footnote, at one game | `1 game is not in the role numbers — the client did not record who played where. Backfilled games never do.` | **keep, product 2026-09-10 (M5.4)** — the brief wrote the plural only. The count goes through `gamesLabel` like every other count on these pages and the verb follows it, so the one-game night does not read `1 games are`. Everything after the dash is product's, unchanged |
+
+**Why the two replacements stand.**
+
+- **`On a streak now`, not `On a run now`.** The section is `Streaks`, the two labels above it are
+  `Longest win streak` and `Longest losing streak`, the leaderboard row prints `W3`, and the M5.4 brief calls
+  it a streak throughout. `run` is a second noun for the thing the page has already named three times in the
+  same card — the rule that turned `standings` into `Leaderboard`: one thing, one name. It is also the warmer
+  word by accident only: in English "on a run" leans to a winning one, and this block lists `L4` beside `W3`
+  with no comment, which is the point of it.
+- **`Nobody is on a streak of 3 or more.`** Same noun, and the digit because the number is a module constant
+  the block is filtered on — spelled out in the sentence it can drift from the list above it, and the page's
+  other two "not enough yet" lines already print their minimum as a digit (`5 games`). The tonight page's
+  `One more to go.` is not the precedent here: that word exists because the digit is already set 44px above
+  it, and nothing on this page prints this 3 but the `W3` chips the sentence is about.
+
+**The per-player sections on `/p/[puuid]` (M5.20) are not in this table.** Their empty lines and section
+labels are unwritten copy, and they come to product before they ship, like these did.
+
 ### `tokens.css`, v2 — the file to write
 
 ```css
