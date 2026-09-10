@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { resolveLocalStack } from './localStack';
 import {
   COMPANION_COMMAND_TTL_MS,
@@ -105,6 +105,19 @@ if (stack === null) {
     await rest('service', `players?puuid=like.${runId}*`, { method: 'DELETE' });
   });
 
+  /**
+   * Take this file's `create_lobby` rows out of `pending` and `sent`.
+   *
+   * `0008` allows exactly one live `create_lobby` in the whole table, so a case that leaves one
+   * behind locks out every case after it — and every other agent on the shared local stack.
+   * Deleting rather than settling: nothing here reads them afterwards.
+   */
+  async function releaseCreateLobbyLock(): Promise<void> {
+    await rest('service', `companion_commands?target_player_id=eq.${playerId}&kind=eq.create_lobby`, {
+      method: 'DELETE',
+    });
+  }
+
   describe('the kind enum is the zod enum', () => {
     it('accepts every kind the wire schema names', async () => {
       for (const kind of companionCommandKindSchema.options) {
@@ -116,6 +129,7 @@ if (stack === null) {
         expect(created.status, `${kind} should be a valid companion_command_kind`).toBe(201);
         expect(rows(created.body)[0]?.kind).toBe(kind);
       }
+      await releaseCreateLobbyLock();
     });
 
     it('refuses a kind the wire schema does not name', async () => {
@@ -250,6 +264,85 @@ if (stack === null) {
       });
       expect(nacked.ok).toBe(true);
       expect(rows(nacked.body)[0]?.error).toBe(error);
+    });
+  });
+
+  describe('the create_lobby lock 0008 adds', () => {
+    /** A live `create_lobby`, or the refusal Postgres gave for trying to make a second one. */
+    function createLobby(): Promise<RestResult> {
+      return insert('companion_commands', {
+        target_player_id: playerId,
+        kind: 'create_lobby',
+        payload: PAYLOADS.create_lobby,
+        expires_at: new Date(Date.now() + COMPANION_COMMAND_TTL_MS.create_lobby).toISOString(),
+      });
+    }
+
+    async function settle(id: string, status: 'acked' | 'failed'): Promise<void> {
+      await rest('service', `companion_commands?id=eq.${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status, acked_at: new Date().toISOString() }),
+      });
+    }
+
+    afterEach(releaseCreateLobbyLock);
+
+    it('allows one create_lobby in pending or sent and refuses the second', async () => {
+      const first = await createLobby();
+      expect(first.status).toBe(201);
+
+      const second = await createLobby();
+      expect(second.ok).toBe(false);
+      // The API turns exactly this into `A lobby is already being opened.` (M4.9); the code and
+      // the index name are how it tells this violation from any other.
+      expect(second.status).toBe(409);
+      expect((second.body as { code?: string }).code).toBe('23505');
+      expect(JSON.stringify(second.body)).toContain('companion_commands_one_create_lobby_idx');
+    });
+
+    it('holds the lock while the row is sent, not only while it is pending', async () => {
+      const first = await createLobby();
+      const id = String(rows(first.body)[0]?.id ?? '');
+      // Handed to a companion and not answered yet: a lobby may already exist on somebody's
+      // screen, so this is exactly when a second create must not be written.
+      await rest('service', `companion_commands?id=eq.${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'sent', sent_at: new Date().toISOString(), attempts: 1 }),
+      });
+
+      expect((await createLobby()).ok).toBe(false);
+    });
+
+    it('releases the lock on ack and on fail, which is how the expiry sweep frees it', async () => {
+      for (const status of ['acked', 'failed'] as const) {
+        const first = await createLobby();
+        expect(first.status, status).toBe(201);
+        await settle(String(rows(first.body)[0]?.id ?? ''), status);
+
+        // The sweep writes `failed` with `error = 'expired'`, so an expired row leaves the
+        // index the moment it is swept and the next press is free.
+        const second = await createLobby();
+        expect(second.status, status).toBe(201);
+        await settle(String(rows(second.body)[0]?.id ?? ''), 'failed');
+      }
+    });
+
+    it('locks nothing but create_lobby', async () => {
+      for (const kind of ['invite', 'switch_side'] as const) {
+        const first = await insert('companion_commands', {
+          target_player_id: playerId,
+          kind,
+          payload: PAYLOADS[kind],
+        });
+        const second = await insert('companion_commands', {
+          target_player_id: playerId,
+          kind,
+          payload: PAYLOADS[kind],
+        });
+        expect(first.status, kind).toBe(201);
+        // Ten invites go out at once on one host: the lock is about one lobby, not one command.
+        expect(second.status, kind).toBe(201);
+      }
     });
   });
 

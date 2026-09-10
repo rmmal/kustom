@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@customs/db';
+import { companionCommandPayloadSchemas } from '@customs/db/schemas';
 import { createClient } from '@supabase/supabase-js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   LOBBY_ALREADY_OPEN,
   LOBBY_ALREADY_OPENING,
@@ -15,11 +16,13 @@ import {
   supabaseAdminLookup,
 } from '@/lib/adminAuth';
 import {
+  COMMAND_ERRORS,
   clearCommandHooks,
   enqueueCommands,
   fanOutInvites,
   inviteFanOutHook,
   registerCommandHook,
+  sweepExpiredCommands,
 } from '@/lib/commands';
 import { mintCompanionToken } from '@/lib/companionAuth';
 import { ensurePlayers } from '@/lib/ingest/players';
@@ -481,6 +484,184 @@ if (stack === null) {
       expect(response.status).toBe(200);
       // No lobby, no invites, no half state: the failed create queues nothing.
       expect(await commandsOf('invite')).toHaveLength(2);
+    });
+  });
+
+  describe('the lock is a database constraint (M4.9)', () => {
+    /** Every `create_lobby` this file wrote, gone, so the lock is free for the next case. */
+    async function clearCreates(): Promise<void> {
+      const { error } = await db
+        .from('companion_commands')
+        .delete()
+        .in('target_player_id', [...ids.values()])
+        .eq('kind', 'create_lobby');
+      if (error) throw new Error(`clearCreates: ${error.message}`);
+    }
+
+    const createPayload = (n: number) => ({ lobbyName: `Customs 09 Jun #${n}`, lobbyPassword: '1111' });
+
+    beforeAll(async () => {
+      // The night's first lobby finished, so Start is allowed again (M4.2's last edge case).
+      const { error } = await db.from('lobbies').update({ status: 'finished' }).eq('id', lobbyId);
+      if (error) throw new Error(error.message);
+      await clearCreates();
+    });
+
+    afterEach(clearCreates);
+
+    it('leaves one row and one 409 when two presses land in the same instant', async () => {
+      // The whole point of the index: both requests read the same empty table and both try to
+      // insert. Before `0008` this wrote two rows, opened two lobbies on two clients and fanned
+      // out two sets of invites.
+      const [first, second] = await Promise.all([
+        press({ gate: ON })(postStart()),
+        press({ gate: ON })(postStart()),
+      ]);
+
+      expect([first.status, second.status].sort()).toEqual([200, 409]);
+
+      const refused = first.status === 409 ? first : second;
+      // The same sentence either way: the presser cannot tell whether the read refused them or
+      // the index did, and neither can this test.
+      await expect(refused.json()).resolves.toEqual({ ok: false, error: LOBBY_ALREADY_OPENING });
+
+      const rows = await commandsOf('create_lobby');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe('pending');
+    });
+
+    it('gives the presser the same sentence when the index is what refused them', async () => {
+      // The interleaving the `Promise.all` above cannot be made to happen on demand: the other
+      // press's row lands *after* our read and *before* our insert. Staged by writing a live
+      // row the read cannot see — its `expires_at` is two TTLs out, and the read's window is
+      // exactly one — so `decideStart` passes and only the index can refuse.
+      const { error } = await db.from('companion_commands').insert({
+        target_player_id: id('inlobby'),
+        kind: 'create_lobby',
+        payload: createPayload(9),
+        expires_at: new Date(NOW.getTime() + 120_000).toISOString(),
+      });
+      if (error) throw new Error(error.message);
+
+      const response = await press({ gate: ON })(postStart());
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({ ok: false, error: LOBBY_ALREADY_OPENING });
+      // One row: the one that was there. Not ours, and never a 500.
+      expect(await commandsOf('create_lobby')).toHaveLength(1);
+    });
+
+    it('refuses a second live create_lobby on a different host, and says so rather than throwing', async () => {
+      const first = await enqueueCommands(
+        db,
+        [{ targetPlayerId: id('host'), kind: 'create_lobby', payload: createPayload(2) }],
+        { now: NOW, gate: ON },
+      );
+      expect(first.queued).toHaveLength(1);
+
+      // A different target player on purpose: the lock is global, not per host. Per host would
+      // still let two admins with two companions open two lobbies, which is the failure the
+      // reviewer found.
+      const second = await enqueueCommands(
+        db,
+        [{ targetPlayerId: id('inlobby'), kind: 'create_lobby', payload: createPayload(3) }],
+        { now: NOW, gate: ON },
+      );
+
+      expect(second.queued).toEqual([]);
+      expect(second.skipped).toEqual([{ kind: 'create_lobby', reason: 'conflict' }]);
+      expect(await commandsOf('create_lobby')).toHaveLength(1);
+    });
+
+    it('still writes the rest of a batch whose create_lobby lost the race', async () => {
+      await enqueueCommands(
+        db,
+        [{ targetPlayerId: id('host'), kind: 'create_lobby', payload: createPayload(4) }],
+        { now: NOW, gate: ON },
+      );
+
+      const mixed = await enqueueCommands(
+        db,
+        [
+          { targetPlayerId: id('host'), kind: 'create_lobby', payload: createPayload(5) },
+          {
+            targetPlayerId: id('host'),
+            kind: 'invite',
+            // Through the wire schema, which is where the branded puuid comes from.
+            payload: companionCommandPayloadSchemas.invite.parse({
+              puuid: puuidOf('old'),
+              summonerId: null,
+            }),
+          },
+        ],
+        { now: NOW, gate: ON },
+      );
+
+      expect(mixed.skipped).toEqual([{ kind: 'create_lobby', reason: 'conflict' }]);
+      expect(mixed.queued).toHaveLength(1);
+      // The two the fan-out wrote earlier, plus this one: an insert is all-or-nothing, so
+      // without the retry the invite would have been lost to somebody else's double tap.
+      expect(await commandsOf('invite')).toHaveLength(3);
+
+      const { error } = await db.from('companion_commands').delete().in('id', mixed.queued);
+      if (error) throw new Error(error.message);
+    });
+
+    it('frees the slot when the sweep expires a stale pending create', async () => {
+      // The host's companion went away between the press and the poll: the row is still
+      // `pending`, its 60 seconds are up, and nobody has polled since. `expires_at` cannot be in
+      // the index's predicate — `now()` is not immutable — so the sweep is what releases it.
+      const { data, error } = await db
+        .from('companion_commands')
+        .insert({
+          target_player_id: id('host'),
+          kind: 'create_lobby',
+          payload: createPayload(6),
+          expires_at: new Date(NOW.getTime() - 1_000).toISOString(),
+        })
+        .select('id')
+        .single();
+      if (error) throw new Error(error.message);
+
+      const blocked = await enqueueCommands(
+        db,
+        [{ targetPlayerId: id('host'), kind: 'create_lobby', payload: createPayload(7) }],
+        { now: NOW, gate: ON },
+      );
+      expect(blocked.skipped).toEqual([{ kind: 'create_lobby', reason: 'conflict' }]);
+
+      // The clock is 2019, so this settles this file's row and nothing else on the shared stack.
+      await sweepExpiredCommands(db, NOW);
+
+      const swept = await db.from('companion_commands').select('status, error').eq('id', data.id).single();
+      expect(swept.data).toMatchObject({ status: 'failed', error: COMMAND_ERRORS.expired });
+
+      // `failed` is outside the index's predicate, so the slot is free again.
+      const after = await enqueueCommands(
+        db,
+        [{ targetPlayerId: id('host'), kind: 'create_lobby', payload: createPayload(7) }],
+        { now: NOW, gate: ON },
+      );
+      expect(after.queued).toHaveLength(1);
+      expect(after.skipped).toEqual([]);
+    });
+
+    it('sweeps a stale pending create out of the way of a real press', async () => {
+      const { error } = await db.from('companion_commands').insert({
+        target_player_id: id('host'),
+        kind: 'create_lobby',
+        payload: createPayload(8),
+        expires_at: new Date(NOW.getTime() - 1_000).toISOString(),
+      });
+      if (error) throw new Error(error.message);
+
+      // `startLobby` sweeps before it reads, so the press does not inherit a dead lock from a
+      // companion that went away.
+      const response = await press({ gate: ON })(postStart());
+
+      expect(response.status).toBe(200);
+      const rows = await commandsOf('create_lobby');
+      expect(rows.filter((row) => row.status === 'pending')).toHaveLength(1);
     });
   });
 }

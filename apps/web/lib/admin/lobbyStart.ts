@@ -1,6 +1,12 @@
 import { randomInt } from 'node:crypto';
 import { COMPANION_COMMAND_TTL_MS } from '@customs/db/schemas';
-import { type CommandGate, enqueueCommands, isCommandKindEnabled, nightWindow } from '../commands';
+import {
+  type CommandGate,
+  enqueueCommands,
+  isCommandKindEnabled,
+  nightWindow,
+  sweepExpiredCommands,
+} from '../commands';
 import { DEFAULT_NIGHT_TIME_ZONE, formatDayMonth } from '../night';
 import type { ServiceClient } from '../supabase';
 import { type NameableRow, playerLabel } from './playerName';
@@ -42,7 +48,13 @@ export const LOBBY_ALREADY_OPEN = 'There is already a lobby open.';
 /** Nobody's companion has been up in the last ten minutes, so there is nobody to run it. */
 export const NO_COMPANION_AROUND = 'Nobody has the companion running right now. Start it and try again.';
 
-/** The double-tap guard: the pending row *is* the lock, so two taps produce one command. */
+/**
+ * The double-tap guard: the pending row *is* the lock, so two taps produce one command.
+ *
+ * Two presses can say this, and they are indistinguishable from outside. The one that read the
+ * pending row (`decideStart`) and the one that lost the insert to
+ * `companion_commands_one_create_lobby_idx` (`0008`, M4.9) both answer 409 with this sentence.
+ */
 export const LOBBY_ALREADY_OPENING = 'A lobby is already being opened.';
 
 /** The kind is flagged off in `lib/commands/gate.ts` because its reference row is not green. */
@@ -226,7 +238,9 @@ export interface DecideStartOptions {
  * 1. **a live lobby** — the honest answer to "start a lobby" when one is open;
  * 2. **a pending `create_lobby`** — before the host check, because a double tap two seconds
  *    apart must say `A lobby is already being opened.` and not `Nobody has the companion
- *    running right now.` if that host's poll has not landed yet. The pending row is the lock;
+ *    running right now.` if that host's poll has not landed yet. The pending row is the lock,
+ *    and from M4.9 this read is the *friendly* half of it: the enforcing half is a unique index
+ *    (`0008`) that catches the two taps this read cannot see, the ones in the same millisecond;
  * 3. **nobody around** — no unrevoked token seen in the last ten minutes, so there is no client
  *    to run it and **nothing is written anywhere**.
  *
@@ -364,10 +378,13 @@ export interface StartLobbyOutcome extends StartLobbyPlan {
  * verification pass lands — this answers 409 with the "not verified" sentence and touches
  * nothing at all.
  *
- * Idempotent: the pending `create_lobby` row is the lock, so two people tapping at the same
- * moment produce one command and the second tap gets a sentence. There is no unlock — the row's
- * own 60-second TTL is what releases it, and by then either a lobby exists (and the live-lobby
- * refusal takes over) or nothing was created.
+ * Idempotent, and idempotent in the database rather than in this function (M4.9). The pending
+ * `create_lobby` row is the lock in two places now: `decideStart` reads it and gives the
+ * friendly refusal, and `companion_commands_one_create_lobby_idx` (`0008`) enforces it for the
+ * two presses that read the same empty table in the same millisecond. The loser of that race
+ * gets the identical 409 and the identical sentence, so no caller can tell which path refused
+ * it. There is no unlock — an ack, a nack or the expiry sweep takes the row out of `pending`
+ * and `sent`, and that releases it.
  */
 export async function startLobby(
   client: ServiceClient,
@@ -380,6 +397,14 @@ export async function startLobby(
 
   const now = options.now ?? new Date();
   const timeZone = options.timeZone ?? DEFAULT_NIGHT_TIME_ZONE;
+
+  // Expiry first, because from `0008` on a live `create_lobby` row is a lock on the whole table
+  // and an expired one that nobody has swept would hold it. The sweep normally runs on every
+  // companion poll; a host whose client went away between the last poll and this press is
+  // exactly the case where it has not, and that must not cost the group its next lobby. One
+  // statement, the same one the poll runs, and it settles nothing that is still in date.
+  await sweepExpiredCommands(client, now);
+
   const state = await readStartLobbyState(client, { now, timeZone });
   const decided = decideStart(state, {
     ...options,
@@ -390,7 +415,7 @@ export async function startLobby(
   if (!decided.ok) return decided;
 
   const plan = decided.value;
-  const { queued } = await enqueueCommands(
+  const { queued, skipped } = await enqueueCommands(
     client,
     [
       {
@@ -404,8 +429,12 @@ export async function startLobby(
 
   const commandId = queued[0];
   if (commandId === undefined) {
-    // Only reachable if the gate flipped between the check above and the write, or the payload
-    // failed its own schema — both of them our bug, and neither is the presser's problem.
+    // The race the read above cannot win: somebody else's press inserted between our read and
+    // our write, and `companion_commands_one_create_lobby_idx` refused this one (M4.9). The
+    // same 409 and the same sentence `decideStart` would have given a second later.
+    if (skipped.some((row) => row.reason === 'conflict')) return writeFailed(409, LOBBY_ALREADY_OPENING);
+    // Otherwise: the gate flipped between the check above and the write, or the payload failed
+    // its own schema — both of them our bug, and neither is the presser's problem.
     return writeFailed(409, LOBBY_WRITES_UNVERIFIED);
   }
 
