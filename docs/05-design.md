@@ -760,6 +760,67 @@ string are **unchanged**. v2 is a visual redesign; it does not get to rewrite se
 `Leaderboard` is a tab, as this section's "Idle" already says. Delete the constant with M3.18 rather than
 leaving a dead export in `copy.ts`.
 
+#### Copy — the role tap and picking yourself (M3.6, product 2026-09-10)
+
+Every word M3.6 puts on the tonight page, including the refusals. The control's strings were settled in the
+M3.6 brief on 2026-09-09 and are quoted here unchanged; the refusals are new — the brief covered what the
+route does, not what the friend reads when it says no, so the engineer wrote nine sentences against no doc
+and product rules them here: eight are replaced, one is kept. They live in `apps/web/lib/tonight/copy.ts` (what the page draws) and
+`apps/web/lib/me/roleTonight.ts`, `lib/me/selfLink.ts` and `app/api/me/role-tonight/handler.ts` (what the
+route answers). That is four files and one table; they may not drift.
+
+**The rule for a refusal**, so the next one is written the same way: *say what happened, then say who can
+undo it or what to do next.* Never the database's vocabulary — a friend on a phone has no rows, no ids and no
+player records. Never an apology. Never name a page the reader cannot open (`/admin` is not a fix a non-admin
+can act on; "an admin can" is).
+
+| Where | String | Status |
+|---|---|---|
+| control heading, `t-xs` `dim` above the five role words | `Your role tonight` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| under the control, once | `The bot tries for this one. If the teams need it, you can still end up somewhere else.` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| the control, from `balanced` on | `Saved for the next game. Teams are already set.` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| signed out, on the control that starts the Discord round trip | `Sign in with Discord to pick your role.` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| above the list, signed in with no player | `Which one of these is you? Pick yourself once and the page knows you from now on.` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| on every row of that list | `That's me` | product 2026-09-09 (brief) — shipped verbatim, kept. Straight apostrophe |
+| signed in with no player and no lobby to pick out of | `Signed in. Open the page while the lobby is up and you can pick yourself out of it.` | product 2026-09-09 (brief) — shipped verbatim, kept |
+| appended to the all-flexible hint, admin only | `Set roles` | product 2026-09-09 (the table above) — now rendered, kept |
+| the tap did not reach the server | `That did not reach the server. Your role is unchanged — tap it again.` | **product 2026-09-10 (M3.6)** — replaces `That did not reach the server. Your role is unchanged.` |
+| `That's me` did not reach the server | `That did not reach the server. Nothing changed — tap it again.` | **product 2026-09-10 (M3.6)** — replaces `That did not reach the server. Nothing changed.` |
+| a non-admin naming somebody else (403) | `That is not you. Only an admin can set somebody else's role.` | **product 2026-09-10 (M3.6)** — replaces `That is not your row. Only an admin can set a role for somebody else.` |
+| the lobby is finished, dropped, abandoned or gone (404, 409) | `That lobby is over. You can set a role when the next one opens.` | **product 2026-09-10 (M3.6)** — replaces `That lobby is over. Nothing to set a role on.` |
+| a linked player who is not in that lobby (409) | `You are not in that lobby. Join it in League and you can pick a role.` | **product 2026-09-10 (M3.6)** — replaces `You are not in that lobby, so there is no row to set.` |
+| a signed-in visitor with no player tapping a role (403) | `Pick yourself out of the list first, then you can set a role.` | **product 2026-09-10 (M3.6)** — replaces `Pick yourself out of the lobby first, then you can set a role.` |
+| a session that already has a player tapping `That's me` (409) | `You already picked yourself. An admin can undo it if it was the wrong name.` | **product 2026-09-10 (M3.6)** — replaces `You are already linked to a player.` |
+| `That's me` on somebody who is not in tonight's lobby (403) | `You can only pick somebody who is in tonight's lobby.` | **product 2026-09-10 (M3.6)** — replaces `Only somebody in tonight’s lobby can be picked.`, curly apostrophe and all |
+| `That's me` or a role tap naming a PUUID no player has (404) | `No player with that id.` | engineer 2026-09-10 — **kept as is**: the page cannot produce this request, so it is the only string here no friend can reach. If it ever becomes reachable it comes back to this table |
+
+**Why the eight changed.** Each is the rule above, applied.
+
+- **No rows.** Three of the eight said `row` — `That is not your row`, `there is no row to set`. `lobby_members`
+  is a table this product deliberately never shows anybody: the whole design is that the lobby is read, not
+  filled in. A friend told "that is not your row" has to guess what a row is before they can guess what went
+  wrong. `That is not you` is the same refusal in words the reader already has.
+- **A refusal ends with what happens next.** `Nothing to set a role on.` is a dead end; `You can set a role
+  when the next one opens.` is the same fact plus the thing that is true in ten minutes, and it is why nobody
+  needs to do anything about it. Same for the two offline sentences: `tap it again` is the whole fix and it
+  was missing.
+- **`Pick yourself out of the lobby first` reads as "leave the lobby".** The brief's own sentence
+  (`…you can pick yourself out of it`) is safe because it follows `Open the page while the lobby is up`; the
+  refusal has no such neighbour and lands on a friend who is standing in a lobby they want to stay in. `out
+  of the list` names the thing on screen — the `That's me` list two blocks up the page.
+- **`You are already linked to a player.` describes the database, not the person.** The reader's fact is that
+  they already tapped `That's me`, and the thing they want to know is whether it can be fixed. Both go in.
+  `Someone is already linked to that player.` is not touched: it is product's from the brief and is pinned by
+  M3.6's acceptance check 3.
+- **Rendered strings use the ASCII apostrophe.** `Only somebody in tonight’s lobby can be picked.` was the one
+  friend-facing string in the app with a curly `’`, against `That's me` and `Names fill in after someone's
+  first game.` two files away. Curly apostrophes stay in comments and test names, where they are prose.
+  Passive voice went with it: it is a friend tapping, so the sentence says `You can only pick`.
+
+Nothing in the control's own copy moved. The brief's eight strings shipped byte for byte, `SET_ROLES_LINK`
+is the table above this one finally rendering, and no new string was invented for a state the brief already
+settled.
+
 ### What changes on the leaderboard and the player page (M3.5)
 
 M3.5 is being built against v1 right now. Nothing in its **content** decisions moves — `Proven` is still the
