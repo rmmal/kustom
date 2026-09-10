@@ -4271,7 +4271,7 @@ Acceptance: from an empty Discord voice channel to a balanced lobby with everyon
     > balancer, to M3.6's tap, or to what a role means. A per-player history of role changes — nobody has asked
     > to see one.
 
-- [ ] **M5.18** Give backfilled games a role. *(owner: companion-engineer)* Match-history detail carries no `detectedTeamPosition`, so every backfilled game stores `role: null` (M5.1) and is invisible to role stats and to role inference. Map the detail's `timeline.lane` / `timeline.role` pair to our five roles with a table verified against the fixtures, and record it in `03-lcu-reference.md`.
+- [~] **M5.18** (mechanism, CLI `timeline-roles`, `smoke --game-id` overlays and the empty table landed 2026-09-10; the one overlapping fixture proves nothing and the one 5v5 detail refutes the name-based pairs, so no pair is mapped on 16.17 until the documented capture night: record-ws during play, `smoke --game-id` next day, `timeline-roles`) Give backfilled games a role. *(owner: companion-engineer)* Match-history detail carries no `detectedTeamPosition`, so every backfilled game stores `role: null` (M5.1) and is invisible to role stats and to role inference. Map the detail's `timeline.lane` / `timeline.role` pair to our five roles with a table verified against the fixtures, and record it in `03-lcu-reference.md`.
 
     > **Brief (product, 2026-09-10)**
     >
