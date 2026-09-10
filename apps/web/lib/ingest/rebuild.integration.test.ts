@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { seedFromRank } from '@customs/core';
 import { type Database, SEASON_ONE_ID } from '@customs/db';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -34,7 +35,7 @@ if (stack === null) {
   process.env.DISCORD_WEBHOOK_URL = '';
 
   const { POST: postGame } = await import('@/app/api/companion/game/route');
-  const { FENCE_MESSAGE, GUARD_MESSAGE, rebuildRatings } = await import('./rebuild');
+  const { FENCE_MESSAGE, formatRebuildReport, GUARD_MESSAGE, rebuildRatings } = await import('./rebuild');
 
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -55,6 +56,8 @@ if (stack === null) {
   // started inside the same second of `gameCreation`.
   const tiedHighGameId = base + 9;
   const tiedLowGameId = base + 8;
+  /** One more game, after a rank has moved, for M5.7's "nothing ever rewrites a seed". */
+  const afterTheClimbGameId = base + 10;
   const allGameIds = [
     ...liveGameIds,
     oldBackfillGameId,
@@ -63,6 +66,7 @@ if (stack === null) {
     fenceGameId,
     tiedLowGameId,
     tiedHighGameId,
+    afterTheClimbGameId,
   ];
 
   let token = '';
@@ -94,7 +98,10 @@ if (stack === null) {
 
     const { data: ratings, error: ratingsError } = await db
       .from('ratings')
-      .select('player_id, mu, sigma, games, wins')
+      // The four seed columns are in the dump because they are part of what the rebuild
+      // writes (M5.7): "two runs are byte-identical" has to include the seed, or the second
+      // run could quietly move where somebody's history starts.
+      .select('player_id, mu, sigma, games, wins, seed_mu, seed_sigma, seed_rank_tier, seed_rank_division')
       .eq('season_id', seasonId)
       .order('player_id');
     if (ratingsError) throw new Error(ratingsError.message);
@@ -127,6 +134,25 @@ if (stack === null) {
 
   function rebuild(options: Parameters<typeof rebuildRatings>[1] = {}) {
     return rebuildRatings(db, { seasonId, force: true, ...options });
+  }
+
+  /** The four seed columns of this season's `ratings` rows, ordered (M5.7). */
+  async function seedRows() {
+    const { data, error } = await db
+      .from('ratings')
+      .select('player_id, seed_mu, seed_sigma, seed_rank_tier, seed_rank_division')
+      .eq('season_id', seasonId)
+      .order('player_id');
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }
+
+  /** The rank `beforeAll` gave a player, which for this file never moves unless a case moves it. */
+  function rankOf(playerId: string): { tier: string | null; division: string | null } {
+    const index = playerIds.indexOf(playerId);
+    if (index < 3) return { tier: 'GOLD', division: 'II' };
+    if (index < 5) return { tier: 'DIAMOND', division: 'IV' };
+    return { tier: null, division: null };
   }
 
   beforeAll(async () => {
@@ -239,6 +265,21 @@ if (stack === null) {
         );
         expect(response.status).toBe(200);
         expect((await response.json()).rated).toBe(true);
+      }
+
+      /**
+       * **The first fold that rated each of them wrote their seed** (M5.7). None of these ten
+       * had a `ratings` row before the three games above; the live fold created it, and the
+       * `{ mu, sigma }` it folded from is stored on it beside the rating it grew into, with the
+       * two rank strings it was read from.
+       */
+      const seeded = await seedRows();
+      expect(seeded).toHaveLength(10);
+      for (const row of seeded) {
+        const rank = rankOf(row.player_id);
+        const seed = seedFromRank(rank.tier, rank.division);
+        expect([row.player_id, row.seed_mu, row.seed_sigma]).toEqual([row.player_id, seed.mu, seed.sigma]);
+        expect([row.seed_rank_tier, row.seed_rank_division]).toEqual([rank.tier, rank.division]);
       }
 
       const before = await dump();
@@ -662,6 +703,112 @@ if (stack === null) {
       const result = await rebuildRatings(db, { seasonId: randomUUID(), force: true });
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.code).toBe('no-season');
+    });
+  });
+
+  describe('the stored seed (M5.7)', () => {
+    it('is what the rebuild folds from, even after the rank moves', async () => {
+      // The acceptance check, in one case: a player whose `players.rank_tier` changes between
+      // their first rated game and a rebuild has byte-identical `game_players` rating columns
+      // before and after it. Without the stored seed this player would be re-seeded at
+      // Challenger and every number on their page — and on everybody's they played against —
+      // would move.
+      const climber = playerIds[0] as string;
+      const before = await dump();
+
+      await db.from('players').update({ rank_tier: 'CHALLENGER', rank_division: 'I' }).eq('id', climber);
+
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.report.gamePlayerRowsChanged).toBe(0);
+      expect(result.report.ratingRowsChanged).toBe(0);
+      expect(result.report.seedsStored).toBe(0);
+      expect(await dump()).toBe(before);
+
+      // The seed still names the rank the history was actually built on, not the new one.
+      const seeded = (await seedRows()).find((row) => row.player_id === climber);
+      expect([seeded?.seed_rank_tier, seeded?.seed_rank_division]).toEqual(['GOLD', 'II']);
+
+      await db.from('players').update({ rank_tier: 'GOLD', rank_division: 'II' }).eq('id', climber);
+    });
+
+    it('is backfilled onto rows written before 0012, from the seed the fold used', async () => {
+      const seeded = await seedRows();
+      const before = await dump();
+
+      // A row from before the migration: rated history, no seed. Every `ratings` row in the
+      // database looked like this the moment 0012 was applied.
+      const { error } = await db
+        .from('ratings')
+        .update({ seed_mu: null, seed_sigma: null, seed_rank_tier: null, seed_rank_division: null })
+        .eq('season_id', seasonId);
+      if (error) throw new Error(error.message);
+      const emptied = await dump();
+
+      // A dry run says how many seeds it would write, and writes none of them.
+      const dry = await rebuild({ dryRun: true });
+      expect(dry.ok).toBe(true);
+      if (!dry.ok) return;
+      expect(dry.report.seedsStored).toBe(10);
+      expect(formatRebuildReport(dry.report)).toContain('seeds         10 to store for the first time');
+      expect(await dump()).toBe(emptied);
+
+      const run = await rebuild();
+      expect(run.ok).toBe(true);
+      if (!run.ok) return;
+      expect(run.report.seedsStored).toBe(10);
+      expect(formatRebuildReport(run.report)).toContain('seeds         10 stored for the first time');
+
+      // The ranks have not moved, so the backfill puts back exactly what the first fold wrote —
+      // and nothing else about the season changed on the way.
+      expect(await seedRows()).toEqual(seeded);
+      expect(await dump()).toBe(before);
+
+      // And a second run writes nothing at all: the seed is stored once.
+      const again = await rebuild();
+      expect(again.ok).toBe(true);
+      if (!again.ok) return;
+      expect(again.report.seedsStored).toBe(0);
+      expect(again.report.ratingRowsChanged).toBe(0);
+      expect(await dump()).toBe(before);
+    });
+
+    it('is not rewritten by the next game the live fold rates, whatever the rank says now', async () => {
+      const climber = playerIds[0] as string;
+      const seeded = await seedRows();
+
+      await db.from('players').update({ rank_tier: 'CHALLENGER', rank_division: 'I' }).eq('id', climber);
+
+      const response = await postGame(
+        post(
+          eogBody({
+            gameId: afterTheClimbGameId,
+            puuids,
+            partyId: null,
+            winningSide: 100,
+            startedAt: '2026-09-12T20:00:00.000Z',
+            durationS: 1_620,
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).rated).toBe(true);
+
+      // The rating moved — a game was played — and the seed did not, for any of the ten.
+      expect(await seedRows()).toEqual(seeded);
+
+      // And the rebuild agrees with the fold that just ran, seed included.
+      const result = await rebuild();
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.report.gamePlayerRowsChanged).toBe(0);
+      expect(result.report.ratingRowsChanged).toBe(0);
+      expect(result.report.seedsStored).toBe(0);
+      expect(await seedRows()).toEqual(seeded);
+
+      await db.from('players').update({ rank_tier: 'GOLD', rank_division: 'II' }).eq('id', climber);
+      await db.from('games').delete().eq('lcu_game_id', afterTheClimbGameId);
     });
   });
 }

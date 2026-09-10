@@ -484,6 +484,10 @@ export type Database = {
           ordinal: number | null
           player_id: string
           season_id: string
+          seed_mu: number | null
+          seed_rank_division: string | null
+          seed_rank_tier: string | null
+          seed_sigma: number | null
           sigma: number
           updated_at: string
           wins: number
@@ -494,6 +498,10 @@ export type Database = {
           ordinal?: number | null
           player_id: string
           season_id: string
+          seed_mu?: number | null
+          seed_rank_division?: string | null
+          seed_rank_tier?: string | null
+          seed_sigma?: number | null
           sigma: number
           updated_at?: string
           wins?: number
@@ -504,6 +512,10 @@ export type Database = {
           ordinal?: number | null
           player_id?: string
           season_id?: string
+          seed_mu?: number | null
+          seed_rank_division?: string | null
+          seed_rank_tier?: string | null
+          seed_sigma?: number | null
           sigma?: number
           updated_at?: string
           wins?: number

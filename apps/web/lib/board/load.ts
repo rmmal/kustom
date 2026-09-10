@@ -1,5 +1,7 @@
 import { displayRating, type Rating, seedFromRank } from '@customs/core';
 import type { RoleValue, SideValue } from '@customs/db';
+import { readSeed, type StoredSeed, seedFor } from '../ingest/seed';
+// `LANE_ORDER` left with `roleRecord` (M5.20): `By role` is `lib/stats`' fold now.
 import { inLaneOrder } from '../laneOrder';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
@@ -84,6 +86,12 @@ interface RatingRow {
   rating: Rating;
   games: number;
   wins: number;
+  /**
+   * The seed this player's history was folded from (M5.7), or null on a `ratings` row written
+   * before `0012` and not yet rebuilt. Only `/p/[puuid]` reads it: the board prints where
+   * somebody is, not where they began.
+   */
+  seed: StoredSeed | null;
 }
 
 /**
@@ -356,10 +364,6 @@ export async function loadPlayerBoard(
 
   const window = options.window;
   const range = windowRange(window, options.now ?? new Date(), options.timeZone);
-  const seed = displayRating(seedFromRank(player.rankTier, player.rankDivision).mu);
-  // The same two strings the seed was computed from, as words (M5.15): the line above the
-  // chart names the rank the number came from, so the two are read from one place.
-  const seedRank = rankLabel(player.rankTier, player.rankDivision);
   const season = await selectSeasonId(client);
 
   // No season row means no games and no ratings: the page is the person, their seed numbers
@@ -378,8 +382,10 @@ export async function loadPlayerBoard(
       wins: 0,
       losses: 0,
       settling: true,
-      seedRank,
-      reference: seed,
+      // Nothing has been folded, so the seed is what their rank says today — and it is what
+      // the first fold will store.
+      seedRank: rankLabel(player.rankTier, player.rankDivision),
+      reference: displayRating(seeded.mu),
       history: [],
       recent: [],
     };
@@ -412,6 +418,21 @@ export async function loadPlayerBoard(
   const stored = ratings.get(player.id);
   const current = stored?.rating ?? seedFromRank(player.rankTier, player.rankDivision);
   const allTimeGames = stored?.games ?? 0;
+
+  /**
+   * **Where this page's history starts** (M5.7): the seed stored on the `ratings` row, and the
+   * player's current rank only when there is none — the same preference both folds apply, read
+   * from the same helper, so the line above the chart cannot name a number the fold did not
+   * use. A friend who was Gold when they started and is Platinum now reads
+   * `Seeded from Gold IV`, because that is the rank their history was built on; their rank
+   * today is on the client, not on this line.
+   *
+   * `seedRank` is those same two strings as words (M5.15), formatted from whichever pair the
+   * seed came from, so the sentence and the number can never disagree.
+   */
+  const seed = seedFor(stored?.seed ?? null, player.rankTier, player.rankDivision);
+  const seedRating = displayRating(seed.rating.mu);
+  const seedRank = rankLabel(seed.rankTier, seed.rankDivision);
 
   const recent = await loadRecentGames(
     client,
@@ -475,7 +496,7 @@ export async function loadPlayerBoard(
      * found them. That is not a seed and does not borrow the word (`start`, M5.12).
      */
     reference:
-      window === 'all-time' || first === undefined ? seed : displayRating(first.row.muBefore as number),
+      window === 'all-time' || first === undefined ? seedRating : displayRating(first.row.muBefore as number),
     history: historySeries(played),
     recent,
   };
@@ -733,7 +754,10 @@ async function loadRatings(
   const batches = playerIds === undefined ? [null] : inChunks(playerIds);
 
   for (const chunk of batches) {
-    let query = client.from('ratings').select('player_id, mu, sigma, games, wins').eq('season_id', seasonId);
+    let query = client
+      .from('ratings')
+      .select('player_id, mu, sigma, games, wins, seed_mu, seed_sigma, seed_rank_tier, seed_rank_division')
+      .eq('season_id', seasonId);
     if (chunk !== null) query = query.in('player_id', chunk);
 
     const { data, error } = await query;
@@ -744,6 +768,7 @@ async function loadRatings(
         rating: { mu: row.mu, sigma: row.sigma },
         games: row.games,
         wins: row.wins,
+        seed: readSeed(row),
       });
     }
   }

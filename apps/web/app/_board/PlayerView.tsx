@@ -52,11 +52,12 @@ export interface PlayerViewProps {
   /**
    * The sections under the chart (M5.20), read for this player out of `/stats`' own answer.
    *
-   * **`null` is a page whose window has nothing in it**, not a page that failed to load one:
-   * the loader returns the empty view rather than nothing, and the empty view draws nothing.
-   * The prop is required and not optional so that a caller has to have made the read.
+   * **Never null and never optional**: `loadPlayerStats` answers with the empty view — `games:
+   * 0` — for a player with nothing in the window, and the empty view draws nothing. A nullable
+   * prop would be a second way to say the same thing, and the branch behind it could not be
+   * reached.
    */
-  stats: PlayerStatsView | null;
+  stats: PlayerStatsView;
 }
 
 /**
@@ -207,7 +208,7 @@ function PlayerWindow({ player, stats }: PlayerViewProps) {
        * definitions of one record on one page the day a backfill lands unrated. The page reads
        * `lib/stats` for all of it, exactly as `/stats` does (`04-decisions.md`, 2026-09-11).
        */}
-      {stats === null ? null : <PlayerStats stats={stats} />}
+      <PlayerStats stats={stats} />
 
       {player.recent.length === 0 ? null : (
         <section className="cn-block">

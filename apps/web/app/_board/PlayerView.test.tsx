@@ -40,7 +40,7 @@ import { PlayerView } from './PlayerView';
  * player. A test that is about the header, the chart or a game row passes the worked sections
  * and ignores them; `PlayerStats.test.tsx` is where they are the subject.
  */
-function draw(player: PlayerBoardView = workedPlayer(), stats: PlayerStatsView | null = workedPlayerStats()) {
+function draw(player: PlayerBoardView = workedPlayer(), stats: PlayerStatsView = workedPlayerStats()) {
   return render(<PlayerView player={player} stats={stats} />);
 }
 

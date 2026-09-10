@@ -171,6 +171,39 @@ if (stack === null) {
       expect(rating.status).toBe(201);
       expect(rows(rating.body)[0]?.ordinal).toBeCloseTo(25 - 2 * 8.333, 6);
     });
+
+    /**
+     * The seed the first fold used, stored beside the rating it grew into (M5.7, `0012`).
+     *
+     * The pair constraint is the point: a reader asks `seed_mu is null` to know whether a seed
+     * is stored at all, so a row with a mu and no sigma would be a state nothing downstream
+     * handles. The rank columns stay free to be null — unranked is a real answer.
+     */
+    it('stores a seed as a pair, with the rank it was read from, and refuses half of one', async () => {
+      const seeded = await insert('ratings', {
+        player_id: playerBId,
+        season_id: SEASON_ONE_ID,
+        mu: 24.1,
+        sigma: 8.1,
+        seed_mu: 23,
+        seed_sigma: 8.333,
+        seed_rank_tier: 'GOLD',
+        seed_rank_division: 'IV',
+      });
+      expect(seeded.status).toBe(201);
+      expect(rows(seeded.body)[0]).toMatchObject({
+        seed_mu: 23,
+        seed_rank_tier: 'GOLD',
+        seed_rank_division: 'IV',
+      });
+
+      const half = await rest('service', `ratings?player_id=eq.${playerBId}&season_id=eq.${SEASON_ONE_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ seed_sigma: null }),
+      });
+      expect(half.status).toBe(400);
+      expect((half.body as { code?: string }).code).toBe('23514');
+    });
   });
 
   describe('idempotency keys', () => {

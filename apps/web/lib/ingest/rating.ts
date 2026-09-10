@@ -4,6 +4,7 @@ import { PLAYERS_PER_GAME } from '../lobbyState';
 import type { ServiceClient } from '../supabase';
 import { type FoldSkipReason, foldGame, gateGame, mustGet } from './fold';
 import { recomputeInferredRoles, roleInferenceFlags } from './roles';
+import { readSeed, type StoredSeed, seedColumns } from './seed';
 
 /**
  * The rating fold (M2.5): what an end-of-game block does to the leaderboard.
@@ -82,6 +83,31 @@ export async function rateStoredGame(client: ServiceClient, gameId: string): Pro
     );
   }
 
+  /**
+   * The seed each of the ten gets written back with (M5.7).
+   *
+   * **This fold writes a seed only for a player it is creating a `ratings` row for** — that is
+   * the first fold that ever rated them, and the number above is literally where their history
+   * begins. Everyone else keeps whatever their row already holds, including null: a row written
+   * before `0012` is filled by `rebuild-ratings`, which writes the seed *its own* fold used and
+   * so cannot freeze a value the stored history disagrees with. Nothing here ever rewrites a
+   * seed that is already there.
+   */
+  const seeds = new Map<string, StoredSeed | null>();
+  for (const row of rows) {
+    const previous = stored.get(row.playerId);
+    seeds.set(
+      row.playerId,
+      previous === undefined
+        ? {
+            rating: mustGet(before, row.playerId),
+            rankTier: row.rankTier,
+            rankDivision: row.rankDivision,
+          }
+        : previous.seed,
+    );
+  }
+
   const after = foldGame(blueRows, redRows, before, game.winningSide);
 
   // The feedback-loop guard (M5.17), decided here because here is the only place it is
@@ -122,7 +148,7 @@ export async function rateStoredGame(client: ServiceClient, gameId: string): Pro
     );
   }
 
-  await applyRatings(client, game.seasonId, game.winningSide, rows, after, stored);
+  await applyRatings(client, game.seasonId, game.winningSide, rows, after, stored, seeds);
 
   // The ten who played, and nobody else (M5.17). Deliberately not fatal: the game is rated and
   // the numbers are right, and a pair that failed to move is fixed by the next game these
@@ -193,6 +219,8 @@ interface StoredRating {
   rating: Rating;
   games: number;
   wins: number;
+  /** The stored seed (M5.7), or null on a row written before `0012` filled these columns. */
+  seed: StoredSeed | null;
 }
 
 async function selectRatings(
@@ -202,7 +230,7 @@ async function selectRatings(
 ): Promise<Map<string, StoredRating>> {
   const { data, error } = await client
     .from('ratings')
-    .select('player_id, mu, sigma, games, wins')
+    .select('player_id, mu, sigma, games, wins, seed_mu, seed_sigma, seed_rank_tier, seed_rank_division')
     .eq('season_id', seasonId)
     .in('player_id', playerIds);
   if (error) throw new Error(`rating: ratings select failed: ${error.message}`);
@@ -210,7 +238,12 @@ async function selectRatings(
   return new Map(
     (data ?? []).map((row) => [
       row.player_id,
-      { rating: { mu: row.mu, sigma: row.sigma }, games: row.games, wins: row.wins },
+      {
+        rating: { mu: row.mu, sigma: row.sigma },
+        games: row.games,
+        wins: row.wins,
+        seed: readSeed(row),
+      },
     ]),
   );
 }
@@ -250,6 +283,11 @@ async function writeRatingColumns(
  * The `ratings` upsert: the new `{ mu, sigma }`, one more game, and one more win for the five
  * on the winning side. Read-then-write is safe here — the claim above serialises the same
  * game, and one group cannot play two games at once.
+ *
+ * The four seed columns are in every payload, because a PostgREST bulk upsert needs identical
+ * keys on every object (PGRST102) — and for nine of the ten they carry the value that is
+ * already stored, so the write is a no-op on them. That is what "nothing ever rewrites a seed"
+ * looks like through an `on conflict do update`.
  */
 async function applyRatings(
   client: ServiceClient,
@@ -258,6 +296,7 @@ async function applyRatings(
   rows: readonly GamePlayerRow[],
   after: Map<string, Rating>,
   stored: Map<string, StoredRating>,
+  seeds: ReadonlyMap<string, StoredSeed | null>,
 ): Promise<void> {
   const inserts: RatingInsert[] = rows.map((row) => {
     const previous = stored.get(row.playerId);
@@ -269,6 +308,7 @@ async function applyRatings(
       sigma: rating.sigma,
       games: (previous?.games ?? 0) + 1,
       wins: (previous?.wins ?? 0) + (row.side === winningSide ? 1 : 0),
+      ...seedColumns(seeds.get(row.playerId) ?? null),
     };
   });
 
