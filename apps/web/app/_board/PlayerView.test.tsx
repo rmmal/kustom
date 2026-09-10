@@ -10,6 +10,7 @@ import {
   SEED_LABEL,
   SETTLING_CHIP,
   SETTLING_SENTENCE,
+  SETTLING_SENTENCE_PLAYER,
   START_LABEL,
   WINDOW_EMPTY,
 } from '@/lib/board/copy';
@@ -142,13 +143,32 @@ describe('the still-settling marker (M3.8)', () => {
     draw(workedPlayer('Nadia'));
 
     expect(screen.getByText(SETTLING_CHIP)).toBeInTheDocument();
-    expect(screen.getAllByText(SETTLING_SENTENCE)).toHaveLength(1);
+    expect(screen.getAllByText(SETTLING_SENTENCE_PLAYER)).toHaveLength(1);
   });
 
   it('is gone at 30 games, chip and sentence together', () => {
     draw(workedPlayer('Nadia', { games: 30, settling: false }));
 
     expect(screen.queryByText(SETTLING_CHIP)).not.toBeInTheDocument();
+    expect(screen.queryByText(SETTLING_SENTENCE_PLAYER)).not.toBeInTheDocument();
+  });
+
+  /**
+   * **The board's second-person sentence never renders here** (M3.26): on Yuki's page
+   * `your rating` names the number twenty pixels above it, and that number is Yuki's.
+   *
+   * The assertion is scoped to the sentence's own element, not the page: M5.15's explanation
+   * strip says `moves you more` and product ruled that its `you` stands — it states the rule
+   * of the game and points at no number on the screen.
+   */
+  it('says neither `you` nor `your` in the sentence under the chart', () => {
+    const { container } = draw(workedPlayer('Nadia'));
+
+    const sentence = container.querySelector('.cn-settling')?.textContent ?? '';
+    expect(sentence).toBe(SETTLING_SENTENCE_PLAYER);
+    expect(sentence).not.toBe(SETTLING_SENTENCE);
+    expect(sentence).not.toContain(' you');
+    expect(sentence).not.toContain('your');
     expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
   });
 });

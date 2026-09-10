@@ -15,6 +15,7 @@ import {
   SEED_LABEL,
   SETTLING_GAMES,
   SETTLING_SENTENCE,
+  SETTLING_SENTENCE_PLAYER,
   SETTLING_SENTENCE_SHORT,
   START_LABEL,
   WINDOW_EMPTY,
@@ -70,6 +71,22 @@ describe('the copy product owns', () => {
     );
   });
 
+  /**
+   * The player page's twin (M3.26): the same two sentences, one pronoun moved, **no name**.
+   * `/leaderboard` keeps the second-person string byte for byte, and neither may be edited
+   * into the other.
+   */
+  it('is the third-person sentence the player page prints instead', () => {
+    expect(SETTLING_SENTENCE_PLAYER).toBe(
+      "The board sorts on Proven: a player's rating, minus how unsure the board still is about them. That gap shrinks as they play and settles after about 30 games.",
+    );
+    expect(SETTLING_SENTENCE_PLAYER).not.toContain(' you');
+    expect(SETTLING_SENTENCE_PLAYER).not.toContain('your');
+    // No name is interpolated: a nameless player is `Someone`, and a possessive per name is
+    // not one rule.
+    expect(SETTLING_SENTENCE_PLAYER).not.toContain('Someone');
+  });
+
   it('is the short form Discord gets as a footer', () => {
     expect(SETTLING_SENTENCE_SHORT).toBe(
       'Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.',
@@ -84,7 +101,7 @@ describe('the copy product owns', () => {
    * forms use, and it is the word the `settling` chip already says.
    */
   it('promises a gap that settles, never one that closes', () => {
-    for (const sentence of [SETTLING_SENTENCE, SETTLING_SENTENCE_SHORT]) {
+    for (const sentence of [SETTLING_SENTENCE, SETTLING_SENTENCE_PLAYER, SETTLING_SENTENCE_SHORT]) {
       expect(sentence).toContain('settles');
       expect(sentence).not.toContain('until');
       expect(sentence).not.toContain('catches up');
@@ -95,6 +112,7 @@ describe('the copy product owns', () => {
   it('says the same number the marker switches off at', () => {
     expect(SETTLING_GAMES).toBe(30);
     expect(SETTLING_SENTENCE).toContain(`about ${SETTLING_GAMES} games`);
+    expect(SETTLING_SENTENCE_PLAYER).toContain(`about ${SETTLING_GAMES} games`);
     expect(SETTLING_SENTENCE_SHORT).toContain(`about ${SETTLING_GAMES} games`);
   });
 
@@ -144,6 +162,7 @@ describe('the copy product owns', () => {
       ...Object.values(WINDOW_LABELS),
       ...Object.values(WINDOW_EMPTY),
       SETTLING_SENTENCE,
+      SETTLING_SENTENCE_PLAYER,
       SETTLING_SENTENCE_SHORT,
       NOT_RATED_HINT,
     ];

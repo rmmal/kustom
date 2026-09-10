@@ -1,4 +1,4 @@
-import { SETTLING_CHIP, SETTLING_SENTENCE } from '@/lib/board/copy';
+import { SETTLING_CHIP, SETTLING_SENTENCE, SETTLING_SENTENCE_PLAYER } from '@/lib/board/copy';
 import { NAMELESS_HINT } from '@/lib/tonight/copy';
 
 /**
@@ -23,9 +23,15 @@ export function SettlingChip() {
 /**
  * The sentence, once per page: under the leaderboard heading, under the rating chart on the
  * player page. Never once per row — ten rows of it is the thing the one line replaces.
+ *
+ * **Two forms, one placement** (M3.26, product 2026-09-10). The board's is second person,
+ * because everyone reading a board is on it; the player page's is the third-person twin, with
+ * no name in it, because `your rating` there names the number printed above it and that number
+ * belongs to whoever's page it is. The `person` prop picks the constant and nothing else
+ * differs — same element, same class, same gate on `settling`.
  */
-export function SettlingNote() {
-  return <p className="cn-settling">{SETTLING_SENTENCE}</p>;
+export function SettlingNote({ person = 'you' }: { person?: 'you' | 'player' }) {
+  return <p className="cn-settling">{person === 'player' ? SETTLING_SENTENCE_PLAYER : SETTLING_SENTENCE}</p>;
 }
 
 /** M3.10's quiet line, once per page, while any row on it reads `Someone`. */

@@ -181,8 +181,11 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
             <RatingChart history={player.history} reference={player.reference} window={player.window} />
           )}
 
-          {/* Under the chart, once per page (M3.8). */}
-          {player.settling ? <SettlingNote /> : null}
+          {/*
+           * Under the chart, once per page (M3.8), in the **third person** (M3.26): this page
+           * is about one player and the sentence sits under their numbers, not the reader's.
+           */}
+          {player.settling ? <SettlingNote person="player" /> : null}
         </div>
       </section>
 
