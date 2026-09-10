@@ -378,6 +378,23 @@
   .cn-grid-rail .cn-idle-cards {
     display: none;
   }
+
+  /*
+   * **The idle main column keeps its 44rem cap beside the rail** (M3.30, the designer, from the
+   * M4.7 review).
+   *
+   * `05-design.md`'s grid table caps a single column at 44rem from 720px up, and the ≥1080px
+   * two-column rule dropped it: in `idle` the main column took everything the 20rem rail did
+   * not, so the empty rack was a 1300px row with `open` alone at the far left. Nothing else on
+   * the page changes — `filling`, `balanced`, `in_game` and `result` fill their column with a
+   * rack of names or two team cards and keep the full width.
+   *
+   * The cap is on the column's content, not on the grid track, so **the rail does not move**
+   * between states: a lobby opening at 21:40 must not slide the three cards on the right.
+   */
+  .cn-grid-idle > .cn-col {
+    max-width: 44rem;
+  }
 }
 
 /* ---------------------------------------------------------------------------
