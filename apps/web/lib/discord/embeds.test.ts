@@ -262,7 +262,6 @@ function workedResultInput(overrides: Partial<ResultEmbedInput> = {}): ResultEmb
     red: side(split.red, rated.red),
     blueWinProb: split.blueWinProb,
     topDamage: { name: 'Lena', damage: 47_300 },
-    seasonName: 'Season 1',
     gameNumber: 47,
     url: SITE_URL,
     timestamp: '2026-09-08T21:09:12.000Z',
@@ -319,9 +318,22 @@ describe('resultEmbed, the worked example lost by the favourite', () => {
     }
   });
 
-  it('footers the season and this game inside it', () => {
-    expect(embed?.footer.text).toBe('Season 1 · game 47');
-    expect(resultEmbed(workedResultInput({ gameNumber: null })).embeds[0]?.footer.text).toBe('Season 1');
+  /**
+   * **The product's name and the group's game number** (M5.12, product 2026-09-10). It read
+   * `Season 1 · game 47` until seasons left the friend-facing vocabulary — on the deployment
+   * that exists it would have said `gamesd · game 47` — and the count is unchanged: every game
+   * this group has played up to this one.
+   */
+  it("footers the product and this game in the group's history", () => {
+    expect(embed?.footer.text).toBe('Kustom · game 47');
+    expect(embed?.footer.text.toLowerCase()).not.toContain('season');
+  });
+
+  it('prints the name alone when the count could not be taken, never `game ?`', () => {
+    const uncounted = resultEmbed(workedResultInput({ gameNumber: null })).embeds[0];
+
+    expect(uncounted?.footer.text).toBe('Kustom');
+    expect(uncounted?.footer.text).not.toContain('game');
   });
 
   it('drops the clauses it has nothing to say for', () => {

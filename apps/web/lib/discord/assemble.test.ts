@@ -202,7 +202,6 @@ function resultSource(overrides: Partial<ResultSource> = {}): ResultSource {
   return {
     winningSide: 200,
     durationS: 1_800,
-    seasonName: 'Season 1',
     gameNumber: 3,
     blueWinProb: 0.5,
     endedAt: '2026-09-08T21:00:00.000Z',
