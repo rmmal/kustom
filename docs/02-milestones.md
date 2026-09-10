@@ -2172,7 +2172,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >    that player carries the same `role_override`, with no second tap, and the next balance uses it.
     > 5. The first lobby of the next night (past 06:00 local) carries no override for anybody.
     > 6. A non-admin posting a body that names another player's PUUID: 403, and neither row changes.
-    > 7. An admin taps a role on somebody else's row: it lands on that player's row, with the same rules.
+    > 7. An admin taps a role on somebody else's row: it lands on that player's row, with the same rules. **Struck from M3.6 on 2026-09-10 (lead):** the route honours an admin naming another PUUID, but a 44px rack row has no per-row control pattern; the admin control ships on `/admin/players` with M3.25.
     > 8. Signed out, and signed in without a link: the two sentences above, and no control that writes
     >    anything.
     >
