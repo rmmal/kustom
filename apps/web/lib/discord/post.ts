@@ -7,6 +7,8 @@ import type { GameFinishedEvent, LobbyBalancedEvent, LobbyHook } from '../ingest
 import { compareForSitOut, type PoolMember, planSeats } from '../ingest/selection';
 import { type ClosedWindow, DEFAULT_NIGHT_TIME_ZONE } from '../night';
 import { leaderboardPageUrl, tonightPageUrl } from '../siteUrl';
+import type { AwardRender } from '../stats/awards';
+import { loadStats } from '../stats/load';
 import { getServiceClient, type ServiceClient } from '../supabase';
 import {
   buildResultInput,
@@ -18,11 +20,14 @@ import {
   teamsPuuids,
 } from './assemble';
 import {
+  formatDelta,
   type LeaderboardEntry,
   leaderboardEmbed,
+  renderName,
   resultEmbed,
   TOP_N,
   teamsEmbed,
+  type WindowAward,
   windowSummaryEmbed,
 } from './embeds';
 import { postToWebhook, type WebhookOptions, type WebhookOutcome } from './webhook';
@@ -210,10 +215,10 @@ export const NO_GAMES_IN_WINDOW = 'no games in the window';
  * `No games last week.` is a true sentence for a page somebody chose to open and a bad one for
  * a channel it arrives in unasked.
  *
- * **Awards are a seam.** M5.10's embed carries three award lines under the board; M5.4, which
- * computes them, has not shipped. `windowSummaryEmbed` prints the field only when it is given
- * awards, so the post ships as the board today and gains the block the day the loader can fill
- * it — no string in it is written twice and nothing else about the post changes.
+ * **The awards are M5.4's, quoted** (M5.10's rule): `lib/stats` computes the same three lines
+ * the page prints and this hands them to the embed's seam. Nothing here re-derives a number, a
+ * minimum or a sentence — including the one an award nobody won prints, so the block always has
+ * three lines and the group can see the bar it missed.
  */
 export async function postClosedWindow(
   client: ServiceClient,
@@ -246,6 +251,7 @@ export async function postClosedWindow(
 
   const payload = windowSummaryEmbed({
     windowLabel: WINDOW_LABELS[window.kind],
+    awards: await loadWindowAwards(client, window, options),
     // **The page's line, not a second one** (M5.12, M5.10): the slot under the picker and this
     // description are the same words about the same window, so the tap out of the channel
     // lands on a page that agrees with the post it came from.
@@ -257,6 +263,46 @@ export async function postClosedWindow(
     timestamp: (options.now ?? new Date()).toISOString(),
   });
   return postToWebhook(client, payload, `${window.kind} embed`, options);
+}
+
+/**
+ * The **web page's own award lines**, in Discord's glyphs (M5.4, M5.10).
+ *
+ * One computation, two renderings: `loadStats` reads the same window through the same
+ * `gateGame` universe the page reads it through, and the only thing this passes in is how a
+ * name and a delta are spelled — markdown escaped, and an ASCII minus in a message that gets
+ * copy-pasted (`05-design.md` keeps U+2212 out of the embeds).
+ *
+ * A tie names two winners, and two lines go into one field entry under one bold label rather
+ * than printing the label twice.
+ *
+ * **A failed award read is not a failed post.** The board is the message; the awards are three
+ * lines under it. If the second read throws, the post goes out as the board alone and the
+ * reason is in the log — a Monday with no post at all would be worse than a Monday without
+ * `Cursed duo`.
+ */
+async function loadWindowAwards(
+  client: ServiceClient,
+  window: ClosedWindow,
+  options: PostOptions,
+): Promise<WindowAward[]> {
+  const render: AwardRender = { name: renderName, delta: formatDelta };
+
+  try {
+    const stats = await loadStats(client, {
+      window: window.kind,
+      now: options.now ?? new Date(),
+      timeZone: options.timeZone ?? DEFAULT_NIGHT_TIME_ZONE,
+      awardRender: render,
+    });
+    // A closed window always has the three; `running` and `null` belong to windows this
+    // function is never called for (`ClosedWindow` is `last-week` or `last-month`).
+    if (stats.awards === null || stats.awards.kind !== 'closed') return [];
+    return stats.awards.blocks.map((block) => ({ label: block.label, line: block.lines.join('\n') }));
+  } catch (error) {
+    console.error(`discord: reading ${window.kind} awards failed`, error);
+    return [];
+  }
 }
 
 /**
