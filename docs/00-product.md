@@ -144,9 +144,20 @@ how far back the window reaches (M5.6), so "every past custom" honestly means "e
 history of someone who runs the companion".
 
 One admin-only piece landed earlier than that table suggests: `/admin` (M1) can already start a new
-season. It does not carry anyone's rating over — everyone starts the new season unrated and the board
-takes about a month of nightly games to mean anything again — so it is a thing the group decides
-together, not a button someone presses to tidy up. Carrying `mu` over and resetting `sigma` is M5.3.
+season. **A new season keeps what the bot learned about you and forgets how sure it was of it.** Your
+`mu` is copied straight across and your `sigma` goes back to the starting value, so on night one of the
+new season your Rating is the number you finished the old one with — nobody is re-seeded from their rank
+for having had a bad month — and your Proven has dropped, because Proven is Rating minus how unsure the
+board is and the board is newly unsure about everybody. Everyone lands the same distance below their own
+Rating, which means the first board of a season is in Rating order and the drop is largest for exactly
+the people the board had watched longest. It climbs back over about a month of nightly games, the same
+month a new player's does. The one player who does not carry is one who played no games at all in the
+season that is ending: there is nothing of theirs to carry, so they are seeded from the rank the client
+reads, like a newcomer. Starting a season is still a thing the group decides together and not a button
+someone presses to tidy up — the games, the records and the awards of the old season stay behind it, and
+every name on the new board wears the `settling` marker until it has played its way out. The carry-over
+ships with M5.3; until it does the button carries nothing, and everyone is seeded from their rank again
+at their first game of the new season.
 
 ## Explicitly out of scope
 

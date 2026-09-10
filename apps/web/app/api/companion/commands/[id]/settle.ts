@@ -5,6 +5,10 @@ import {
 } from '@customs/db/schemas';
 import type { NextResponse } from 'next/server';
 import { ackCommand, nackCommand, readCommandForPlayer } from '@/lib/commands/queue';
+// Registers the listeners on the queue's `onAcked` seam at module load: M4.2's invite fan-out
+// hangs off a `create_lobby` that came back `done`. A side-effect import like the companion
+// lobby route's — with this line removed both routes behave identically and nobody listens.
+import '@/lib/commands/register';
 import { withCompanionAuth } from '@/lib/companionRoute';
 import { jsonError, jsonOk } from '@/lib/http';
 
