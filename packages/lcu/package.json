@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "tsx src/cli/smoke.ts",
-    "record-ws": "tsx src/cli/record-ws.ts"
+    "record-ws": "tsx src/cli/record-ws.ts",
+    "timeline-roles": "tsx src/cli/timeline-roles.ts"
   },
   "dependencies": {
     "@customs/db": "workspace:*",

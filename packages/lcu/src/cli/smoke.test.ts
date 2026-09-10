@@ -215,6 +215,27 @@ describe('smoke script', () => {
     expect(result.stdout).toMatch(/match-detail +\/lol-match-history\/v1\/games\/100 /);
   });
 
+  it('--game-id with several ids pins the first and writes the rest as match-detail--<id> overlays (M5.18)', async () => {
+    const overlays = mkdtempSync(join(tmpdir(), 'lcu-smoke-overlays-'));
+    try {
+      const result = await runSmoke(['--lockfile', lockfile, '--out', overlays, '--game-id', '200, 100']);
+      expect(result.code).toBe(0);
+      expect(result.stdout).toMatch(/match-detail +\/lol-match-history\/v1\/games\/200 /);
+      expect(result.stdout).toMatch(/match-detail--100 +\/lol-match-history\/v1\/games\/100 /);
+      const pinned = FixtureEnvelopeSchema.parse(
+        JSON.parse(readFileSync(join(overlays, '16.17', 'match-detail.json'), 'utf8')),
+      );
+      const overlay = FixtureEnvelopeSchema.parse(
+        JSON.parse(readFileSync(join(overlays, '16.17', 'match-detail--100.json'), 'utf8')),
+      );
+      expect(pinned.body).toMatchObject({ gameId: 200 });
+      expect(overlay).toMatchObject({ id: 'match-detail--100', path: '/lol-match-history/v1/games/100' });
+      expect(overlay.body).toMatchObject({ gameId: 100 });
+    } finally {
+      rmSync(overlays, { recursive: true, force: true });
+    }
+  });
+
   it('--diff reports no changes right after a capture, and a change when the shape moves', async () => {
     const same = await runSmoke(['--lockfile', lockfile, '--out', out, '--diff']);
     expect(same.code).toBe(0);

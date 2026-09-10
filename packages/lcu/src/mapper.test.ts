@@ -35,6 +35,7 @@ import {
   SummonerSchema,
 } from './schemas.js';
 import { REDACTED } from './scrub.js';
+import { roleFromMatchTimeline } from './timelineRoles.js';
 
 const PATCH = '16.17';
 
@@ -453,6 +454,11 @@ describe('mapMatchDetail against fixtures/16.17/match-detail.json (M5.1 backfill
     expect(payload.participants.map((participant) => participant.side)).toEqual([
       100, 100, 100, 100, 100, 200, 200, 200, 200, 200,
     ]);
+    // M5.18: the role is timeline.lane/role through MATCH_TIMELINE_ROLES, which is empty on 16.17, so
+    // every role is still null; `timelineRoles.test.ts` owns the table and the evidence for it.
+    payload.participants.forEach((participant, index) => {
+      expect(participant.role).toBe(roleFromMatchTimeline(detail.participants[index]?.timeline));
+    });
     expect(payload.participants.every((participant) => participant.role === null)).toBe(true);
     expect(payload.participants.every((participant) => participant.gameName !== null)).toBe(true);
     expect(payload.participants.map((participant) => participant.win)).toEqual([

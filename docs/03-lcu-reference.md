@@ -37,9 +37,90 @@ docs. **M0 exists to turn every row we need for M2 to `verified`.** Do not build
 | Switch side | `POST /lol-lobby/v2/lobby/team/{team}` | `team` is `TEAM1` (side 100), `TEAM2` (200) or `SPECTATOR`; no body; **the target is in the path, it is not a toggle.** This is what the 16.17 client's own UI does (`switchTeams` / `joinSpectators` in `rcp-fe-lol-parties`, read 2026-09-10) and the only team-move route in the client's OpenAPI document for 16.17.812.4632 (`PostLolLobbyV2LobbyTeamByTeam`, `team: string`). The community paths `/lol-lobby/v1/lobby/custom/switch-teams` and `/lol-lobby/v2/lobby/custom/switch-teams` appear in neither, so they were dropped from the code and the allow-list (which holds exactly `/team/TEAM1` and `/team/TEAM2`; `SPECTATOR` is never sent). **First live run, 16.17, 2026-09-09: not exercised** (no lobby). `postSwitchSide(client, side)` in `writes.ts`; the companion reads the lobby before (refusing when already on the target side, when the target side holds five, or when the local player is a spectator) and after (the ack carries the side actually read back; a 2xx that moved nobody is `client_rejected`). Gated off (`LOBBY_WRITE_VERIFICATION.switch_side`) until probe 3 of the corrected `verify-commands` has run; fixtures `lobby-team.json` and, on the optional full-side repeat, `lobby-team--full-side.json`. | unverified (16.17, 2026-09-09: not exercised, no lobby) |
 | End of game stats | `GET /lol-end-of-game/v1/eog-stats-block` | Verified by GET on the end-of-game screen (`eog-stats-block.json`, solo custom vs five bots) and by 5 WS events (two games). Real shape: `{ gameId, gameLength (s), gameType: "CUSTOM_GAME", gameMode, queueType: "NORMAL", ranked, invalid, gameEndedInEarlySurrender, teamEarlySurrendered, endOfGameTimestamp, teams[] { teamId, isWinningTeam, isPlayerTeam, players[] }, localPlayer, mucJwtDto, multiUserChatPassword, ... }`. **No `queueId` key.** Players: `puuid, summonerId, riotIdGameName, riotIdTagLine, summonerName, championId, championName, teamId, isLocalPlayer, botPlayer, leaver, wasAfk, detectedTeamPosition, stats`. Stats hold both uppercase keys (`CHAMPIONS_KILLED`, `NUM_DEATHS`, `ASSISTS`, `GOLD_EARNED`, `TOTAL_DAMAGE_DEALT_TO_CHAMPIONS`, `MINIONS_KILLED`, `NEUTRAL_MINIONS_KILLED`, `LEVEL`, `VISION_SCORE`, `WIN` 0/1; not `KILLS`/`DEATHS`) and camelCase duplicates (`kills`, `deaths`, ...). Bots: `botPlayer: true`, puuid `00000000-0000-0000-0000-000000000000`, `summonerId: 0`, tag `BOT`. Timing (question 2): WS `Create` 0.3 s after `WaitingForStats`, `Update` 75 ms later, both before `EndOfGame`; the GET stayed 200 for the whole time the end-of-game screen was up (checked at +33 s and +4 min) and was 404 again once the client was back in the lobby (+10 min). For the server-dropped game a `Delete` came 0.2 s after `Create`. **Units and the missing start time:** `gameLength` is **seconds** (913 for the 15-minute game) and `endOfGameTimestamp` is **epoch milliseconds** (1788886380672 = 2026-09-08T16:53:00.672Z, 4 ms before the WS `Create` for this block); there is **no start time in the block at all**. So `started_at` is derived: `endOfGameTimestamp - gameLength * 1000` (M2.10), which for `eog-stats-block.json` is 1788885467672 = 2026-09-08T16:37:47.672Z — 8.8 s after the WS `GameStart`/`InProgress` for that game (16:37:38.903 / .920), because `gameLength` counts gameplay and not the load screen. The companion prefers the `InProgress` moment it observed and falls back to this arithmetic when it has none (it reconnected mid-game); the two differ by the load time only, which does not reorder the M5.2 rating fold. M2.3 (2026-09-08) builds on the WS `Create`/`Update` as the primary path — the block is mapped, written to `<configDir>/queue/<gameId>.json` and posted from there — and uses the GET exactly once, at connect time when the phase read is `EndOfGame` or `WaitingForStats`; a 404 there is logged as backfill's problem and never polled. The session's `gameData.gameId` is read once per game at the `GameStart`/`InProgress` phase event, and a session whose own `phase` is `Lobby`/`None` is treated as stale and not posted. The block carries post-game chat credentials: never persist it raw (`scrubValue`). `EogStatsBlockSchema`. Still unseen: a 5v5 human block (shape is per-player, so no difference is expected). | verified (16.17, 2026-09-08) |
 | Match history list | `GET /lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=20` | `{ accountId, platformId, games { gameCount, gameIndexBegin, gameIndexEnd, games[] } }`, each game `{ gameId, gameType, queueId, gameMode, mapId, gameCreation, gameCreationDate, gameDuration, gameVersion, platformId, endOfGameResult, participants[], participantIdentities[], teams[] }`. **Custom games appear: 17 of the 21 games in the window were `gameType: "CUSTOM_GAME"`** (queueId 3100 blind, 3110 draft, 3270 custom on mapId 12). `endIndex=20` returned 21 games (inclusive). **But the list carries only the local player in `participants`/`participantIdentities` (length 1 even for a completed 5v5)**; `teams[]` is complete. Rosters and everyone's stats need the detail endpoint. Works for another puuid too (`match-history--other.json`). `MatchHistoryListSchema`. **Paging (M5.1, 2026-09-09):** `matchHistoryPagePath(puuid, begIndex, endIndex)` in `endpoints.ts` builds the window; the companion's backfill walks `begIndex` in steps of 20 with `endIndex = begIndex + 20` (the verified inclusive shape, one game of overlap deduped on `gameId`), at most 5 pages a pass and never past position 200, and treats a page shorter than 20 as the end. **Only the default window has been read on a live client**; what `begIndex=20` and deeper answer (more games, empty `games[]`, an error, or a repeat) is still M5.6's question — the companion logs `match history ends here` with the `begIndex` it stopped at and keeps `deepestBegIndex` in `backfill.json` so the first real run answers it. | verified (16.17, 2026-09-08); paging unverified |
-| Match detail | `GET /lol-match-history/v1/games/{gameId}` | Same game shape as a list entry, and here `participants[]`/`participantIdentities[]` hold all ten players (`participantIdentities[].player { puuid, summonerId, gameName, tagLine }`, `participants[] { participantId, teamId 100/200, championId, stats { win, kills, deaths, assists, goldEarned, totalDamageDealtToChampions, totalMinionsKilled, neutralMinionsKilled, champLevel, ...~118 keys } }`, `teams[] { teamId, win: "Win"/"Fail", bans[] }`). Stat keys are camelCase here (the eog block is believed to use uppercase). An aborted game (`endOfGameResult: "Abort_TooFewPlayers"`) has one participant and one team; `smoke` prefers a `GameComplete` custom for the fixture. This is the backfill path: `mapMatchDetail` in `mapper.ts` turns it into the `POST /api/companion/game` body with `source: 'backfill'` (M5.1; winner from `teams[].win === "Win"`, `startedAt` from `gameCreation`, `durationS` from `gameDuration`, camelCase stats, `role: null`, no `partyId`), pinned against `match-detail.json` in `mapper.test.ts`. `MatchDetailSchema`. | verified (16.17, 2026-09-08) |
+| Match detail | `GET /lol-match-history/v1/games/{gameId}` | Same game shape as a list entry, and here `participants[]`/`participantIdentities[]` hold all ten players (`participantIdentities[].player { puuid, summonerId, gameName, tagLine }`, `participants[] { participantId, teamId 100/200, championId, stats { win, kills, deaths, assists, goldEarned, totalDamageDealtToChampions, totalMinionsKilled, neutralMinionsKilled, champLevel, ...~118 keys } }`, `teams[] { teamId, win: "Win"/"Fail", bans[] }`). Stat keys are camelCase here (the eog block is believed to use uppercase). An aborted game (`endOfGameResult: "Abort_TooFewPlayers"`) has one participant and one team; `smoke` prefers a `GameComplete` custom for the fixture. This is the backfill path: `mapMatchDetail` in `mapper.ts` turns it into the `POST /api/companion/game` body with `source: 'backfill'` (M5.1; winner from `teams[].win === "Win"`, `startedAt` from `gameCreation`, `durationS` from `gameDuration`, camelCase stats, no `partyId`), pinned against `match-detail.json` in `mapper.test.ts`. **`role` (M5.18, 2026-09-10):** `participants[].timeline.lane`/`.role` through `MATCH_TIMELINE_ROLES` (`timelineRoles.ts`), a table that holds only pairs a live capture of the same game has proved and that is **empty on 16.17**, so every backfilled role is still `null`; the pair is the server's match-v4 guess and the one full custom in the fixtures shows it wrong for 3 of 10 players (the section "Match-history `timeline.lane` / `timeline.role`" below has the evidence, the confusion table and the capture that finishes it). `MatchDetailSchema`. | verified (16.17, 2026-09-08); `timeline` shape verified, mapping unproven (16.17, 2026-09-10) |
 | Live client data (in game) | `https://127.0.0.1:2999/liveclientdata/allgamedata` | Different server, only while in game. Answered 200 on 16.17 while in game (seen in a worktree smoke run, not kept as a fixture: `{ activePlayer, allPlayers[] { riotId, riotIdGameName, riotIdTagLine, championName, team, scores, ... }, events, gameData { gameMode, gameTime, mapNumber } }`; no puuids) and `ECONNREFUSED` otherwise. Not needed unless eog capture proves unreliable; no schema. | unverified (observed) |
 | Client OpenAPI | `GET /swagger/v2/swagger.json`, `GET /swagger/v3/openapi.json` | Both 404 `{ errorCode: "RESOURCE_NOT_FOUND", message: "Invalid URI format" }` on 16.17 without `--enable-swagger`, so paths were confirmed by hand-testing, not from the client's schema. `smoke` still probes both. Neither is needed at runtime. | verified absent (16.17, 2026-09-08) |
+
+### Match-history `timeline.lane` / `timeline.role` (M5.18)
+
+**Status: shape verified (16.17, 2026-09-10); mapping to our roles unproven, `MATCH_TIMELINE_ROLES` is empty.**
+The rule (M5.18 brief): a pair maps only when every participant of every game that exists both as a match-history
+game and as a live end-of-game capture agrees with `detectedTeamPosition`; anything else is `null`. The check is
+`pnpm --filter @customs/lcu timeline-roles` (reads `match-detail*.json`, `match-history*.json`,
+`eog-stats-block*.json` and the eog events of `ws-events*.ndjson`; exits 1 if a mapped pair is contradicted) and
+`timelineRoles.test.ts` pins the same thing in CI.
+
+**Vocabulary seen on 16.17** (42 games: the `match-detail.json` 5v5 plus the local player's own row in the 41
+list games of `match-history.json` and `match-history--other.json`): lane `TOP` / `JUNGLE` / `MIDDLE` / `BOTTOM` /
+`NONE`; role `SOLO` / `NONE` / `CARRY` / `SUPPORT` / `DUO`. **Not seen: `DUO_CARRY`, `DUO_SUPPORT`** (the
+match-v4 names); the bottom pairs are `BOTTOM+CARRY` and `BOTTOM+SUPPORT` here. Pairs, with where they came from:
+
+| pair | rows | seen in |
+|---|---|---|
+| `BOTTOM+CARRY` | 2 | custom draft 5v5 (queue 3110) |
+| `BOTTOM+SOLO` | 3 | custom draft, Kiwi (2400), ARAM (450) |
+| `BOTTOM+SUPPORT` | 2 | custom draft |
+| `JUNGLE+NONE` | 9 | custom draft ×5, ranked solo (420) ×2, flex (440), Kiwi |
+| `MIDDLE+DUO` | 1 | custom Kiwi (3270, mapId 12) |
+| `MIDDLE+SOLO` | 8 | custom draft |
+| `MIDDLE+SUPPORT` | 1 | custom Kiwi |
+| `NONE+DUO` | 1 | ARAM |
+| `NONE+SOLO` | 1 | custom blind (3100), aborted after 100 s |
+| `NONE+SUPPORT` | 15 | Kiwi ×10, custom Kiwi ×3, ranked solo, ARAM |
+| `TOP+DUO` | 3 | custom draft, Kiwi, ARAM |
+| `TOP+SOLO` | 1 | custom draft |
+| `TOP+SUPPORT` | 5 | Kiwi ×4, custom Kiwi |
+
+**Confusion table (16.17, 2026-09-10).** Games in both a match-history fixture and a live capture: **one**,
+4000965483, the `Abort_TooFewPlayers` game (100 s, one participant). The 5v5 whose detail we hold (4000769615,
+2026-09-07) was played before any recording, and the game the eog fixtures cover (4000969091, solo vs bots) was
+not in the history list yet when the list was captured 37 s after it ended. So the table is one row and proves
+nothing:
+
+| pair | live `detectedTeamPosition` (count) | mapped to | agreed | disagreed |
+|---|---|---|---|---|
+| `NONE+SOLO` | MIDDLE 1 | null | - | - |
+
+**Why the "obvious" rows are not in the table either.** The one full custom detail (4000769615, 49 min, draft,
+ten humans) reads like this; spells 11 = Smite, 12 = Teleport, 14 = Ignite, 3 = Exhaust, 7 = Heal, 21 = Barrier:
+
+| # | team | champion | spells | `lane+role` | lane cs | neutral cs | wards | what the stats say |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 100 | 516 (Ornn) | Ignite/Flash | `JUNGLE+NONE` | 244 | 1 | 7 | no Smite, 1 neutral minion in 49 min: a laner, **not jungle** |
+| 2 | 100 | 59 (Jarvan IV) | Smite/Flash | `JUNGLE+NONE` | 56 | 127 | 2 | the jungler |
+| 3 | 100 | 90 (Malzahar) | Teleport/Flash | `MIDDLE+SOLO` | 300 | 2 | 22 | a laner; consistent |
+| 4 | 100 | 119 (Draven) | Flash/Barrier | `BOTTOM+CARRY` | 214 | 14 | 7 | a laner; consistent |
+| 5 | 100 | 147 (Lulu) | Heal/Flash | `BOTTOM+SUPPORT` | 90 | 0 | 38 | the support (vision score 90); consistent |
+| 6 | 200 | 420 (Illaoi) | Flash/Ignite | `JUNGLE+NONE` | 277 | 4 | 7 | no Smite, 4 neutral: a laner, **not jungle** |
+| 7 | 200 | 24 (Jax) | Flash/Smite | `JUNGLE+NONE` | 37 | 247 | 16 | the jungler |
+| 8 | 200 | 84 (Akali) | Ignite/Flash | `MIDDLE+SOLO` | 176 | 0 | 3 | a laner; consistent |
+| 9 | 200 | 45 (Veigar) | Teleport/Flash | `BOTTOM+SOLO` | 287 | 7 | 19 | a laner; the pair names no role |
+| 10 | 200 | 112 (Viktor) | Exhaust/Flash | `TOP+SOLO` | 76 | 0 | 40 | 76 cs and 40 wards (vision score 110) in 49 min: the team's support, **not top** |
+
+Each side has two `JUNGLE+NONE` rows and team 100 has no `TOP` row at all. Read by their names, the pairs give
+6 right, 3 wrong, 1 unmappable — and the three wrong ones would each move a player's inferred main (M5.16)
+towards jungle or top. That is why `TOP+SOLO` and `JUNGLE+NONE` are treated as **refuted**, and `MIDDLE+SOLO`,
+`BOTTOM+CARRY`, `BOTTOM+SUPPORT` as **unproven** (consistent here, but the same classifier, and one game). The
+reasoning above never uses the champion, only Smite, neutral minions, cs and wards; the champion names are for
+reading. This is the same field Riot's public API retired (`lane`/`role` of match-v4) in favour of
+`teamPosition`; the client's match history still serves the old shape.
+
+**What finishes it.** One customs night, on a machine running the companion or `record-ws`, then the details:
+
+1. During the night: `pnpm --filter @customs/lcu record-ws` (or just let the companion run; its queue files
+   under `<configDir>/queue/<gameId>.json` carry the mapped positions but are deleted once posted, so the
+   recorder is the durable capture). Every game's eog block lands in `fixtures/<patch>/ws-events.ndjson` with
+   ten `detectedTeamPosition` values.
+2. Afterwards (match history lags the end-of-game screen by minutes): `pnpm --filter @customs/lcu smoke
+   --game-id <id1>,<id2>,<id3>` with the `gameId`s of the night (they are in the recording's eog `Create`
+   events and in the companion log). The first id writes `match-detail.json`, the rest `match-detail--<id>.json`.
+3. `pnpm --filter @customs/lcu timeline-roles` prints the confusion table; paste it here, add every row that
+   agreed on all of its participants and disagreed on none to `MATCH_TIMELINE_ROLES`, run
+   `pnpm --filter @customs/lcu test` (the table test fails on any contradiction), flip this status.
+   Three games (30 participants) is enough to see whether the classifier behaves in this group's customs.
+
+Until then the companion logs `backfill: timeline pair has no verified role; stored as null` once per distinct
+pair per process, with the values and the first game id, and every backfilled `game_players.role` is null.
 
 ## Tooling (`packages/lcu`, M0.1)
 
@@ -50,10 +131,15 @@ docs. **M0 exists to turn every row we need for M2 to `verified`.** Do not build
   `--diff` compares fresh top-level key sets and statuses with the newest saved fixtures instead of writing
   (exit 1 when anything differs). `--puuid <puuid>` and `--riot-id Name#TAG` add probes for another player
   (question 4 below). `--insecure` skips pinning. `--game-id <id>` pins the match-detail probe (the list cannot tell a 5v5
-  from a solo abort). `--live-port` redirects the in-game live data probe (tests point it at a dead port).
+  from a solo abort); a comma-separated list writes the first as `match-detail.json` and the rest as
+  `match-detail--<id>.json` overlays (M5.18). `--live-port` redirects the in-game live data probe (tests point it at a dead port).
   Bodies are scrubbed like WS events before they are written (`scrubValue`); the table says when something was
   redacted. Layout in `packages/lcu/fixtures/README.md`. `LCU_LOCKFILE_CANDIDATES` (path-delimiter-separated) replaces the platform default lockfile paths; the unit tests set it to a non-existent path so a client running on the developer's machine never leaks into a test.
 - `src/schemas.ts` holds one zod schema per verified row, written from the 16.17 fixtures and parsed against them in `src/schemas.test.ts` (fixtures only, never a live client). Tolerant on unknown keys, exact on the fields we read.
+- `pnpm --filter @customs/lcu timeline-roles [--patch p] [--out dir]` (M5.18) cross-checks every match-history
+  fixture against every live end-of-game capture of the same game and prints the `timeline.lane`/`role`
+  confusion table and the list of pairs seen (no client; see the M5.18 section above). Exit 1 when a pair in
+  `MATCH_TIMELINE_ROLES` was contradicted by a live position.
 - `pnpm --filter @customs/lcu record-ws` subscribes to `OnJsonApiEvent` (or `--topic` ones) and appends every
   event to `fixtures/<patch>/ws-events.ndjson` until Ctrl-C, reconnecting if the client restarts. On exit it
   prints a count per URI. Events are scrubbed before they touch disk (`src/scrub.ts`): `/lol-login`,
