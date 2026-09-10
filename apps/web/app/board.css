@@ -503,6 +503,22 @@
 }
 
 /*
+ * The award line (M5.20): `Most improved, September.` on a closed window this player won
+ * something in, directly under the rating card whose climb it is about.
+ *
+ * **`t-base` in `text`, and no badge, no icon, no colour** (product). The `t-lg` winner line is
+ * `/stats`', where three of them are the page's headline and the name leads each one; here the
+ * page is already about the person, so the loud half of that sentence would be repeating the
+ * `<h1>`. It sits at the seed line's size for the same reason the seed line is that size: it is
+ * a fact about this page's subject, read once.
+ */
+.cn-player-award {
+  margin: 0;
+  font-size: var(--cn-t-base);
+  color: var(--cn-text);
+}
+
+/*
  * One game's chance clause, in the head's own gutter, under the result it explains. `t-sm`
  * `dim`, because the row's own words — `Won`, the date, `1512 (+43)` — are the line and this
  * says why that number is the size it is. Padding rather than a negative margin: the head

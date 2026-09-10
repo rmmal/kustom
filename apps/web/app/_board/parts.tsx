@@ -1,5 +1,7 @@
+import type { RoleValue } from '@customs/db';
 import { SETTLING_CHIP, SETTLING_SENTENCE, SETTLING_SENTENCE_PLAYER } from '@/lib/board/copy';
 import { NAMELESS_HINT } from '@/lib/tonight/copy';
+import { RoleIcon } from '../_icons/RoleIcon';
 
 /**
  * The pieces `/leaderboard` and `/p/[puuid]` share (M3.8, M3.10).
@@ -37,4 +39,24 @@ export function SettlingNote({ person = 'you' }: { person?: 'you' | 'player' }) 
 /** M3.10's quiet line, once per page, while any row on it reads `Someone`. */
 export function NamelessHint() {
   return <p className="cn-hint">{NAMELESS_HINT}</p>;
+}
+
+/**
+ * A role, icon and word, always both (`05-design.md`, "Iconography"). The icon is `aria-hidden`
+ * and the word beside it is the accessible name; the mark is an anchor for the eye in a dense
+ * list, never a replacement for language.
+ *
+ * 20px where the role is the subject of its row (`By role`), 14px where it sits beside a name
+ * in a lineup — the same size the seat rack and the team cards use for exactly that position.
+ *
+ * Shared since M5.20: the record under the chart and the lineups under `Recent games` are two
+ * files now, and a role printed two ways on one page is the drift this file exists to stop.
+ */
+export function RoleName({ role, size = 14 }: { role: RoleValue; size?: number }) {
+  return (
+    <span className="cn-num cn-lineup-role">
+      <RoleIcon role={role} size={size} />
+      {role}
+    </span>
+  );
 }
