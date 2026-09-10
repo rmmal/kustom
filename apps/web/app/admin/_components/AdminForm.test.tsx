@@ -99,7 +99,7 @@ describe('a save', () => {
 });
 
 describe('a refusal', () => {
-  it('prints the route’s own sentence, inline, and does not re-read', async () => {
+  it("prints the route's own sentence, inline, and does not re-read", async () => {
     answer({ ok: false, error: 'that player is not yours to rename' }, false);
     const { container } = draw();
 

@@ -89,6 +89,24 @@ export function assertLegalTransition(from: LobbyStatusValue, to: LobbyStatusVal
   if (!isLegalTransition(from, to)) throw new IllegalLobbyTransitionError(from, to);
 }
 
+/**
+ * The statuses a lobby row can still be posted to, and still be **acted on** (M2.14). A party
+ * has at most one row in one of these — `lobbies_active_party_idx` enforces it — and
+ * `dropped`, `finished` and `abandoned` are outside the set, so the next post for that party
+ * starts the night's next cycle.
+ *
+ * It lives here rather than in `lib/ingest/lobby.ts` (which re-exports it, unchanged, for the
+ * callers that always had it) because the tonight page's role control asks the same question
+ * in the browser, and importing the ingest module for a predicate would pull the whole ingest
+ * — and the service-role client with it — into the client bundle.
+ */
+export const ACTIVE_LOBBY_STATUSES: readonly LobbyStatusValue[] = ['open', 'balanced', 'in_game'];
+
+/** Is this row still the party's live lobby, or is its cycle over? */
+export function isActiveLobbyStatus(status: LobbyStatusValue): boolean {
+  return ACTIVE_LOBBY_STATUSES.includes(status);
+}
+
 /** `finished` and `abandoned`: a row here never moves again, whoever asks. */
 export function isTerminalLobbyStatus(status: LobbyStatusValue): boolean {
   return LOBBY_TRANSITIONS[status].length === 0;

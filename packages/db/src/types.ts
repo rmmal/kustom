@@ -418,6 +418,8 @@ export type Database = {
           rank_lp: number | null
           rank_tier: string | null
           rank_updated_at: string | null
+          role_tonight: Database["public"]["Enums"]["player_role"] | null
+          role_tonight_until: string | null
           secondary_role: Database["public"]["Enums"]["player_role"] | null
           summoner_id: string | null
           tag_line: string | null
@@ -437,6 +439,8 @@ export type Database = {
           rank_lp?: number | null
           rank_tier?: string | null
           rank_updated_at?: string | null
+          role_tonight?: Database["public"]["Enums"]["player_role"] | null
+          role_tonight_until?: string | null
           secondary_role?: Database["public"]["Enums"]["player_role"] | null
           summoner_id?: string | null
           tag_line?: string | null
@@ -456,6 +460,8 @@ export type Database = {
           rank_lp?: number | null
           rank_tier?: string | null
           rank_updated_at?: string | null
+          role_tonight?: Database["public"]["Enums"]["player_role"] | null
+          role_tonight_until?: string | null
           secondary_role?: Database["public"]["Enums"]["player_role"] | null
           summoner_id?: string | null
           tag_line?: string | null

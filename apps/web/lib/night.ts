@@ -179,3 +179,17 @@ export function nightStart(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE
     timeZone,
   );
 }
+
+/**
+ * The end of the night containing `now`: the 06:00 the next one starts at (M3.6).
+ *
+ * It is what `players.role_tonight_until` is set to, so "this lasts the night" is one stored
+ * instant rather than a rule every reader has to re-derive.
+ *
+ * 26 hours past this night's 06:00 lands between 07:00 and 09:00 the next morning whatever DST
+ * did in between — a shift is at most an hour either way — and the night containing *that*
+ * instant starts at the 06:00 this one ends on. One definition of 06:00 local, used twice.
+ */
+export function nightEnd(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): Date {
+  return nightStart(new Date(nightStart(now, timeZone).getTime() + 26 * 60 * 60 * 1000), timeZone);
+}

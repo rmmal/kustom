@@ -741,3 +741,208 @@
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * `Your role tonight`, and the `That's me` list behind it (M3.6).
+ *
+ * The card is **last in the column and outside the primary block**, because the rack is ten
+ * 44px rows at every count and five 44px targets do not fit inside one of them. Appearing or
+ * disappearing therefore moves nothing a thumb is over: everything above it is unchanged.
+ *
+ * Every state — the five roles, the `That's me` list, the signed-out button — is this same
+ * card with the same title, so a friend who signs in finds the control where it already was
+ * (the designer, 2026-09-10).
+ * ------------------------------------------------------------------------- */
+
+/*
+ * The 2px `brand` inset rule is the rack's own "you" mark: this card is about the reader and
+ * nothing else on the page is. An inset shadow rather than a border, for the reason every
+ * other marker on this page is one — a border would change the box and move the text.
+ */
+/*
+ * A card title is language, so it is Archivo — `.cn-rail-title`'s twin, and the same rule as
+ * `How this works` and `Run the companion`. Mono `t-xs` `0.08em` is for legends only (`SEATS`,
+ * `rating`, `live`, `open`); a three-word phrase set in tracked 12px mono reads as a code
+ * comment (the designer, 2026-09-10).
+ */
+.cn-card-title {
+  margin: 0;
+  font-family: var(--cn-font-sans);
+  font-size: var(--cn-t-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--cn-text);
+}
+
+.cn-role-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cn-sp-3);
+  padding: var(--cn-sp-4);
+  margin-top: var(--cn-sp-5);
+  box-shadow: inset 2px 0 0 var(--cn-brand);
+}
+
+/*
+ * Five targets, each at least 44 x 44px, **capped at 9rem**: stretched across a 1280px column
+ * a role word sits in the middle of a 200px slab and the row reads as five cards rather than
+ * five words. Left-aligned, so the group starts where the title does.
+ */
+.cn-role-choices {
+  display: grid;
+  /* Flexible tracks under a cap on the **group**, not on each chip: `auto-fit` counts columns
+     from a definite max, so a 9rem max gave two chips a row at 390px. 1fr tracks inside a
+     47rem group keep the five 9rem chips on a desktop, give 3 + 2 on a phone, and let 320px
+     degrade by itself (the designer, 2026-09-10). */
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  max-width: 47rem;
+  justify-content: start;
+  gap: var(--cn-sp-2);
+  margin: 0;
+}
+
+/*
+ * At rest the **word is `text`** and the icon stays `dim`: these are five things a person can
+ * choose, and a row of grey words reads as five disabled controls. `brand` belongs to the one
+ * that is chosen and to nothing else on this card.
+ */
+.cn-role-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cn-sp-2);
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--cn-sp-3);
+  font-family: var(--cn-font-mono);
+  font-size: var(--cn-t-xs);
+  letter-spacing: 0.06em;
+  color: var(--cn-text);
+  background: var(--cn-raise);
+  border: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius-row);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.cn-role-choice .cn-role-icon {
+  color: var(--cn-dim);
+}
+
+.cn-role-choice:active {
+  background: var(--cn-pressed);
+}
+
+/*
+ * The chosen role, and the whole receipt for a tap: no toast, no flash, no "saved!". The inner
+ * 1px ring doubles the border's weight so the chip still outweighs its four neighbours in
+ * light mode, where `brand` is a dark amber on a pale fill. Colour is not the only signal —
+ * the button carries `aria-pressed` for a reader who is listening.
+ */
+.cn-role-on {
+  color: var(--cn-brand);
+  background: var(--cn-brand-tint);
+  border-color: var(--cn-brand);
+  box-shadow: inset 0 0 0 1px var(--cn-brand);
+}
+
+.cn-role-on .cn-role-icon {
+  color: var(--cn-brand);
+}
+
+/*
+ * A refusal, directly under the control it belongs to and **above** the hint, in `text`: this
+ * page has no banners and no red alerts — red here would read as the red side — but a sentence
+ * in caption grey under a caption-grey explanation is a sentence nobody reads.
+ */
+.cn-role-error {
+  margin: 0;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-text);
+}
+
+/* The `That's me` list: the same 44px row shape as the rack, name left, control right. */
+.cn-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cn-pick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cn-sp-3);
+  min-height: 44px;
+  /* Nine 44px controls stacked with no air between them read as one grey slab in light mode,
+     where the chip fill and the card are close. */
+  padding-block: var(--cn-sp-1);
+}
+
+.cn-pick-row + .cn-pick-row {
+  border-top: 1px solid var(--cn-line);
+}
+
+/*
+ * A name is what the reader is looking for in this list, so it carries the weight the rack's
+ * names carry.
+ */
+.cn-pick-name {
+  font-size: var(--cn-t-md);
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * From 720px the row is a grid: a 16rem name column and the control right after it, both
+ * starting at the left edge. Justified across an 830px card the button ends up 600px from the
+ * name it belongs to, which is the sparse look the redesign exists to end.
+ */
+@media (min-width: 720px) {
+  .cn-pick-row {
+    display: grid;
+    grid-template-columns: minmax(0, 16rem) auto;
+    justify-content: start;
+    gap: var(--cn-sp-4);
+  }
+
+  /* The list is as wide as its widest row, so the hairline ends with the button instead of
+     running 600px past it across an 830px card. */
+  .cn-pick-list {
+    width: fit-content;
+    max-width: 100%;
+  }
+}
+
+/*
+ * Dressed like a role word, not like the reroll button: ten `brand`-outlined bars stacked down
+ * a card is a column of amber with nothing to point at, and this is a list of equal options —
+ * the same thing the five role words are. The name is the row; this is only the act.
+ */
+.cn-pick-button {
+  min-height: 44px;
+  padding: 0 var(--cn-sp-3);
+  font: inherit;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-text);
+  background: var(--cn-raise);
+  border: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius-row);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.cn-pick-button:active {
+  background: var(--cn-pressed);
+}
+
+.cn-signin {
+  display: flex;
+}
+
+/* `Set roles`, inside the all-flexible hint and only for an admin. */
+.cn-hint-link {
+  color: var(--cn-brand);
+  text-underline-offset: 3px;
+}

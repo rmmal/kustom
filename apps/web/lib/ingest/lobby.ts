@@ -9,7 +9,9 @@ import {
 import { supersedeLobbyCommands } from '../commands/queue';
 import type { CompanionIdentity } from '../companionAuth';
 import {
+  ACTIVE_LOBBY_STATUSES,
   assertLegalTransition,
+  isActiveLobbyStatus,
   isRosterStable,
   moveLobby,
   PLAYERS_PER_GAME,
@@ -21,6 +23,7 @@ import type { ServiceClient } from '../supabase';
 import { type BalanceOutcome, balanceLobby, hasChosenSplit } from './balance';
 import { emitLobbyBalanced } from './hooks';
 import { ensurePlayers } from './players';
+import { carryRoleOverrides } from './roleCarry';
 import { SelectionError } from './selection';
 
 /**
@@ -80,20 +83,14 @@ export const RANK_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 const UNIQUE_VIOLATION = '23505';
 
 /**
- * The statuses a lobby row can still be posted to (M2.14). A party has at most one row in
- * one of these — `lobbies_active_party_idx` enforces it — and `dropped`, `finished` and
- * `abandoned` are outside the set, so the next post for that party starts the night's next
- * cycle.
+ * The statuses a lobby row can still be posted to (M2.14), re-exported from `lib/lobbyState.ts`
+ * where they now live: the tonight page's role control asks the same question in the browser,
+ * and it may not import this module to do it (M3.6). Every caller here is unchanged.
  *
  * `dropped` leaving the set is the point of M5.11: it is how a stuck `in_game` row stops
  * swallowing the rest of the night's posts.
  */
-export const ACTIVE_LOBBY_STATUSES: readonly LobbyStatusValue[] = ['open', 'balanced', 'in_game'];
-
-/** Is this row still the party's live lobby, or is its cycle over? */
-export function isActiveLobbyStatus(status: LobbyStatusValue): boolean {
-  return ACTIVE_LOBBY_STATUSES.includes(status);
-}
+export { ACTIVE_LOBBY_STATUSES, isActiveLobbyStatus };
 
 /**
  * Statuses in which `lobby_members` is history rather than live state (M2.9). From `in_game`
@@ -229,7 +226,16 @@ export async function ingestLobby(
   // or stepping into the spectator slot has to land in `lobby_members` (the seat plan reads
   // it) and a Riot ID that changed has to land in `players` (M1.7). Neither touches
   // `lobbies`, so neither restarts the clock — only the write below does that.
-  const memberCount = await replaceMembers(client, lobby.id, payload);
+  const diff = await replaceMembers(client, lobby.id, payload);
+  const memberCount = diff.count;
+
+  // A role for tonight lasts the night and lives on the player (M3.6): every row this post
+  // **created** gets `players.role_tonight` copied onto it while that preference is still
+  // tonight's. Rows that were already here are not touched, so a re-post can never re-apply a
+  // value over a tap that has just landed.
+  if (diff.inserted.length > 0) {
+    await carryRoleOverrides(client, { lobbyId: lobby.id, inserted: diff.inserted, now });
+  }
 
   let row = lobby;
   if (rosterChanged && !created) {
@@ -595,15 +601,30 @@ export async function selectLatestLobby(
   return byStart ?? rows.find((row) => isActiveLobbyStatus(row.status)) ?? rows[0] ?? null;
 }
 
+/** What one post did to `lobby_members`, as the role carry needs to read it (M3.6). */
+export interface MemberDiff {
+  /** How many rows the lobby has after the post. The caller's `memberCount`. */
+  count: number;
+  /**
+   * Players whose row this post **created**: they had none a moment ago. The role carry writes
+   * to exactly these, so a tap that has just landed on an existing row is never overwritten.
+   */
+  inserted: string[];
+}
+
 /**
  * The reported list replaces whatever we had: members who left are deleted, members who
  * stayed keep their `role` and `role_override` (M3.6 owns those columns).
+ *
+ * It also reports the diff, because a role for tonight outlives a row: `roleCarry.ts` puts an
+ * override back onto a row this post created, from the party's previous cycle inside the night
+ * or from a row this same post is deleting.
  */
 async function replaceMembers(
   client: ServiceClient,
   lobbyId: string,
   payload: CompanionLobbyPayload,
-): Promise<number> {
+): Promise<MemberDiff> {
   const playerIds = await ensurePlayers(
     client,
     payload.members.map((member) => ({
@@ -627,6 +648,12 @@ async function replaceMembers(
   }
 
   const keep = [...rows.keys()];
+
+  // Read before the write, so an insert can be told from an update: only a row this post
+  // creates gets the player's role for tonight copied onto it (M3.6).
+  const before = await selectMemberIds(client, lobbyId);
+  const inserted = keep.filter((playerId) => !before.has(playerId));
+
   const remove = client.from('lobby_members').delete().eq('lobby_id', lobbyId);
   const { error: deleteError } = await (keep.length === 0
     ? remove
@@ -640,7 +667,14 @@ async function replaceMembers(
     if (error) throw new Error(`ingestLobby: member upsert failed: ${error.message}`);
   }
 
-  return keep.length;
+  return { count: keep.length, inserted };
+}
+
+/** Who already has a row in this lobby, before the post is applied. */
+async function selectMemberIds(client: ServiceClient, lobbyId: string): Promise<Set<string>> {
+  const { data, error } = await client.from('lobby_members').select('player_id').eq('lobby_id', lobbyId);
+  if (error) throw new Error(`ingestLobby: member read failed: ${error.message}`);
+  return new Set((data ?? []).map((row) => row.player_id));
 }
 
 async function countMembers(client: ServiceClient, lobbyId: string): Promise<number> {

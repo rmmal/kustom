@@ -1,3 +1,4 @@
+import { resolveRoles } from '@customs/core';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
@@ -21,6 +22,7 @@ import {
   OFF_ROLE_LEGEND_SUFFIX,
 } from '@/lib/tonight/copy';
 import type { SeatView, TonightSnapshot } from '@/lib/tonight/types';
+import type { ViewerState } from '@/lib/tonight/viewer';
 import { TonightView } from './TonightView';
 
 /**
@@ -40,14 +42,20 @@ function draw(
   state: TonightSnapshot,
   viewer: { puuid?: string; isAdmin?: boolean; topPlayers?: readonly BoardRow[] } = {},
 ) {
-  return render(
-    <TonightView
-      snapshot={state}
-      viewerPuuid={viewer.puuid ?? null}
-      isAdmin={viewer.isAdmin ?? false}
-      topPlayers={viewer.topPlayers ?? []}
-    />,
-  );
+  // Anonymous unless the test names a puuid or an admin: `null` used to mean both "signed
+  // out" and "signed in with no player row", and M3.6 needs the two apart
+  // (`lib/tonight/viewer.ts`). An admin with no puuid is a linked viewer who is not in this
+  // lobby — which is what the reroll tests mean by "an admin is looking".
+  const who: ViewerState =
+    viewer.puuid === undefined && viewer.isAdmin !== true
+      ? { kind: 'anonymous' }
+      : {
+          kind: 'linked',
+          puuid: viewer.puuid ?? 'puuid-not-in-this-lobby',
+          isAdmin: viewer.isAdmin ?? false,
+        };
+
+  return render(<TonightView snapshot={state} viewer={who} topPlayers={viewer.topPlayers ?? []} />);
 }
 
 /**
@@ -118,6 +126,9 @@ describe('idle: no lobby tonight', () => {
       'cn-strip',
       'cn-notice',
       'cn-block',
+      // M3.6's card, and it is deliberately **last**: for a signed-out reader it is the one
+      // control that starts the Discord round trip, and it may never sit above the teams.
+      'cn-card cn-role-card',
     ]);
   });
 
@@ -245,6 +256,48 @@ describe('the role column only appears when it distinguishes', () => {
     expect(container.querySelectorAll('.cn-rack-roles')).toHaveLength(6);
     expect(screen.getAllByText('flexible')).toHaveLength(5);
     expect(screen.queryByText(ALL_FLEXIBLE_HINT)).not.toBeInTheDocument();
+  });
+
+  it('turns the column on for an override alone: a tap is a role on screen', () => {
+    const [first, ...rest] = flexible;
+    if (first === undefined) throw new Error('no member');
+    const { container } = draw(
+      snapshot(lobbyView({ members: [{ ...first, roleOverride: 'adc' }, ...rest] })),
+    );
+
+    expect(container.querySelectorAll('.cn-rack-roles')).toHaveLength(6);
+    // A flexible player who taps has a main for tonight and no backup.
+    expect(container.querySelector('.cn-rack-roles')?.textContent).toBe('adc');
+  });
+});
+
+describe("the rack prints tonight's roles, not the profile's (M3.6)", () => {
+  /** Iris mains jungle with top as her backup, from the worked example. */
+  const iris = workedMembers(3)[2];
+
+  it('shows `<override> · <old main>` for a row that has tapped a role', () => {
+    if (iris === undefined) throw new Error('no member');
+    const { container } = draw(
+      snapshot(lobbyView({ members: [{ ...iris, roleOverride: 'support' }, ...workedMembers(2)] })),
+    );
+
+    // Core's `resolveRoles`, rendered: the tap is the main and the usual main is the backup,
+    // which is exactly what the balancer will do with it.
+    expect(resolveRoles({ ...iris, roleOverride: 'support' })).toEqual({
+      main: 'support',
+      secondary: 'jungle',
+    });
+    expect(container.querySelector('.cn-rack-roles')?.textContent).toBe('support · jungle');
+  });
+
+  it('leaves a row alone when the tap names the role they already main', () => {
+    if (iris === undefined) throw new Error('no member');
+    const { container } = draw(
+      snapshot(lobbyView({ members: [{ ...iris, roleOverride: iris.mainRole }, ...workedMembers(2)] })),
+    );
+
+    // Core treats an override equal to the main as a no-op, so the backup stays.
+    expect(container.querySelector('.cn-rack-roles')?.textContent).toBe('jungle · top');
   });
 });
 

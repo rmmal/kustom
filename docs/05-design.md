@@ -878,8 +878,8 @@ Every word M3.6 puts on the tonight page, including the refusals. The control's 
 M3.6 brief on 2026-09-09 and are quoted here unchanged; the refusals are new — the brief covered what the
 route does, not what the friend reads when it says no, so the engineer wrote nine sentences against no doc
 and product rules them here: eight are replaced, one is kept. They live in `apps/web/lib/tonight/copy.ts` (what the page draws) and
-`apps/web/lib/me/roleTonight.ts`, `lib/me/selfLink.ts` and `app/api/me/role-tonight/handler.ts` (what the
-route answers). That is four files and one table; they may not drift.
+`apps/web/lib/me/copy.ts` (what the routes answer, all of it, in one file — the rules modules and the handler
+import from there and hold no sentence of their own). That is two files and one table; they may not drift.
 
 **The rule for a refusal**, so the next one is written the same way: *say what happened, then say who can
 undo it or what to do next.* Never the database's vocabulary — a friend on a phone has no rows, no ids and no
