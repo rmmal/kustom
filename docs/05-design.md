@@ -343,18 +343,20 @@ The two rules from v1 that do **not** change, and that nothing below is allowed 
 Always mounted, the only element that survives every transition, and now three lines instead of one:
 
 ```
-TUESDAY 9 SEPTEMBER · SEASON 2                    ← slug: mono t-xs, dim, 0.08em, upper case
+TUESDAY 9 SEPTEMBER                               ← slug: mono t-xs, dim, 0.08em, upper case
 9 IN THE LOBBY                          ● live    ← headline: count t-display brand + label t-lg display, upper
 One more to go.                                   ← sentence: t-sm dim, two lines reserved
 ```
 
-- The **slug** is the night's date (from `nightStart`, so a 01:00 game still says Tuesday) and the active
-  season's name. It is the line that tells a friend from WhatsApp what they are looking at and when.
-  Formatted **on the server and in the snapshot**, `Intl.DateTimeFormat('en-GB', { weekday:'long',
-  day:'numeric', month:'long', timeZone: CUSTOMS_NIGHT_TZ })` — a fixed locale and the configured timezone, or
-  the browser re-render disagrees with the server render and the line changes under the reader. When no season
-  is active the slug is the date alone; the no-season sentence (M3.17) is unchanged and stays directly below
-  the strip.
+- The **slug** is the night's date (from `nightStart`, so a 01:00 game still says Tuesday), and **nothing
+  else**. It is the line that tells a friend from WhatsApp what they are looking at and when. Formatted **on
+  the server and in the snapshot**, `Intl.DateTimeFormat('en-GB', { weekday:'long', day:'numeric',
+  month:'long', timeZone: CUSTOMS_NIGHT_TZ })` — a fixed locale and the configured timezone, or the browser
+  re-render disagrees with the server render and the line changes under the reader. **The season name is gone
+  from this line** (M5.12, `04-decisions.md` 2026-09-10): a season is no longer a thing a friend has, so the
+  slug that used to read `TUESDAY 9 SEPTEMBER · SEASON 2` is the date alone in every state. The middot and the
+  half after it go with it — there is no second half to fall back to and nothing takes the slot. The board's
+  own dates live in the window slot on `/leaderboard`, which is a different page and a different line.
 - The **headline** is `<count> IN THE LOBBY` while filling and one word or phrase otherwise:
   `NOTHING TONIGHT`, `TEAMS ARE SET`, `IN GAME`, `FINAL`. The count is `t-display` in `brand`; the label is
   `t-lg`, display cut, upper case, `text`.
@@ -970,6 +972,95 @@ task, not a reason to stop:
    (`loadTopPlayers(client, { limit })`). Building it inline in the page means writing it twice.
 6. **The sparkline stays hand-drawn.** One inline `<svg>`, one `<path>`, 1.5px `brand`, no fill, no points, no
    grid, no charting library. 140px on phone, 180px in the rail if it ever appears there.
+
+#### The window picker (M5.12, designer 2026-09-10)
+
+Five windows, five links, in the header of `/leaderboard`, `/p/[puuid]` and — with M5.4 — `/stats`, which
+mounts the same component with `This month` selected. The control looks the same on all three pages and the
+words are product's five, unshortened.
+
+**A wrapping row of chips.** Not a segmented control: five two-word labels do not fit in 358px at 390 without
+scrolling or breaking the 44px rule, and a segmented control on two rows reads as broken. Not tabs under the
+title: the shell nav is tabs with a `brand` underline 44px above, and two tab rows on one phone screen is two
+navigations in one visual language — a chip row reads as a filter, which is what this is. **3 + 2 at 390, one
+row from 720px.** The wrap splitting the two month options across rows is accepted: the chosen chip is marked
+and the h1 names it.
+
+**Labels are Archivo `t-sm` 500, not mono.** Same ruling as the shell nav — *"these are destinations, so
+Archivo"* — and the same type rule as everywhere else: `number or role → mono`. `This week` set in mono is a
+terminal string on a page whose every number is already mono, and a capital letter on a mono micro-label is
+forbidden two sections up (`top`, `live`, never `This Week`).
+
+**Where it sits, both pages.** The header strip is three lines and a hairline:
+
+```
+This week Leaderboard                       ← h1: window name t-lg 600, page noun in `dim` (unchanged)
+[This week] [Last week] [This month]
+[Last month] [All time]                     ← the picker, sp-4 under the h1
+MONDAY 1 SEP TO SUNDAY 7 SEP · 14 GAMES     ← the window slot
+────────────────────────────────────────
+```
+
+On `/p/[puuid]` line 1 is the player's name in the display cut and everything else is identical.
+
+**The window slot holds exactly one of two things, never both and never neither.** The strings are product's
+(copy table, next section) and this is only where they sit:
+
+- the window's **range and count**, `` `${range} · ${gamesLabel(count)}` `` — `Monday 1 Sep to Sunday 7 Sep ·
+  14 games`, `September · 34 games`, `Since 8 Sep 2025 · 312 games`. Mono `t-xs` `dim` `0.08em`, upper-cased by
+  the dress and sentence case in the DOM, which is the tonight strip's slug treatment: it is a legend about the
+  thing above it, and it is the answer to "which Monday". Every window has one, including `All time` — a slot
+  that vanishes on one of five taps reads as broken. **On `/p/[puuid]` the range half prints alone**, because
+  M5.15's seed line already ends `, 6 games since.`
+- when the window has no games, the window's **empty sentence** (`No games last week.`), Archivo `t-base`
+  `dim`, **instead of** the range and never beside it. It lives here and not below the hairline because on
+  `All time` the same slot sits above rows that exist, so it is not a caption of empty content — it is a
+  statement about the window that was just chosen, and the window is the header. **An empty window draws no
+  board card at all**: the sentence in the slot is the whole answer, and a card with a legend and nothing under
+  it is a page that looks broken rather than empty. An empty board is then a closed header over an empty page,
+  which is honest.
+
+**Dress.**
+
+```css
+.cn-windows { display: flex; flex-wrap: wrap; gap: var(--cn-sp-2); margin-top: var(--cn-sp-4); }
+.cn-window {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 0 var(--cn-sp-3); white-space: nowrap;
+  font-family: var(--cn-font-sans); font-size: var(--cn-t-sm); font-weight: 500;
+  color: var(--cn-text); text-decoration: none;
+  background: var(--cn-raise); border: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius-row); transition: background-color 120ms ease;
+}
+.cn-window:hover  { background: var(--cn-pressed); }
+.cn-window:active { background: var(--cn-pressed); transform: scale(.985); }
+.cn-window-on {
+  color: var(--cn-brand); background: var(--cn-brand-tint);
+  border-color: var(--cn-brand); box-shadow: inset 0 0 0 1px var(--cn-brand);
+}
+```
+
+`text` at rest, for the role chips' reason: a row of `dim` words reads as five disabled controls. The doubled
+`brand` edge is the light-mode rule paid for in both themes — in light, `brand-tint` is a 12% wash on white and
+lands *lighter* than the `raise` chips beside it, so the chosen chip is the palest box in its row and that edge
+is the whole receipt. One recipe, both controls, both themes. No `max-width`: the picker is as wide as the
+column it sits in.
+
+**It is five links, and the current one is marked the way the shell marks its own current tab** —
+`aria-current="page"`, not `aria-current="true"`, and still a link, so a keyboard user does not hit a hole
+where the window they are reading should be. `<nav aria-label="Time window">`, because a second unnamed
+landmark beside the shell's is announced as "navigation".
+
+**A row's window line.** `6 games · 4W 2L · +58` closes the meta run on line 2: games, record and climb are one
+window fact and belong in one run, and the right edge of line 2 stays `Rating` under `Proven`, one vertical
+pair of numbers. The climb is **never coloured by sign** — gain `text` 600, loss `dim` 400, always signed — and
+it is **`t-xs`, the size of the run it sits in**: `.cn-row-meta .cn-delta { font-size: inherit; }`, declared in
+`board-parts.css` so the tonight rail's rows get it too. Shipped, it was `t-sm` inside a `t-xs` line, which put
+two type sizes in one row of meta. On `All time` there is no climb and the streak keeps the position.
+
+**The still-settling note sits below the board card**, not between the picker and the first row: with the
+picker in the header it pushed the first name past half the fold on a 390×844 phone, and a sentence about how
+the sort works is read after the numbers, not before them. Still once per page.
 
 #### Copy — the board pages, final (product 2026-09-09)
 
