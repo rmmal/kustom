@@ -109,6 +109,17 @@ export interface RecentGame {
   /** The two mu values the delta is computed from, at render. Never a formatted delta. */
   muBefore: number | null;
   muAfter: number | null;
+  /**
+   * The chance the balancer gave **blue** in the split the group played (M5.15):
+   * `games.lobby_id` → the lobby's chosen split → `splits.blue_win_prob`. The page turns it
+   * into this player's own side's chance, which is its complement on 200.
+   *
+   * `null` for every game with no stored split — a backfilled game (no lobby), a game whose
+   * lobby row was cleared (`on delete set null`), a game the group played without the bot —
+   * and those rows drop the clause and keep the result and the change. **No row invents a
+   * chance and no row is hidden** (product, 2026-09-10).
+   */
+  blueWinProb: number | null;
   /** The five on the player's own side, lane order, this player among them. */
   team: RecentTeammate[];
 }
@@ -161,6 +172,15 @@ export interface PlayerBoardView {
   range: string | null;
   /** The 30-game rule, always on the all-time count (M3.8). Never a fact about the window. */
   settling: boolean;
+  /**
+   * The rank the seed was computed from, as words: `Gold II`, `Master`, `Unranked` (M5.15).
+   *
+   * Formatted in the loader by `rankLabel`, from the same `rank_tier` / `rank_division` pair
+   * `seedFromRank` read, so the seed line cannot name a rank the number did not come from.
+   * Carried on every window even though only `All time` prints it: the rank is a fact about
+   * the player, not about the calendar.
+   */
+  seedRank: string;
   /**
    * The chart's reference line, in the series' own units: `round(seedMu * 60)` on `All time`,
    * and the rating carried **into** the window on the other four. {@link PlayerBoardView.window}

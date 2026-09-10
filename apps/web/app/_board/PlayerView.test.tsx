@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   NOT_RATED,
   NOT_RATED_HINT,
+  RATING_EXPLANATION,
   RATING_LABEL,
   RECENT_GAMES_HEADING,
   RECENT_RATING_LEGEND,
@@ -12,6 +13,7 @@ import {
   START_LABEL,
   WINDOW_EMPTY,
 } from '@/lib/board/copy';
+import { explainGame } from '@/lib/board/explain';
 import type { PlayerBoardView } from '@/lib/board/types';
 import { workedPlayer, workedRecentGame } from '@/lib/testing/boardFixtures';
 import { workedPuuid } from '@/lib/testing/workedExample';
@@ -516,5 +518,112 @@ describe('a game that moved nothing (M3.23)', () => {
 
     draw();
     expect(screen.queryByText(NOT_RATED_HINT)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * "How you got here" (M5.15). The page's own half of it: every row carries its sentence, the
+ * seed line sits above the chart, and the one explanation line is drawn once. The sentences
+ * themselves are `lib/board/explain.test.ts`; these are about what is on the screen.
+ */
+describe('why each change is the size it is', () => {
+  it('carries the win-chance sentence on every rated row, from the same delta as the column', () => {
+    const { container } = draw(
+      workedPlayer('Hana', {
+        recent: [
+          workedRecentGame({ gameId: 'game-1', won: true, side: 200, blueWinProb: 0.58 }),
+          workedRecentGame({ gameId: 'game-2', won: false, side: 100, blueWinProb: 0.58 }),
+        ],
+      }),
+    );
+
+    const sentences = [...container.querySelectorAll('.cn-game-why')].map((node) => node.textContent);
+    expect(sentences).toEqual([
+      explainGame(workedRecentGame({ won: true, side: 200, blueWinProb: 0.58 })),
+      explainGame(workedRecentGame({ won: false, side: 100, blueWinProb: 0.58 })),
+    ]);
+    // Their own side's chance: red's, on a split that gave blue 58%.
+    expect(sentences[0]).toContain('42%');
+    // And the change is the string the rating column prints beside it, to the character.
+    const delta = container.querySelector('.cn-delta')?.textContent ?? '';
+    expect(sentences[0]).toContain(delta.replace('(', '').replace(')', '').trim());
+  });
+
+  it('drops the clause on a backfilled row and prints no chance and no placeholder', () => {
+    const { container } = draw(
+      workedPlayer('Hana', { recent: [workedRecentGame({ won: true, blueWinProb: null })] }),
+    );
+
+    expect(container.querySelector('.cn-game-why')?.textContent).not.toContain('%');
+    expect(container.querySelector('.cn-game-why')?.textContent).toMatch(/^Won, /);
+  });
+
+  it('leaves an unrated row untouched: three words, and no sentence under them', () => {
+    const { container } = draw(
+      workedPlayer('Hana', {
+        recent: [workedRecentGame({ gameId: 'game-unrated', muBefore: null, muAfter: null })],
+      }),
+    );
+
+    expect(container.querySelector('.cn-game-rating')?.textContent).toBe(NOT_RATED);
+    expect(container.querySelector('.cn-game-why')).not.toBeInTheDocument();
+  });
+
+  it('prints the explanation line once per page, not once per row', () => {
+    draw(
+      workedPlayer('Hana', {
+        recent: [workedRecentGame({ gameId: 'a' }), workedRecentGame({ gameId: 'b' })],
+      }),
+    );
+
+    expect(screen.getAllByText(RATING_EXPLANATION)).toHaveLength(1);
+  });
+});
+
+describe('the seed line', () => {
+  it('names the rank, the displayed seed and the games since, above the chart', () => {
+    const player = workedPlayer();
+    const { container } = draw(player);
+
+    const line = container.querySelector('.cn-seed-line');
+    expect(line?.textContent).toBe(`Seeded from Silver II at ${player.reference}, 37 games since.`);
+    // Above the chart, and it is the chart's own reference number: one value, read once, so
+    // the hairline and the sentence cannot disagree (M5.15, acceptance check 4).
+    expect(line?.nextElementSibling?.className).toContain('cn-chart');
+    expect(screen.getByText(SEED_LABEL)).toBeInTheDocument();
+  });
+
+  it('is the whole of a page for a player who has never played: no chart, no list, no zeros', () => {
+    const player = workedPlayer('Hana', {
+      games: 0,
+      wins: 0,
+      losses: 0,
+      history: [],
+      recent: [],
+      roles: [],
+      range: null,
+    });
+    const { container } = draw(player);
+
+    expect(container.querySelector('.cn-seed-line')?.textContent).toBe(
+      `Seeded from Silver II at ${player.reference}.`,
+    );
+    expect(container.querySelector('.cn-chart')).not.toBeInTheDocument();
+    expect(container.querySelector('.cn-games')).not.toBeInTheDocument();
+    expect(container.querySelector('.cn-row-meta')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('NaN');
+    // The window's own empty sentence is what says there is nothing here.
+    expect(screen.getByText(WINDOW_EMPTY['all-time'])).toBeInTheDocument();
+  });
+
+  it('says where the window found them, not where the board seeded them', () => {
+    const { container } = draw(
+      workedPlayer('Hana', { window: 'this-week', games: 6, wins: 4, losses: 2, reference: 1469 }),
+    );
+
+    expect(container.querySelector('.cn-seed-line')?.textContent).toBe(
+      'Started the week at 1469, 6 games since.',
+    );
+    expect(screen.getByText(START_LABEL)).toBeInTheDocument();
   });
 });

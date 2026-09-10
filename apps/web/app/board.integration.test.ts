@@ -40,6 +40,7 @@ if (stack === null) {
   const { BoardView } = await import('./_board/BoardView');
   const { PlayerView } = await import('./_board/PlayerView');
   const { NAMELESS_HINT } = await import('@/lib/tonight/copy');
+  const { RATING_EXPLANATION } = await import('@/lib/board/copy');
 
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -106,6 +107,11 @@ if (stack === null) {
   const WEEK = { now: NOW } as const;
 
   let seasonId = '';
+  /**
+   * The lobby Zoe's newest game was born in, and the split the balancer chose in it: the one
+   * fixture in this file with a stored win chance, which is what M5.15's sentence needs.
+   */
+  let lobbyId = '';
   const playerIds: Record<keyof typeof puuid, string> = {
     zoe: '',
     nameless: '',
@@ -151,6 +157,28 @@ if (stack === null) {
     ]);
 
     const startedAt = Date.now();
+    // A lobby with a chosen split, for M5.15: `blue_win_prob` 0.58 is what the balancer gave
+    // blue, so Zoe (side 100) reads `the 58% side` and Ali (side 200) would read `42%`.
+    const { data: lobby } = await db
+      .from('lobbies')
+      .insert({ lcu_party_id: `it-${runId}-party`, status: 'finished', lobby_name: 'Customs 10 Sep #1' })
+      .select('id')
+      .single();
+    lobbyId = lobby?.id ?? '';
+    await db.from('splits').insert({
+      lobby_id: lobbyId,
+      rank: 1,
+      blue: [1, 2, 3, 4, 5],
+      red: [6, 7, 8, 9, 10],
+      gap: 40,
+      blue_win_prob: 0.58,
+      score: 1,
+      off_role_count: 0,
+      is_chosen: true,
+      explanation: 'Even split.',
+      roster_key: `it-${runId}-roster`,
+    });
+
     for (const [index, game] of [
       { winning_side: 100, minutesAgo: 60, zoeRole: 'top', muBefore: 25, muAfter: 25.6 },
       { winning_side: 200, minutesAgo: 20, zoeRole: 'mid', muBefore: 25.6, muAfter: 25.2 },
@@ -163,6 +191,9 @@ if (stack === null) {
           started_at: new Date(startedAt - game.minutesAgo * 60_000).toISOString(),
           duration_s: 2_000,
           winning_side: game.winning_side,
+          // Only the newest of the two came from a lobby. The older one is the backfilled
+          // case: no lobby, no split, no chance — and the row still prints its result.
+          lobby_id: index === 1 ? lobbyId : null,
           raw: {},
         })
         .select('id')
@@ -249,6 +280,8 @@ if (stack === null) {
 
   afterAll(async () => {
     if (gameIds.length > 0) await db.from('games').delete().in('id', gameIds);
+    // The splits go with it: `splits.lobby_id` cascades.
+    if (lobbyId !== '') await db.from('lobbies').delete().eq('id', lobbyId);
     const ids = Object.values(playerIds).filter((id) => id !== '');
     if (ids.length > 0) {
       await db.from('ratings').delete().in('player_id', ids);
@@ -476,6 +509,29 @@ if (stack === null) {
       // Zoe's side only, in lane order, names read from `players_public` by these ids.
       expect(player.recent[0]?.team.map((seat) => seat.role)).toEqual(['jungle', 'mid']);
       expect(player.recent[0]?.team.map((seat) => seat.name)).toEqual([null, 'Zoe']);
+    });
+
+    it('carries the chance the balancer gave their own side, for a game born in a lobby', async () => {
+      const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
+
+      // Newest first: the lobby game, where blue — Zoe's side — was given 58%.
+      expect(player.recent[0]?.blueWinProb).toBe(0.58);
+      // And the older one has no lobby, so no chance is invented for it (M5.15).
+      expect(player.recent[1]?.blueWinProb).toBeNull();
+    });
+
+    it('says why each change is the size it is, in one sentence per row', async () => {
+      const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
+      const text = textOf(renderToStaticMarkup(createElement(PlayerView, { player })));
+
+      // 25.6 → 25.2 is 1536 → 1512: the same −24 the rating column prints beside it.
+      expect(text).toContain('Lost as the 58% side, −24');
+      // The backfilled row keeps its result and its change and drops the clause.
+      expect(text).toContain('Won, +36');
+      // The seed line, from the same number the chart's hairline is drawn at.
+      expect(text).toContain(`Seeded from Gold IV at ${player.reference}, 2 games since.`);
+      // And the one line under the list, exactly once.
+      expect(text.split(RATING_EXPLANATION)).toHaveLength(2);
     });
 
     it('renders a nameless teammate as `Someone` and never a puuid', async () => {

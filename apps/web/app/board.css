@@ -475,6 +475,33 @@
   color: var(--cn-text);
 }
 
+/*
+ * "How you got here" (M5.15).
+ *
+ * Two quiet lines and no new furniture: the seed line above the chart, and one sentence per
+ * game under the head it explains. Both are `t-sm` `dim` prose — the same voice as the hint
+ * lines this page already carries — because they are the page explaining itself, not a second
+ * column of numbers. **Never a table**: the sentence wraps to two lines on a 390px screen and
+ * that is the correct outcome (`05-design.md`, M5.8 owns the dress).
+ */
+.cn-seed-line,
+.cn-game-why {
+  margin: 0;
+  font-size: var(--cn-t-sm);
+  color: var(--cn-dim);
+}
+
+/*
+ * Indented to the head's own gutter and given the head's bottom air, so the sentence hangs off
+ * `Won 1512 (+43)` rather than floating between two rows. It is inside the game block's leading
+ * side rule, which is what says the block is one thing.
+ */
+.cn-game-why {
+  padding: 0 var(--cn-sp-3) var(--cn-sp-3);
+  margin-top: calc(-1 * var(--cn-sp-2));
+  line-height: 1.4;
+}
+
 /* The five, in lane order: the same positions as the team cards and the result embed. */
 .cn-lineup-row {
   display: grid;

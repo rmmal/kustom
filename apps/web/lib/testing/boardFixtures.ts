@@ -1,5 +1,5 @@
 import { displayRating, seedFromRank } from '@customs/core';
-import { SETTLING_GAMES } from '../board/copy';
+import { rankLabel, SETTLING_GAMES } from '../board/copy';
 import { sortBoardRows } from '../board/order';
 import type { BoardRow, BoardView, PlayerBoardView, RecentGame } from '../board/types';
 import type { WindowKind } from '../night';
@@ -35,6 +35,10 @@ export const WORKED_GAMES: Readonly<Record<string, number>> = {
 function workedWins(games: number): number {
   return Math.round(games / 2);
 }
+
+/** The rank every fixture player is seeded from: Silver II, the roster's own middle. */
+const SEED_TIER = 'SILVER';
+const SEED_DIVISION = 'II';
 
 export function workedBoardRows(): BoardRow[] {
   return sortBoardRows(
@@ -113,7 +117,9 @@ export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> 
   const games = WORKED_GAMES[name] ?? 0;
   const wins = workedWins(games);
   const rating = displayRating(player.mu);
-  const seed = displayRating(seedFromRank('SILVER', 'II').mu);
+  // One rank, read twice: the number the chart's hairline is drawn at and the words M5.15's
+  // seed line names it with come from the same pair, exactly as the loader reads them.
+  const seed = displayRating(seedFromRank(SEED_TIER, SEED_DIVISION).mu);
 
   return {
     puuid: workedPuuid(name),
@@ -126,6 +132,7 @@ export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> 
     losses: games - wins,
     settling: games < SETTLING_GAMES,
     range: 'Since 8 Sep 2025',
+    seedRank: rankLabel(SEED_TIER, SEED_DIVISION),
     reference: seed,
     // A short walk that ends where the roster says they are, so the chart's last point and the
     // `Rating` beside it are the same number — and that starts above the seed, so the
@@ -150,6 +157,9 @@ export function workedRecentGame(overrides: Partial<RecentGame> = {}): RecentGam
     role: 'top',
     muBefore: 23.9,
     muAfter: 23.2,
+    // The split the group played gave blue 58%: Hana was on 100 and lost as the favourite,
+    // which is the second of product's two worked sentences (M5.15).
+    blueWinProb: 0.58,
     team: [
       { puuid: workedPuuid('Hana'), name: 'Hana', role: 'top' },
       { puuid: workedPuuid('Iris'), name: 'Iris', role: 'jungle' },

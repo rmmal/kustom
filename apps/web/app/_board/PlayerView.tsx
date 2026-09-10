@@ -7,6 +7,7 @@ import {
   NOT_RATED,
   NOT_RATED_HINT,
   PROVEN_LABEL,
+  RATING_EXPLANATION,
   RATING_LABEL,
   RECENT_GAMES_HEADING,
   RECENT_RATING_LEGEND,
@@ -15,6 +16,7 @@ import {
   WON,
   winLossLabel,
 } from '@/lib/board/copy';
+import { explainGame, explainRatingStart } from '@/lib/board/explain';
 import type { PlayerBoardView, RecentGame, RecentTeammate } from '@/lib/board/types';
 import { formatDuration } from '@/lib/discord/embeds';
 import { formatDayMonth } from '@/lib/night';
@@ -96,6 +98,12 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
     isNameless(player.name) || player.recent.some((game) => game.team.some((seat) => isNameless(seat.name)));
   /** M3.23: the sentence is printed once, and only while a row on the page reads `not rated`. */
   const unrated = player.recent.some((game) => game.muAfter === null);
+  /**
+   * Where this player started, in one sentence (M5.15). It is drawn from `player.reference` —
+   * **the value the hairline in the chart is drawn at** — so the line and the sentence are one
+   * number read once and cannot disagree.
+   */
+  const start = explainRatingStart(player);
 
   return (
     <>
@@ -139,6 +147,14 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
               </p>
             )}
           </div>
+
+          {/*
+           * The seed line, once, above the chart (M5.15): `Seeded from Gold II at 1469, 37
+           * games since.` It is the first half of "how you got here" — where the board found
+           * this player before any of the games under it happened — and it prints for somebody
+           * with no games at all, where it is the only thing the page can honestly say.
+           */}
+          {start === null ? null : <p className="cn-seed-line">{start}</p>}
 
           {/*
            * **Gated on games played, not on points to plot.** `history.length === 0` also means
@@ -194,6 +210,12 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
           </section>
           {/* Once, under the list, and only while a row on it reads `not rated` (M3.23). */}
           {unrated ? <p className="cn-hint">{NOT_RATED_HINT}</p> : null}
+          {/*
+           * And once under that, the whole point of M5.15: why one win is worth more than
+           * another. **Per page, not per row** — a sentence repeated five times is a sentence
+           * nobody reads twice. No maths, no formula, no link to a paper (product).
+           */}
+          <p className="cn-hint">{RATING_EXPLANATION}</p>
         </section>
       )}
 
@@ -226,6 +248,12 @@ function RecentGameView({
   const rating = game.muAfter === null ? null : displayRating(game.muAfter);
   const delta =
     game.muBefore === null || game.muAfter === null ? null : displayDelta(game.muBefore, game.muAfter);
+  /**
+   * Why the change is that size (M5.15): the chance the balancer gave **this player's own
+   * side**, and the same delta the column above prints, from the same call. `null` on an
+   * unrated row, which M3.23 already answers in three words and which this task leaves alone.
+   */
+  const why = explainGame(game);
 
   return (
     <li className={`cn-game cn-game-${game.side === 100 ? 'blue' : 'red'}`}>
@@ -260,6 +288,9 @@ function RecentGameView({
           </span>
         )}
       </p>
+      {/* Directly under the head it explains, above the lineup: one readable column down the
+          list, and never a second table (M5.8 owns the dress; this is the order). */}
+      {why === null ? null : <p className="cn-game-why">{why}</p>}
       <ul className="cn-lineup">
         {game.team.map((seat) => (
           <li key={seat.puuid} className={seat.puuid === puuid ? 'cn-lineup-row cn-you' : 'cn-lineup-row'}>
