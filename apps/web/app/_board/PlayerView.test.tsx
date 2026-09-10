@@ -16,7 +16,13 @@ import {
 } from '@/lib/board/copy';
 import { explainGame } from '@/lib/board/explain';
 import type { PlayerBoardView } from '@/lib/board/types';
-import { workedPlayer, workedRecentGame } from '@/lib/testing/boardFixtures';
+import type { PlayerStatsView } from '@/lib/stats/types';
+import {
+  emptyPlayerStats,
+  workedPlayer,
+  workedPlayerStats,
+  workedRecentGame,
+} from '@/lib/testing/boardFixtures';
 import { workedPuuid } from '@/lib/testing/workedExample';
 import { NAMELESS_HINT } from '@/lib/tonight/copy';
 import { PlayerView } from './PlayerView';
@@ -29,8 +35,13 @@ import { PlayerView } from './PlayerView';
  * a delta that adds up, the five in lane order, and the chip and its sentence.
  */
 
-function draw(player: PlayerBoardView = workedPlayer()) {
-  return render(<PlayerView player={player} />);
+/**
+ * The page takes two answers since M5.20: the board's load and `/stats`' own, narrowed to this
+ * player. A test that is about the header, the chart or a game row passes the worked sections
+ * and ignores them; `PlayerStats.test.tsx` is where they are the subject.
+ */
+function draw(player: PlayerBoardView = workedPlayer(), stats: PlayerStatsView | null = workedPlayerStats()) {
+  return render(<PlayerView player={player} stats={stats} />);
 }
 
 describe('the two numbers', () => {
@@ -109,9 +120,9 @@ describe('the rating history chart', () => {
         losses: 0,
         range: null,
         history: [],
-        roles: [],
         recent: [],
       }),
+      emptyPlayerStats(),
     );
 
     expect(screen.getByText(WINDOW_EMPTY['all-time'])).toBeInTheDocument();
@@ -173,13 +184,38 @@ describe('the still-settling marker (M3.8)', () => {
   });
 });
 
-describe('the role record', () => {
-  it('is in lane order, with the games and the record per role', () => {
+/**
+ * The sections themselves are `PlayerStats.test.tsx`'s subject. What this file owns is that the
+ * page **mounts** them, in the brief's order, under the rating chart and above `Recent games`.
+ */
+describe('the sections under the chart (M5.20)', () => {
+  it('draws them in the order the brief lists, between the chart and the recent games', () => {
     const { container } = draw();
 
-    // Three grid cells with no whitespace between them: role, games, record.
-    const records = [...container.querySelectorAll('.cn-record')].map((node) => node.textContent);
-    expect(records).toEqual(['top20 games11W 9L', 'mid17 games7W 10L']);
+    const titles = [...container.querySelectorAll('.cn-board-title')].map((node) => node.textContent);
+    expect(titles).toEqual(['By role', 'By side', 'Partners', 'Streaks', RECENT_GAMES_HEADING]);
+  });
+
+  it('is in lane order, with the record and the percentage per role', () => {
+    const { container } = draw();
+
+    const roles = [...container.querySelectorAll('.cn-records')][0];
+    const records = [...(roles?.querySelectorAll('.cn-record') ?? [])].map((node) =>
+      node.textContent?.replace(/ over \d+ games?/, ''),
+    );
+    expect(records).toEqual(['top11W 9L · 55%', 'mid7W 10L · 41%']);
+  });
+
+  it('draws none of them for a window this player has no counted game in', () => {
+    const { container } = draw(
+      workedPlayer('Hana', { window: 'last-week', games: 0, wins: 0, losses: 0, range: null, recent: [] }),
+      emptyPlayerStats('last-week'),
+    );
+
+    // The window's own sentence is the whole answer; four cards of `Nobody…` under it are four
+    // ways of repeating it.
+    expect(screen.getByText(WINDOW_EMPTY['last-week'])).toBeInTheDocument();
+    expect(container.querySelectorAll('.cn-board-title')).toHaveLength(0);
   });
 });
 
@@ -320,7 +356,6 @@ describe('a window on the player page', () => {
     range: 'Monday 1 Sep to Sunday 7 Sep',
     reference: 1_376,
     history: [1_376, 1_402, 1_434],
-    roles: [{ role: 'top', games: 6, wins: 4, losses: 2 }],
   });
 
   it('carries the picker, marked, and links its four neighbours at this player', () => {
@@ -377,9 +412,9 @@ describe('a window on the player page', () => {
         losses: 0,
         range: null,
         history: [],
-        roles: [],
         recent: [],
       }),
+      emptyPlayerStats('last-week'),
     );
 
     expect(screen.getByText(WINDOW_EMPTY['last-week'])).toBeInTheDocument();
@@ -405,9 +440,9 @@ describe('a window on the player page', () => {
         losses: 0,
         range: null,
         history: [],
-        roles: [],
         recent: [],
       }),
+      emptyPlayerStats('last-month'),
     );
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Someone');
@@ -445,10 +480,34 @@ describe('the Floodlit rank order down the page (M3.19)', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveClass('cn-display');
     expect(container.querySelector('.cn-number-primary .cn-number-value')?.textContent).toBe('882');
-    expect([...container.querySelectorAll('h2')].map((node) => node.className)).toEqual([
-      'cn-board-title',
-      'cn-board-title',
+    // **Every card title on the page, and the same rule for all of them** — four of them are
+    // M5.20's sections, and a fifth heading level for those would be the swap undone.
+    const titles = [...container.querySelectorAll('h2')];
+    expect(titles.map((node) => node.className)).toEqual(titles.map(() => 'cn-board-title'));
+    expect(titles.map((node) => node.textContent)).toEqual([
+      'By role',
+      'By side',
+      'Partners',
+      'Streaks',
+      RECENT_GAMES_HEADING,
     ]);
+  });
+
+  /**
+   * The second level, and there is no third (M5.8): a group label inside a card is `dim`, so a
+   * card's own name is the loudest thing in it and the sub-head is not.
+   */
+  it('opens a block inside a card with a dim group label, never a second title', () => {
+    const { container } = draw();
+
+    expect([...container.querySelectorAll('.cn-stats-subtitle')].map((node) => node.textContent)).toEqual([
+      'Best together',
+      'Worst together',
+      'Current streak',
+      'Longest win streak',
+      'Longest losing streak',
+    ]);
+    expect(container.querySelectorAll('h3')).toHaveLength(0);
   });
 
   it('puts each list in a card with a `raise` header bar', () => {
@@ -633,10 +692,9 @@ describe('the seed line', () => {
       losses: 0,
       history: [],
       recent: [],
-      roles: [],
       range: null,
     });
-    const { container } = draw(player);
+    const { container } = draw(player, emptyPlayerStats());
 
     expect(container.querySelector('.cn-seed-line')?.textContent).toBe(
       `Seeded from Silver II at ${player.reference}.`,

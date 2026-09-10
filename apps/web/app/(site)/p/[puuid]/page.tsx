@@ -4,6 +4,7 @@ import { loadPlayerBoard } from '@/lib/board/load';
 import { PLAYER_WINDOW, parseWindow } from '@/lib/board/window';
 import type { WindowKind } from '@/lib/night';
 import { createPublicClient } from '@/lib/publicClient';
+import { loadPlayerStats } from '@/lib/stats/load';
 import { renderWebName } from '@/lib/tonight/copy';
 import { nightTimeZone } from '@/lib/tonight/night';
 import { PlayerView } from '../../../_board/PlayerView';
@@ -39,6 +40,22 @@ const loadPlayer = cache(async (puuid: string, window: WindowKind) =>
   loadPlayerBoard(createPublicClient(), puuid, { window, timeZone: nightTimeZone() }),
 );
 
+/**
+ * The sections under the chart (M5.20), read through **`/stats`' own loader** and narrowed to
+ * this player: `loadStats` and this call the same window read, apply the same `gateGame`, and
+ * fold with the same pure functions — the brief's rule that "the player page calls the same
+ * loader and picks one player out of the answer", so a record here and the same record on
+ * `/stats` are one computation.
+ *
+ * A second call rather than one read shared with the board above it: the board's read is a
+ * different query with a different shape (one player's rows, the season's ratings), and joining
+ * them would be a third query path to keep true. `cache` keeps this one to a single read per
+ * request, exactly as it does for the board.
+ */
+const loadSections = cache(async (puuid: string, window: WindowKind) =>
+  loadPlayerStats(createPublicClient(), puuid, { window, timeZone: nightTimeZone() }),
+);
+
 export async function generateMetadata({ params, searchParams }: PlayerPageProps) {
   const [{ puuid }, query] = await Promise.all([params, searchParams]);
   const window = parseWindow(query.window, PLAYER_WINDOW);
@@ -53,11 +70,18 @@ export default async function PlayerPage({ params, searchParams }: PlayerPagePro
   const window = parseWindow(query.window, PLAYER_WINDOW);
   if (window === null) notFound();
 
-  const player = await loadPlayer(puuid, window);
+  /**
+   * **The two reads are made together**, not one after the other: the board's numbers and
+   * M5.20's sections are one page, and a phone on a link waits for the slower of the two rather
+   * than for their sum. A puuid nobody knows then costs one read it does not use, which is the
+   * cheaper of the two mistakes — it happens on a mangled URL, and the other one happens on
+   * every visit.
+   */
+  const [player, stats] = await Promise.all([loadPlayer(puuid, window), loadSections(puuid, window)]);
   if (player === null) notFound();
 
   // **The session decides nothing here** (M3.19): a lineup marks the player whose page it is,
   // and marking the viewer as well put the `brand` rule on two rows of five on every night the
   // two of them played together. With nothing left for it to decide, the page does not read it.
-  return <PlayerView player={player} />;
+  return <PlayerView player={player} stats={stats} />;
 }

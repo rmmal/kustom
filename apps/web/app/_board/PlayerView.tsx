@@ -1,5 +1,4 @@
 import { displayRating } from '@customs/core';
-import type { RoleValue } from '@customs/db';
 import Link from 'next/link';
 import {
   gamesLabel,
@@ -11,7 +10,6 @@ import {
   RATING_LABEL,
   RECENT_GAMES_HEADING,
   RECENT_RATING_LEGEND,
-  ROLE_RECORD_HEADING,
   WINDOW_EMPTY,
   WON,
   winLossLabel,
@@ -21,11 +19,13 @@ import type { PlayerBoardView, RecentGame, RecentTeammate } from '@/lib/board/ty
 import { formatDuration } from '@/lib/discord/embeds';
 import { formatDayMonth } from '@/lib/night';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
+import type { PlayerStatsView } from '@/lib/stats/types';
 import { isNameless, renderWebName } from '@/lib/tonight/copy';
 import { nightTimeZone } from '@/lib/tonight/night';
 import '../board-parts.css';
-import { RoleIcon } from '../_icons/RoleIcon';
-import { NamelessHint, SettlingChip, SettlingNote } from './parts';
+import '../stats.css';
+import { PlayerStats } from './PlayerStats';
+import { NamelessHint, RoleName, SettlingChip, SettlingNote } from './parts';
 import { RatingChart } from './RatingChart';
 import { WindowPicker } from './WindowPicker';
 
@@ -49,6 +49,14 @@ import { WindowPicker } from './WindowPicker';
 
 export interface PlayerViewProps {
   player: PlayerBoardView;
+  /**
+   * The sections under the chart (M5.20), read for this player out of `/stats`' own answer.
+   *
+   * **`null` is a page whose window has nothing in it**, not a page that failed to load one:
+   * the loader returns the empty view rather than nothing, and the empty view draws nothing.
+   * The prop is required and not optional so that a caller has to have made the read.
+   */
+  stats: PlayerStatsView | null;
 }
 
 /**
@@ -58,7 +66,7 @@ export interface PlayerViewProps {
  * 2026-09-10), which is two answers to "which one is my row" on a page that is not about the
  * viewer at all.
  */
-export function PlayerView({ player }: PlayerViewProps) {
+export function PlayerView({ player, stats }: PlayerViewProps) {
   return (
     <main className="cn-page">
       <header className="cn-strip">
@@ -87,13 +95,13 @@ export function PlayerView({ player }: PlayerViewProps) {
         )}
       </header>
 
-      <PlayerWindow player={player} />
+      <PlayerWindow player={player} stats={stats} />
     </main>
   );
 }
 
-/** The page proper: the two numbers, the chart, the record and the last few games. */
-function PlayerWindow({ player }: { player: PlayerBoardView }) {
+/** The page proper: the two numbers, the chart, the sections about them, the last few games. */
+function PlayerWindow({ player, stats }: PlayerViewProps) {
   const nameless =
     isNameless(player.name) || player.recent.some((game) => game.team.some((seat) => isNameless(seat.name)));
   /** M3.23: the sentence is printed once, and only while a row on the page reads `not rated`. */
@@ -189,24 +197,17 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
         </div>
       </section>
 
-      {player.roles.length === 0 ? null : (
-        <section className="cn-block">
-          <section className="cn-card cn-list-card">
-            <header className="cn-card-head cn-list-head">
-              <h2 className="cn-board-title">{ROLE_RECORD_HEADING}</h2>
-            </header>
-            <ul className="cn-records">
-              {player.roles.map((record) => (
-                <li key={record.role} className="cn-record">
-                  <RoleName role={record.role} size={20} />
-                  <span className="cn-num cn-record-games">{gamesLabel(record.games)}</span>
-                  <span className="cn-num cn-record-wl">{winLossLabel(record.wins, record.losses)}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </section>
-      )}
+      {/*
+       * **Below the rating chart, the sections about this person** (M5.20): their role record,
+       * their side record, their partners, their streaks, their mean game and — on a closed
+       * window they won something in — one award line.
+       *
+       * `By role` lives in there now and not here. It used to be folded a second time by
+       * `lib/board/load.ts`, over the *rated* rows rather than the counted games, which is two
+       * definitions of one record on one page the day a backfill lands unrated. The page reads
+       * `lib/stats` for all of it, exactly as `/stats` does (`04-decisions.md`, 2026-09-11).
+       */}
+      {stats === null ? null : <PlayerStats stats={stats} />}
 
       {player.recent.length === 0 ? null : (
         <section className="cn-block">
@@ -335,22 +336,5 @@ function LineupName({ seat, viewed }: { seat: RecentTeammate; viewed: boolean })
     <Link className="cn-lineup-name cn-lineup-link" href={`/p/${seat.puuid}`}>
       {renderWebName(seat.name)}
     </Link>
-  );
-}
-
-/**
- * A role, icon and word, always both (`05-design.md`, "Iconography"). The icon is `aria-hidden`
- * and the word beside it is the accessible name; the mark is an anchor for the eye in a dense
- * list, never a replacement for language.
- *
- * 20px where the role is the subject of its row (`By role`), 14px where it sits beside a name
- * in a lineup — the same size the seat rack and the team cards use for exactly that position.
- */
-function RoleName({ role, size = 14 }: { role: RoleValue; size?: number }) {
-  return (
-    <span className="cn-num cn-lineup-role">
-      <RoleIcon role={role} size={size} />
-      {role}
-    </span>
   );
 }

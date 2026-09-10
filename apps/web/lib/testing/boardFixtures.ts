@@ -4,6 +4,7 @@ import { sortBoardRows } from '../board/order';
 import type { BoardRow, BoardView, PlayerBoardView, RecentGame } from '../board/types';
 import type { WindowKind } from '../night';
 import { provenRating, provenSortKey } from '../ratingDisplay';
+import type { PartnerRecord, PlayerStatsView } from '../stats/types';
 import { WORKED_ROSTER, workedPuuid } from './workedExample';
 
 /**
@@ -138,12 +139,82 @@ export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> 
     // `Rating` beside it are the same number — and that starts above the seed, so the
     // reference line is outside the series and the range has to widen to keep it on screen.
     history: [seed + 60, seed + 90, rating - 42, rating],
-    roles: [
-      { role: 'top', games: 20, wins: 11, losses: 9 },
-      { role: 'mid', games: 17, wins: 7, losses: 10 },
-    ],
     recent: [workedRecentGame()],
     ...overrides,
+  };
+}
+
+/**
+ * The sections under the chart (M5.20) for the same worked player: `Hana`, all-time.
+ *
+ * Hand-written rather than folded, because these are **component** fixtures — what the page
+ * does with an answer, not how the answer is computed. The arithmetic that produces one of
+ * these from a list of games is `lib/stats/player.ts` and is tested against its own fixtures.
+ *
+ * The numbers are the worked example's: 37 games, a role record that clears the five-row
+ * minimum on both roles, one side under it, and the `W3` her board row prints.
+ */
+export function workedPlayerStats(overrides: Partial<PlayerStatsView> = {}): PlayerStatsView {
+  const partner = (name: string, wins: number, losses: number): PartnerRecord => ({
+    puuid: workedPuuid(name),
+    name,
+    games: wins + losses,
+    wins,
+    losses,
+    winRate: Math.round((wins / (wins + losses)) * 100),
+  });
+
+  return {
+    window: 'all-time',
+    games: 37,
+    roles: [
+      { role: 'top', puuid: workedPuuid('Hana'), name: 'Hana', games: 20, wins: 11, losses: 9, winRate: 55 },
+      { role: 'mid', puuid: workedPuuid('Hana'), name: 'Hana', games: 17, wins: 7, losses: 10, winRate: 41 },
+    ],
+    noRoleGames: 0,
+    sides: [
+      {
+        side: 100,
+        record: { puuid: workedPuuid('Hana'), name: 'Hana', games: 21, wins: 12, losses: 9, winRate: 57 },
+      },
+      // Under the five-row minimum, so this one prints bare — the page's own edge case.
+      {
+        side: 200,
+        record: { puuid: workedPuuid('Hana'), name: 'Hana', games: 4, wins: 3, losses: 1, winRate: null },
+      },
+    ],
+    bestPartners: [partner('Iris', 9, 3), partner('Karim', 7, 4), partner('Theo', 6, 4)],
+    worstPartners: [partner('Bilal', 2, 9), partner('Omar', 3, 8), partner('Theo', 6, 4)],
+    streaks: {
+      puuid: workedPuuid('Hana'),
+      name: 'Hana',
+      current: { kind: 'W', length: 3 },
+      longestWin: 6,
+      longestLoss: 4,
+    },
+    averageMinutes: 32,
+    awards: [],
+    capped: false,
+    cap: 2_000,
+    ...overrides,
+  };
+}
+
+/** The same sections for a window this player has no counted game in: the page draws none. */
+export function emptyPlayerStats(window: WindowKind = 'all-time'): PlayerStatsView {
+  return {
+    window,
+    games: 0,
+    roles: [],
+    noRoleGames: 0,
+    sides: [],
+    bestPartners: [],
+    worstPartners: [],
+    streaks: null,
+    averageMinutes: null,
+    awards: [],
+    capped: false,
+    cap: 2_000,
   };
 }
 

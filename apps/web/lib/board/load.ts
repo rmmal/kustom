@@ -1,6 +1,6 @@
 import { displayRating, type Rating, seedFromRank } from '@customs/core';
 import type { RoleValue, SideValue } from '@customs/db';
-import { inLaneOrder, LANE_ORDER } from '../laneOrder';
+import { inLaneOrder } from '../laneOrder';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import { provenRating, provenSortKey } from '../ratingDisplay';
@@ -9,7 +9,7 @@ import { rankLabel, SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
 import { recentGames } from './recent';
 import { currentStreak } from './streak';
-import type { BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate, RoleRecord } from './types';
+import type { BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate } from './types';
 import { windowRangeLabel } from './window';
 
 /**
@@ -381,7 +381,6 @@ export async function loadPlayerBoard(
       seedRank,
       reference: seed,
       history: [],
-      roles: [],
       recent: [],
     };
   }
@@ -478,7 +477,6 @@ export async function loadPlayerBoard(
     reference:
       window === 'all-time' || first === undefined ? seed : displayRating(first.row.muBefore as number),
     history: historySeries(played),
-    roles: roleRecord(played),
     recent,
   };
 }
@@ -501,22 +499,13 @@ function historySeries(played: readonly { row: PlayerGameRow }[]): number[] {
   return series;
 }
 
-/** Lane order, and only the roles the scoreboard actually gave them. */
-function roleRecord(played: readonly { row: PlayerGameRow; game: SeasonGame }[]): RoleRecord[] {
-  const byRole = new Map<RoleValue, RoleRecord>();
-  for (const { row, game } of played) {
-    // A game the scoreboard has no role for is not attributable to one; it still counts in
-    // `ratings.games`, which is why these two totals can differ and neither is wrong.
-    if (row.role === null) continue;
-    const record = byRole.get(row.role) ?? { role: row.role, games: 0, wins: 0, losses: 0 };
-    record.games += 1;
-    if (row.side === game.winningSide) record.wins += 1;
-    else record.losses += 1;
-    byRole.set(row.role, record);
-  }
-
-  return LANE_ORDER.map((role) => byRole.get(role)).filter((record): record is RoleRecord => !!record);
-}
+/*
+ * `roleRecord` stood here until M5.20 (2026-09-11): `By role` over this player's rated rows.
+ *
+ * The section is drawn from `lib/stats` now — the same fold `/stats` uses, over the games
+ * `gateGame` counts, with product's five-row minimum and a percentage. This file no longer
+ * answers a question two files can answer differently (`04-decisions.md`).
+ */
 
 /**
  * The last few games, each with the five the player was on, in lane order.
