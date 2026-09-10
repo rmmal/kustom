@@ -282,3 +282,28 @@ export const LINK_OFFLINE = 'That did not reach the server. Nothing changed — 
  * what is unchanged, then the whole fix.
  */
 export const START_LOBBY_OFFLINE = 'That did not reach the server. No lobby was opened — tap it again.';
+
+/* ---------------------------------------------------------------------------
+ * `Missed the invite?` (M4.10, product 2026-09-10).
+ *
+ * `Missed the invite? The lobby is Customs 09 Sep #1, password 4821.` — and the name-only form
+ * when no companion has told us a password yet. Three fragments rather than one template,
+ * because the two values between them are **data** and are set in mono while the sentence
+ * around them stays Archivo; {@link missedInviteSentence} assembles the same words for a test
+ * to read, so the page and the string cannot drift.
+ *
+ * Who sees it is not a copy decision and is not here: the page draws it for a signed-in viewer
+ * matched to a player row, and for nobody else (`TonightView`, product and the designer).
+ * ------------------------------------------------------------------------- */
+
+export const MISSED_INVITE_LEAD = 'Missed the invite? The lobby is ';
+
+export const MISSED_INVITE_PASSWORD = ', password ';
+
+export const MISSED_INVITE_END = '.';
+
+/** The whole sentence as one string: what the rendered line reads, punctuation and all. */
+export function missedInviteSentence(name: string, password: string | null): string {
+  const half = password === null ? '' : `${MISSED_INVITE_PASSWORD}${password}`;
+  return `${MISSED_INVITE_LEAD}${name}${half}${MISSED_INVITE_END}`;
+}

@@ -41,8 +41,27 @@ function progress(overrides: Partial<LobbyStartView> = {}): LobbyStartView {
   };
 }
 
+/** `idle`: the state with the button in it. The readout has its own describe below. */
 function draw(start: LobbyStartView | null = null, around = 0, onPressed?: () => void) {
-  return render(<StartLobby start={start} around={around} onPressed={onPressed} />);
+  return render(<StartLobby start={start} press around={around} onPressed={onPressed} />);
+}
+
+/**
+ * A **schema-valid** answer from the route (`startLobbyResponseSchema`), because that is what
+ * the component parses: a 200 in any other shape names no host, and the server re-read fills
+ * the sentence in instead. Overriding a field here is how the invalid case is written.
+ */
+function startAnswer(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    commandId: '2f1d6d7e-6c9a-4f0e-9d3f-5f1b8c2a44e1',
+    host: { playerId: 'a6f0f4e2-1f77-4a63-9a5e-2c3f0b7d55aa', puuid: 'puuid-hamoodi', name: HOST },
+    lobbyName: 'Customs 10 Sep #1',
+    lobbyPassword: '4821',
+    cycle: 1,
+    expiresAt: '2026-09-10T19:41:00.000Z',
+    ...overrides,
+  };
 }
 
 /** The route answered. `ok: false` carries the envelope every route in this app uses. */
@@ -84,7 +103,7 @@ describe('idle: nobody has pressed it', () => {
 
 describe('the press', () => {
   it('posts an empty body in place, names the host, and never navigates', async () => {
-    answers({ ok: true, commandId: 'c1', host: { playerId: 'p1', puuid: 'u1', name: HOST } });
+    answers(startAnswer());
     const refresh = vi.fn();
     draw(null, 0, refresh);
 
@@ -100,7 +119,7 @@ describe('the press', () => {
   });
 
   it('keeps the focus on the button that was pressed', async () => {
-    answers({ ok: true, host: { name: HOST } });
+    answers(startAnswer());
     draw();
 
     const button = screen.getByRole('button', { name: START_LOBBY_BUTTON });
@@ -134,6 +153,19 @@ describe('the press', () => {
     }
   });
 
+  it('names nobody when the answer is a 200 the schema does not recognise', async () => {
+    // The row is written either way; the server re-read a moment later names the host, which
+    // is better than `Opening a lobby on 's PC…`.
+    answers({ ok: true });
+    const refresh = vi.fn();
+    const { container } = draw(null, 0, refresh);
+
+    press();
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(container.querySelector('.cn-start-note')).not.toBeInTheDocument();
+  });
+
   it('says nothing was opened when the request never left the browser', async () => {
     vi.stubGlobal(
       'fetch',
@@ -149,7 +181,7 @@ describe('the press', () => {
   });
 
   it('drops a second tap while one is in flight, instead of queuing a second command', async () => {
-    answers({ ok: true, host: { name: HOST } });
+    answers(startAnswer());
     draw();
 
     press();
@@ -157,6 +189,27 @@ describe('the press', () => {
 
     await waitFor(() => expect(screen.getByText(openingOnPcLine(HOST))).toBeInTheDocument());
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the readout, with no button (filling)', () => {
+  it('carries the invited line and nothing to press', () => {
+    render(<StartLobby start={progress({ status: 'acked', invited: 6 })} press={false} around={6} />);
+
+    expect(screen.getByText(invitedLine(6))).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('carries a failed create’s sentence', () => {
+    render(<StartLobby start={progress({ status: 'failed', error: 'expired' })} press={false} around={3} />);
+
+    expect(screen.getByText(NO_CLIENT_ANSWERED)).toBeInTheDocument();
+  });
+
+  it('draws nothing at all when it has nothing to say', () => {
+    const { container } = render(<StartLobby start={null} press={false} around={3} />);
+
+    expect(container).toBeEmptyDOMElement();
   });
 });
 
@@ -168,6 +221,24 @@ describe('what the row says afterwards', () => {
 
     draw(progress({ status: 'sent' }));
     expect(screen.getByText(openingOnPcLine(HOST))).toBeInTheDocument();
+  });
+
+  it('goes quiet while the command is live, without ever being `disabled`', async () => {
+    answers({ ok: false, error: LOBBY_ALREADY_OPEN }, false);
+    draw(progress({ status: 'sent' }));
+
+    const button = screen.getByRole('button', { name: START_LOBBY_BUTTON });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveClass('cn-button-quiet');
+    // Never the attribute: a disabled control drops the focus to `<body>` (M3.20).
+    expect(button).not.toBeDisabled();
+
+    button.focus();
+    press();
+    // And the press is dropped rather than queuing a second command.
+    await Promise.resolve();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(button);
   });
 
   it('says nothing on success: the member list appearing is the answer', () => {

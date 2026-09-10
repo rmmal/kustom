@@ -139,10 +139,22 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
              * saying what the window's empty line says underneath in words (the designer,
              * 2026-09-10).
              */}
+            {/*
+             * **The record, minus the count the sentence under it already carries** (the
+             * designer, 2026-09-10). `37 games · 19W 18L` above `Seeded from Silver II at 1290,
+             * 37 games since.` prints 37 twice, forty pixels apart; the seed line is the one
+             * that has to say it, because "since when" is what it is about. With no seed line —
+             * a window this player did not play — nothing prints here either, because the count
+             * is zero.
+             */}
             {player.games === 0 ? null : (
               <p className="cn-row-meta">
-                <span className="cn-num">{gamesLabel(player.games)}</span>
-                {' · '}
+                {start === null ? (
+                  <>
+                    <span className="cn-num">{gamesLabel(player.games)}</span>
+                    {' · '}
+                  </>
+                ) : null}
                 <span className="cn-num">{winLossLabel(player.wins, player.losses)}</span>
               </p>
             )}
@@ -214,8 +226,12 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
            * And once under that, the whole point of M5.15: why one win is worth more than
            * another. **Per page, not per row** — a sentence repeated five times is a sentence
            * nobody reads twice. No maths, no formula, no link to a paper (product).
+           *
+           * In the tonight page's explanation-strip dress (the designer, 2026-09-10): the 3px
+           * `brand` leading rule that means "the bot is explaining itself" on every other
+           * surface it appears on.
            */}
-          <p className="cn-hint">{RATING_EXPLANATION}</p>
+          <p className="cn-explain">{RATING_EXPLANATION}</p>
         </section>
       )}
 
@@ -250,8 +266,8 @@ function RecentGameView({
     game.muBefore === null || game.muAfter === null ? null : displayDelta(game.muBefore, game.muAfter);
   /**
    * Why the change is that size (M5.15): the chance the balancer gave **this player's own
-   * side**, and the same delta the column above prints, from the same call. `null` on an
-   * unrated row, which M3.23 already answers in three words and which this task leaves alone.
+   * side**, and only that — the head above already prints the result and the delta. `null` for
+   * a game with no stored chance and for an unrated row, which M3.23 answers in three words.
    */
   const why = explainGame(game);
 
@@ -289,7 +305,7 @@ function RecentGameView({
         )}
       </p>
       {/* Directly under the head it explains, above the lineup: one readable column down the
-          list, and never a second table (M5.8 owns the dress; this is the order). */}
+          list, and never a second table. Absent, not empty, for a game with no stored chance. */}
       {why === null ? null : <p className="cn-game-why">{why}</p>}
       <ul className="cn-lineup">
         {game.team.map((seat) => (

@@ -46,11 +46,13 @@ describe('the two numbers', () => {
     expect(document.body.textContent).not.toMatch(/\bMMR\b|\bScore\b/);
   });
 
-  it('prints the record directly under them, the way a board row does', () => {
+  it('prints the record directly under them, without the count the seed line carries', () => {
     const { container } = draw();
 
-    // Hana: 37 games in the fixture, half of them won.
-    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('37 games · 19W 18L');
+    // Hana: 37 games in the fixture, half of them won. The `37 games` half moved into the seed
+    // sentence forty pixels below (the designer, 2026-09-10) — one page, one count.
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('19W 18L');
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('37 games since.');
     // Directly under: the two are one block, not two blocks a gap apart.
     const summary = container.querySelector('.cn-summary');
     expect([...(summary?.children ?? [])].map((child) => child.className)).toEqual([
@@ -62,7 +64,9 @@ describe('the two numbers', () => {
   it('says `1 game` for somebody with one, never `1 games`', () => {
     const { container } = draw(workedPlayer('Hana', { games: 1, wins: 1, losses: 0 }));
 
-    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('1 game · 1W 0L');
+    // The count is the seed line's now, and it is still `1 game`.
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('1W 0L');
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('1 game since.');
   });
 });
 
@@ -127,7 +131,9 @@ describe('the rating history chart', () => {
     expect(screen.queryByText(WINDOW_EMPTY['all-time'])).not.toBeInTheDocument();
     // Nothing to plot, so nothing is plotted — and nothing is claimed either.
     expect(container.querySelector('.cn-chart-svg')).not.toBeInTheDocument();
-    expect(container.querySelector('.cn-row-meta')?.textContent).toContain('37 games');
+    // The count is in the seed line now, and it still says forty games happened.
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('37 games since.');
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('19W 18L');
   });
 });
 
@@ -321,10 +327,12 @@ describe('a window on the player page', () => {
     expect(line?.textContent).not.toContain('games');
   });
 
-  it('counts the window games in the record, not a whole history', () => {
+  it('counts the window games, once: the record and the line under it are one count', () => {
     const { container } = draw(week);
 
-    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('6 games · 4W 2L');
+    expect(container.querySelector('.cn-row-meta')?.textContent).toBe('4W 2L');
+    // The week's own count lives in the line that says what it is counted since.
+    expect(container.querySelector('.cn-seed-line')?.textContent).toContain('6 games since.');
   });
 
   /** `seed` is where the board started them; `start` is where the week found them. */
@@ -527,7 +535,7 @@ describe('a game that moved nothing (M3.23)', () => {
  * themselves are `lib/board/explain.test.ts`; these are about what is on the screen.
  */
 describe('why each change is the size it is', () => {
-  it('carries the win-chance sentence on every rated row, from the same delta as the column', () => {
+  it('carries the chance its own side was given, on every row that has one', () => {
     const { container } = draw(
       workedPlayer('Hana', {
         recent: [
@@ -538,24 +546,22 @@ describe('why each change is the size it is', () => {
     );
 
     const sentences = [...container.querySelectorAll('.cn-game-why')].map((node) => node.textContent);
-    expect(sentences).toEqual([
-      explainGame(workedRecentGame({ won: true, side: 200, blueWinProb: 0.58 })),
-      explainGame(workedRecentGame({ won: false, side: 100, blueWinProb: 0.58 })),
-    ]);
-    // Their own side's chance: red's, on a split that gave blue 58%.
-    expect(sentences[0]).toContain('42%');
-    // And the change is the string the rating column prints beside it, to the character.
-    const delta = container.querySelector('.cn-delta')?.textContent ?? '';
-    expect(sentences[0]).toContain(delta.replace('(', '').replace(')', '').trim());
+    // Red's chance on the first row, blue's on the second, from one split: 42 and 58.
+    expect(sentences).toEqual(['As the 42% side.', 'As the 58% side.']);
+    expect(sentences[0]).toBe(explainGame(workedRecentGame({ won: true, side: 200, blueWinProb: 0.58 })));
+    // And it says nothing the head above it already said.
+    expect(sentences.join(' ')).not.toMatch(/Won|Lost|[+−]/);
   });
 
-  it('drops the clause on a backfilled row and prints no chance and no placeholder', () => {
+  it('draws no caption at all on a backfilled row, and still prints the row', () => {
     const { container } = draw(
       workedPlayer('Hana', { recent: [workedRecentGame({ won: true, blueWinProb: null })] }),
     );
 
-    expect(container.querySelector('.cn-game-why')?.textContent).not.toContain('%');
-    expect(container.querySelector('.cn-game-why')?.textContent).toMatch(/^Won, /);
+    expect(container.querySelector('.cn-game-why')).not.toBeInTheDocument();
+    // The row itself is untouched: result, date, duration, rating and delta.
+    expect(container.querySelector('.cn-game-head')?.textContent).toContain('Won');
+    expect(container.querySelector('.cn-delta')).toBeInTheDocument();
   });
 
   it('leaves an unrated row untouched: three words, and no sentence under them', () => {
@@ -577,6 +583,9 @@ describe('why each change is the size it is', () => {
     );
 
     expect(screen.getAllByText(RATING_EXPLANATION)).toHaveLength(1);
+    // In the tonight page's explanation-strip dress: the 3px `brand` rule that means "the bot
+    // is explaining itself" (the designer, 2026-09-10).
+    expect(screen.getByText(RATING_EXPLANATION)).toHaveClass('cn-explain');
   });
 });
 

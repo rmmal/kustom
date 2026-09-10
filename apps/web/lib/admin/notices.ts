@@ -13,6 +13,7 @@
  * page prints the route's own words.
  */
 
+import { startLobbyResponseSchema } from '@/app/api/admin/lobbies/start/schema';
 import { openingOnPcLine } from './lobbyStart';
 
 export type AdminFormKind = 'players' | 'tokens' | 'discord' | 'reroll' | 'lobby-start';
@@ -43,12 +44,13 @@ export function adminNotice(kind: AdminFormKind, values: SubmittedValues, body: 
  * is the host from the route's own answer, already through the admin name chain.
  */
 function lobbyStartNotice(body: unknown): string {
-  const host = readField(body, 'host');
-  const name = readField(host, 'name');
-  return typeof name === 'string' && name.length > 0
-    ? openingOnPcLine(name)
-    : // A 200 in a shape the response schema does not allow. The row is written either way,
-      // and the page re-reads it a moment later.
+  // Through the route's **own** response schema, not a hand-read of two fields (the reviewer,
+  // 2026-09-10): one shape, validated at both ends of the wire.
+  const answer = startLobbyResponseSchema.safeParse(body);
+  return answer.success
+    ? openingOnPcLine(answer.data.host.name)
+    : // A 200 in a shape the schema does not allow. The row is written either way, and the
+      // page re-reads it a moment later.
       'the lobby is being opened';
 }
 

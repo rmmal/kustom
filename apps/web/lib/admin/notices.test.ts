@@ -132,10 +132,19 @@ describe('the reroll', () => {
 });
 
 describe('the Start a lobby press (M4.2)', () => {
+  /** A whole answer, because the notice now parses the route's own response schema. */
+  const answer = {
+    ok: true,
+    commandId: '2f1d6d7e-6c9a-4f0e-9d3f-5f1b8c2a44e1',
+    host: { playerId: 'a6f0f4e2-1f77-4a63-9a5e-2c3f0b7d55aa', puuid: 'puuid-hamoodi', name: 'Hamoodi' },
+    lobbyName: 'Customs 10 Sep #1',
+    lobbyPassword: '4821',
+    cycle: 1,
+    expiresAt: '2026-09-10T19:41:00.000Z',
+  };
+
   it('names the host the server picked, in the sentence the route itself composes', () => {
-    expect(adminNotice('lobby-start', {}, { ok: true, host: { name: 'Hamoodi' } })).toBe(
-      openingOnPcLine('Hamoodi'),
-    );
+    expect(adminNotice('lobby-start', {}, answer)).toBe(openingOnPcLine('Hamoodi'));
   });
 
   /**

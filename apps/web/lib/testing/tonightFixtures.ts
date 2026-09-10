@@ -218,6 +218,10 @@ export function lobbyView(overrides: Partial<LobbyView> = {}): LobbyView {
   return {
     id: 'lobby-1',
     status: 'open',
+    // What M4.2's press generated and the companion reported back (M4.10). A fixture lobby the
+    // bot opened has both; `lobbyName: null` is the lobby somebody made by hand before M4.2.
+    lobbyName: 'Customs 08 Sep #1',
+    lobbyPassword: '4821',
     members: workedMembers(),
     teams: null,
     result: null,

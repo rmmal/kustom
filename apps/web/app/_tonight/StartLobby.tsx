@@ -1,13 +1,14 @@
 'use client';
 
 import { type FormEvent, useState } from 'react';
+import { startLobbyResponseSchema } from '@/app/api/admin/lobbies/start/schema';
 import { invitedLine, START_LOBBY_BUTTON, startLobbySentence } from '@/lib/admin/lobbyStart';
 import { PLAYERS_PER_GAME } from '@/lib/lobbyState';
 import { START_LOBBY_OFFLINE } from '@/lib/tonight/copy';
 import type { LobbyStartView } from '@/lib/tonight/lobbyStart';
 
 /**
- * `Start a lobby` on the tonight page (M4.2's control, M4.7's placement).
+ * `Start a lobby` on the tonight page (M4.2's control, M4.7 (a)'s layout).
  *
  * 21:40, seven friends in voice, one of them taps this on a phone. Somebody's League client —
  * nobody had to decide whose — opens a custom with a name and a password neither of them chose,
@@ -19,12 +20,23 @@ import type { LobbyStartView } from '@/lib/tonight/lobbyStart';
  * invited line are product's, and they live in one file with the rules that answer with them,
  * so this page and `/admin` cannot drift apart by a character.
  *
+ * **Two shapes, one block** (the designer, 2026-09-10):
+ *
+ *   - **`idle`, for an admin: the button**, directly under the strip's sentence and *above* the
+ *     rack. Ten empty seats are 480px, so a control below them is below the fold on a 390px
+ *     phone — and this is the one thing on an idle page anybody can do.
+ *   - **`filling`: a readout, with no button.** A lobby row exists, so the route can only answer
+ *     `There is already a lobby open.`, and a control whose only outcome is a refusal is not a
+ *     control. What is left is worth saying: how many were invited, or that the create failed.
+ *
+ * **No card and no mark.** It is a stack of lines under the strip; the 2px `brand` inset rule
+ * means "this is about you" (the rack's row, `Your role tonight`) and this is about the night.
+ *
  * **Drawn for an admin only, and being drawn is not permission.** The route is admin-gated
  * until M3.6's third route class exists (`04-decisions.md`, 2026-09-10) and re-checks the
- * session server-side before it writes anything; a non-admin who forged the markup gets a 403.
- * An anonymous visitor is shown **nothing at all** — product's `Sign in with Discord to start a
- * lobby.` belongs to the widened route and would be a promise this deployment cannot keep, and
- * `Your role tonight` already carries the one sign-in this page has.
+ * session server-side before it writes; a non-admin who forged the markup gets a 403. An
+ * anonymous visitor is shown nothing: product's `Sign in with Discord to start a lobby.` is
+ * **suspended, not deleted**, and comes back when the press widens to linked players.
  *
  * **In place, and never a toast** (M3.20). A real `<form>` with a real action, intercepted when
  * JavaScript is running and posted as JSON to the same route; the answer — the pending line or
@@ -42,6 +54,11 @@ export interface StartLobbyProps {
    * and appear on the *other* admin's phone.
    */
   start: LobbyStartView | null;
+  /**
+   * Whether the button is drawn: `idle` only. With `false` this is the readout — the same
+   * sentences, with nothing to press.
+   */
+  press: boolean;
   /** How many are in the lobby now: the invited line is drawn until ten are in. */
   around: number;
   /**
@@ -52,8 +69,8 @@ export interface StartLobbyProps {
   onPressed?: (() => void) | undefined;
 }
 
-export function StartLobby({ start, around, onPressed }: StartLobbyProps) {
-  const [pending, setPending] = useState(false);
+export function StartLobby({ start, press, around, onPressed }: StartLobbyProps) {
+  const [inFlight, setInFlight] = useState(false);
   /** The route's own sentence for a refused press, until the next press clears it. */
   const [refused, setRefused] = useState<string | null>(null);
   /**
@@ -67,6 +84,13 @@ export function StartLobby({ start, around, onPressed }: StartLobbyProps) {
   // A refusal is about the press that was just made and outranks the row from before it.
   const sentence = refused ?? startLobbySentence(progress, hostName);
   /**
+   * While the command is live the button goes **quiet** rather than `disabled`: a disabled
+   * control drops the focus to `<body>`, and M3.20 is about the focus staying where the
+   * keyboard left it. `aria-disabled` says the same thing to a listener, and the submit
+   * short-circuits, so the quiet button cannot queue a second command.
+   */
+  const quiet = progress?.status === 'pending' || progress?.status === 'sent';
+  /**
    * `Invited <n> friends — waiting for them to accept.`, under the control while the lobby is
    * filling and until ten are in (product, M4.2). It is the fan-out's own count, so it appears
    * with the invites and not with the press.
@@ -79,11 +103,11 @@ export function StartLobby({ start, around, onPressed }: StartLobbyProps) {
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     // With JavaScript this control never navigates.
     event.preventDefault();
-    // A second tap while one is in flight is dropped here rather than by disabling the button:
-    // a control that disables itself loses focus, and M3.20 is about the focus staying put.
-    if (pending) return;
+    // A second tap while one is in flight — or while the last one is still being run by a
+    // client — is dropped here rather than by disabling the button (see `quiet`).
+    if (inFlight || quiet) return;
 
-    setPending(true);
+    setInFlight(true);
     setRefused(null);
     try {
       // The body decides nothing (`start/schema.ts`): no host, no name, no password, no mode.
@@ -99,62 +123,71 @@ export function StartLobby({ start, around, onPressed }: StartLobbyProps) {
         setRefused(errorOf(body));
         return;
       }
-      const host = hostNameOf(body);
-      // An answer with no name is a 200 in a shape the schema does not allow; the server
-      // re-read a moment later names the host, and until it does the page says nothing rather
-      // than `Opening a lobby on 's PC…`.
-      if (host !== null) setPressedHost(host);
+      // **The route's own response schema**, not a hand-read of two fields: one shape,
+      // validated at both ends of the wire. A 200 the schema does not recognise names nobody,
+      // and the server re-read a moment later fills the sentence in.
+      const answer = startLobbyResponseSchema.safeParse(body);
+      if (answer.success) setPressedHost(answer.data.host.name);
       // The row is service-role only, so the page asks the **server** for it again rather than
       // waiting for an event that will never come.
       onPressed?.();
     } catch {
       setRefused(START_LOBBY_OFFLINE);
     } finally {
-      setPending(false);
+      setInFlight(false);
     }
   }
 
+  // The readout with nothing to say draws nothing at all, rather than an empty block with a gap
+  // in it (the `filling` case for every night nobody pressed the button).
+  if (!press && sentence === null && invited === null) return null;
+
   return (
-    <section className="cn-card cn-start">
-      <form className="cn-start-form" method="post" action={START_ACTION} onSubmit={submit}>
-        {/* Only the no-JavaScript path reads this. The route re-validates it as a path. */}
-        <input type="hidden" name="redirectTo" value="/" />
-        <button className="cn-button" type="submit">
-          {START_LOBBY_BUTTON}
-        </button>
-      </form>
+    <div className="cn-start">
+      {press ? (
+        <form className="cn-start-form" method="post" action={START_ACTION} onSubmit={submit}>
+          {/* Only the no-JavaScript path reads this. The route re-validates it as a path. */}
+          <input type="hidden" name="redirectTo" value="/" />
+          <button
+            className={quiet ? 'cn-button cn-button-quiet' : 'cn-button'}
+            type="submit"
+            aria-disabled={quiet || undefined}
+          >
+            {START_LOBBY_BUTTON}
+          </button>
+        </form>
+      ) : null}
       {/*
        * Where the button is, never as a banner and never in the URL (M3.20). One slot: the
        * pending line, a refusal, or nothing at all on success — the member list appearing *is*
        * the answer, and a toast on top of it is noise (product, M4.2).
+       *
+       * A refusal is 600 and `role="alert"`; a progress line is 400 and `role="status"`. Two
+       * weights, because one of them is an answer to a press and the other is a state.
        */}
       {sentence === null ? null : (
-        <p className="cn-start-note" role={refused === null ? 'status' : 'alert'}>
+        <p
+          className={refused === null ? 'cn-start-note' : 'cn-start-note cn-start-note-refused'}
+          role={refused === null ? 'status' : 'alert'}
+        >
           {sentence}
         </p>
       )}
       {invited === null ? null : <p className="cn-hint">{invited}</p>}
-    </section>
+    </div>
   );
 }
 
-/** The API's envelope is `{ ok: false, error }`. Anything else gets the page's own sentence. */
+/**
+ * The API's envelope is `{ ok: false, error }`. Anything else gets the page's own sentence.
+ *
+ * Read by hand rather than through `apiErrorSchema`: that schema lives in `lib/http.ts` beside
+ * `next/server`, and this is a client component. Two fields, one shape, every route.
+ */
 function errorOf(body: unknown): string {
   if (typeof body === 'object' && body !== null && 'error' in body) {
     const error = (body as { error: unknown }).error;
     if (typeof error === 'string' && error.length > 0) return error;
   }
   return START_LOBBY_OFFLINE;
-}
-
-/** `host.name` from the route's answer: already through the admin name chain (M4.2). */
-function hostNameOf(body: unknown): string | null {
-  if (typeof body === 'object' && body !== null && 'host' in body) {
-    const host = (body as { host: unknown }).host;
-    if (typeof host === 'object' && host !== null && 'name' in host) {
-      const name = (host as { name: unknown }).name;
-      if (typeof name === 'string' && name.length > 0) return name;
-    }
-  }
-  return null;
 }

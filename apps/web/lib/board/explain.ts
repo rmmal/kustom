@@ -1,5 +1,4 @@
 import type { SideValue } from '@customs/db';
-import { displayDelta, formatWebDelta } from '../ratingDisplay';
 import { gameExplanation, seededLine, startedLine } from './copy';
 import type { PlayerBoardView, RecentGame } from './types';
 
@@ -24,32 +23,35 @@ import type { PlayerBoardView, RecentGame } from './types';
  * The chance the balancer gave **this player's own side**, as a whole number of percent, or
  * `null` when the game has no stored split.
  *
- * `splits.blue_win_prob` is blue's; red's is its complement. `Math.round(p × 100)`, which is
- * the same rounding `favoredClause` prints in the result card and in the Discord embed, so the
- * page and the message name the same percentage for the same game.
+ * **Blue is rounded and red is `100 − blue`** — deliberately, and not `round((1 − p) × 100)`
+ * (the reviewer, 2026-09-10). The two disagree by a point at an exact half — `p = 0.425` gives
+ * blue 43 and this red 57, while rounding red's own share gives 58 — and `favoredClause` in
+ * `lib/discord/embeds.ts` already prints `100 - percent` for red. The result card and the
+ * Discord message say `Red was favored 57%.` about that game, so this row says `the 57% side`:
+ * one number for one game on every surface, and the two halves always add to 100.
  */
 export function sideWinChance(blueWinProb: number | null, side: SideValue): number | null {
   if (blueWinProb === null) return null;
-  return Math.round((side === 100 ? blueWinProb : 1 - blueWinProb) * 100);
+  const blue = Math.round(blueWinProb * 100);
+  return side === 100 ? blue : 100 - blue;
 }
 
 /**
- * One row of `Recent games`, in a sentence: `Won as the 42% side, +43`.
+ * One row of `Recent games`, in a caption: `As the 58% side.`
  *
- * `null` for a row the fold did not rate — M3.23's `not rated` is the whole row, with no
- * chance, no change and now no sentence either — and the win-chance clause is dropped for
- * every game with no stored split: a backfilled game, a game whose lobby row was cleared, a
- * game the group played without the bot. **No row invents a chance and no row is hidden**
- * (product, 2026-09-10).
+ * `null` three ways, and each of them is a row that says everything it can already:
+ *
+ *   - **no stored chance** — a backfilled game, a game whose lobby row was cleared, a game the
+ *     group played without the bot. No row invents a chance, and none gets a caption that only
+ *     repeats the result beside it (product and the designer, 2026-09-10);
+ *   - **not rated** — M3.23 owns that row whole: three words, no chance, no change;
+ *   - both.
  */
 export function explainGame(game: RecentGame): string | null {
   if (game.muBefore === null || game.muAfter === null) return null;
 
-  return gameExplanation(
-    game.won,
-    sideWinChance(game.blueWinProb, game.side),
-    formatWebDelta(displayDelta(game.muBefore, game.muAfter)),
-  );
+  const chance = sideWinChance(game.blueWinProb, game.side);
+  return chance === null ? null : gameExplanation(chance);
 }
 
 /**

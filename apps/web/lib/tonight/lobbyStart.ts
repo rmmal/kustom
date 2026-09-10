@@ -1,3 +1,4 @@
+import { createLobbyCommandPayloadSchema } from '@customs/db/schemas';
 import type { CreateLobbyProgress } from '../admin/lobbyStart';
 import { type NameableRow, playerLabel } from '../admin/playerName';
 import { nightWindow } from '../commands';
@@ -67,7 +68,7 @@ export async function loadLobbyStart(
   const { data, error } = await client
     .from('companion_commands')
     .select(
-      'target_player_id, status, error, payload, players!inner(puuid, display_name, game_name, tag_line)',
+      'target_player_id, status, error, payload, created_at, players!inner(puuid, display_name, game_name, tag_line)',
     )
     .eq('kind', 'create_lobby')
     .gte('created_at', window.start)
@@ -85,17 +86,23 @@ export async function loadLobbyStart(
     gameName: data.players.game_name,
     tagLine: data.players.tag_line,
   };
-  const payload = readPayload(data.payload);
+  // The payload is `jsonb`, so it is parsed with the **same schema the writer used** rather
+  // than picked at by hand: a row from an older deploy, or a hand-edited one, leaves both
+  // fields null instead of putting `undefined` on a page (the reviewer, 2026-09-10).
+  const payload = createLobbyCommandPayloadSchema.safeParse(data.payload);
 
   return {
     status: data.status,
     error: data.error,
     hostName: playerLabel(player),
-    lobbyName: payload.lobbyName,
-    lobbyPassword: payload.lobbyPassword,
+    lobbyName: payload.success ? payload.data.lobbyName : null,
+    lobbyPassword: payload.success ? payload.data.lobbyPassword : null,
     // Only asked once the lobby exists: a create that has not been acked has queued nothing,
     // and a create that failed queued nothing and never will (M4.2).
-    invited: data.status === 'acked' ? await countInvites(client, data.target_player_id, window) : 0,
+    invited:
+      data.status === 'acked'
+        ? await countInvites(client, data.target_player_id, data.created_at, window)
+        : 0,
   };
 }
 
@@ -118,10 +125,21 @@ export async function loadLobbyStartOrNone(
   }
 }
 
-/** The invites tonight's fan-out queued on this host, in any status. */
+/**
+ * The invites **this** create's fan-out queued on this host.
+ *
+ * Bounded below by the create's own `created_at`, not by the night's 06:00 (the reviewer,
+ * 2026-09-10). The fan-out runs off the ack, so its rows are always younger than the create
+ * they came from — and a night has more than one lobby in it. Counting the whole night would
+ * make the second lobby's line claim the first lobby's popups, which is the one number on this
+ * card a reader could check against their own client and find wrong.
+ *
+ * Still bounded above by the night, like every other read of this queue (`04-decisions.md`).
+ */
 async function countInvites(
   client: ServiceClient,
   hostPlayerId: string,
+  createdAt: string,
   window: { start: string; until: string },
 ): Promise<number> {
   const { count, error } = await client
@@ -129,25 +147,9 @@ async function countInvites(
     .select('id', { count: 'exact', head: true })
     .eq('kind', 'invite')
     .eq('target_player_id', hostPlayerId)
-    .gte('created_at', window.start)
+    .gte('created_at', createdAt)
     .lte('created_at', window.until);
 
   if (error) throw new Error(`loadLobbyStart: invites: ${error.message}`);
   return count ?? 0;
-}
-
-/**
- * The two strings on the command's payload, read defensively: `payload` is `jsonb`, and a page
- * that trusted its shape would be one bad row away from a 500 on the one screen twenty people
- * have open. Anything unexpected is simply absent, which every caller already handles.
- */
-function readPayload(payload: unknown): { lobbyName: string | null; lobbyPassword: string | null } {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return { lobbyName: null, lobbyPassword: null };
-  }
-  const record = payload as Record<string, unknown>;
-  return {
-    lobbyName: typeof record.lobbyName === 'string' ? record.lobbyName : null,
-    lobbyPassword: typeof record.lobbyPassword === 'string' ? record.lobbyPassword : null,
-  };
 }

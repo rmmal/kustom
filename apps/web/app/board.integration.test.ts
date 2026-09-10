@@ -524,10 +524,12 @@ if (stack === null) {
       const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
       const text = textOf(renderToStaticMarkup(createElement(PlayerView, { player })));
 
-      // 25.6 → 25.2 is 1536 → 1512: the same −24 the rating column prints beside it.
-      expect(text).toContain('Lost as the 58% side, −24');
-      // The backfilled row keeps its result and its change and drops the clause.
-      expect(text).toContain('Won, +36');
+      // Zoe was on blue, and the split the group played gave blue 58%.
+      expect(text).toContain('As the 58% side.');
+      // The backfilled row has no stored chance, so it has no caption at all — and its own
+      // numbers are untouched: 25 → 25.6 is 1500 → 1536.
+      expect(text).toContain('1536');
+      expect(text).not.toContain('As the 50% side.');
       // The seed line, from the same number the chart's hairline is drawn at.
       expect(text).toContain(`Seeded from Gold IV at ${player.reference}, 2 games since.`);
       // And the one line under the list, exactly once.

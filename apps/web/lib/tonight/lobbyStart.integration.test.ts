@@ -122,6 +122,26 @@ if (stack === null) {
       expect(startLobbySentence(start, 'Hamoodi')).toBeNull();
     });
 
+    /**
+     * The second lobby of a night (the reviewer, 2026-09-10). The fan-out runs off the ack, so
+     * a count bounded by the **night** would make this line claim the first lobby's popups —
+     * the one number on this card a reader can check against their own client.
+     */
+    it('counts only its own fan-out when the night has had two lobbies', async () => {
+      const later = new Date('2026-04-14T19:10:00Z').toISOString();
+      await queue('create_lobby', { created_at: later, status: 'acked' });
+      await queue('invite', { created_at: new Date('2026-04-14T19:11:00Z').toISOString() });
+
+      const start = await loadLobbyStart(db, {
+        now: new Date('2026-04-14T19:20:00Z'),
+        timeZone: TIME_ZONE,
+      });
+
+      // The newest create is the one the page is about, and it invited one person — not the
+      // three the night has queued in total.
+      expect(start).toMatchObject({ status: 'acked', invited: 1 });
+    });
+
     it('is null again on the next night: a stuck row never speaks for tonight', async () => {
       const tomorrow = new Date('2026-04-15T18:40:00Z');
 

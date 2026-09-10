@@ -1,6 +1,5 @@
 import { displayRating } from '@customs/core';
 import type { RoleValue } from '@customs/db';
-import type { ReactNode } from 'react';
 import type { BoardRow } from '@/lib/board/types';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
@@ -8,6 +7,9 @@ import { NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
   HEAD_SEPARATOR,
   joinWebNames,
+  MISSED_INVITE_END,
+  MISSED_INVITE_LEAD,
+  MISSED_INVITE_PASSWORD,
   NAMELESS_HINT,
   OFF_ROLE_LEGEND,
   OFF_ROLE_LEGEND_SUFFIX,
@@ -107,24 +109,31 @@ export function TonightView({
   const header = tonightHeader(state);
   const seatViewer = { puuid: viewerPuuid(viewer), isAdmin: viewerIsAdmin(viewer) };
   /**
-   * `Start a lobby` (M4.2), in the two states it means anything: the idle page and a lobby
-   * that is still filling. From `balanced` on there is a lobby, and the route would refuse the
-   * press with `There is already a lobby open.` — a control whose only possible answer is a
-   * refusal is not a control.
+   * `Start a lobby` (M4.2), with the button in the one state where pressing it can do
+   * anything: the idle page (the designer, 2026-09-10). From `filling` on a lobby row exists,
+   * so the route can only answer `There is already a lobby open.` — and a control whose only
+   * outcome is a refusal is not a control. `filling` gets the same block without the button:
+   * the invited count, or the sentence for a create that failed.
    *
    * **Admin only** while the route is admin-gated (`04-decisions.md`, 2026-09-10), and being
    * drawn is not permission: the route checks the session again before it writes. An anonymous
-   * visitor is shown nothing — nothing anonymous can press it, and this page's one sign-in
-   * lives on the role card.
+   * visitor is shown nothing — product's `Sign in with Discord to start a lobby.` is suspended
+   * until the press widens to linked players, not deleted.
    */
-  const startLobby =
-    seatViewer.isAdmin && (state.kind === 'idle' || state.kind === 'filling') ? (
-      <StartLobby
-        start={lobbyStart}
-        around={state.kind === 'filling' ? state.lobby.members.length : 0}
-        onPressed={onLobbyStarted}
-      />
-    ) : null;
+  const startLobby = seatViewer.isAdmin ? (
+    <StartLobby
+      start={lobbyStart}
+      press={state.kind === 'idle'}
+      around={state.kind === 'filling' ? state.lobby.members.length : 0}
+      onPressed={onLobbyStarted}
+    />
+  ) : null;
+  /**
+   * M4.10's lobby line is for a **signed-in viewer matched to a player row** and nobody else
+   * (product and the designer, 2026-09-10). The password is not a secret among the twenty
+   * friends who play; it is not for whoever the WhatsApp link was forwarded to.
+   */
+  const linked = viewer.kind === 'linked';
 
   return (
     <div className="cn-grid cn-grid-rail">
@@ -141,17 +150,24 @@ export function TonightView({
           </p>
         )}
 
-        {state.kind === 'idle' ? <Idle control={startLobby} /> : null}
+        {/*
+         * **Above the rack, directly under the strip's sentence** (the designer, 2026-09-10):
+         * ten empty seats are 480px, so a button under them is under the fold on the phone
+         * this page is designed for, and on an idle page it is the only thing to do.
+         */}
+        {state.kind === 'idle' ? startLobby : null}
+        {state.kind === 'idle' ? <Idle /> : null}
         {state.kind === 'filling' ? (
           <section className="cn-block">
             <SeatRack members={state.lobby.members} viewerPuuid={seatViewer.puuid} />
-            {/* Directly under the rack it acts on: the control and the seats it is about are
-                one thought, and the role card below is still the last thing in the column. */}
+            {/* The readout, under the rack it is about: how many were invited, or a create
+                that failed. No button — there is a lobby already. */}
             {startLobby}
+            <MissedInvite lobby={state.lobby} linked={linked} />
           </section>
         ) : null}
         {state.kind === 'teams' ? (
-          <TeamsBlock lobby={state.lobby} teams={state.teams} viewer={seatViewer} />
+          <TeamsBlock lobby={state.lobby} teams={state.teams} viewer={seatViewer} linked={linked} />
         ) : null}
         {state.kind === 'result' ? (
           <ResultBlock result={state.result} teams={state.teams} viewerPuuid={seatViewer.puuid} />
@@ -248,13 +264,10 @@ function LivePill() {
  * rail is on screen they are in it, and `tonight.css` hides the inline pair rather than saying
  * the same two things twice.
  */
-function Idle({ control }: { control: ReactNode }) {
+function Idle() {
   return (
     <section className="cn-block">
       <SeatRack members={[]} viewerPuuid={null} />
-      {/* Before the two explainer cards, not after them: at 19:00 this is the point of the
-          page for the one person who can press it, and `How this works` is not. */}
-      {control}
       <div className="cn-idle-cards">
         <HowThisWorksCard />
         <CompanionCard />
@@ -273,7 +286,17 @@ interface Viewer {
  * first, then the explanation line. Only the headline word and the live pill differ, and the
  * cards do not re-render, re-fetch or fade on the way between them.
  */
-function TeamsBlock({ lobby, teams, viewer }: { lobby: LobbyView; teams: TeamsView; viewer: Viewer }) {
+function TeamsBlock({
+  lobby,
+  teams,
+  viewer,
+  linked,
+}: {
+  lobby: LobbyView;
+  teams: TeamsView;
+  viewer: Viewer;
+  linked: boolean;
+}) {
   return (
     <section className="cn-block">
       <SitOutNotice sitters={teams.sitters} viewerPuuid={viewer.puuid} />
@@ -288,7 +311,49 @@ function TeamsBlock({ lobby, teams, viewer }: { lobby: LobbyView; teams: TeamsVi
         // the session again before it writes; this only decides whether a button is on screen.
         showReroll={viewer.isAdmin && lobby.status === 'balanced'}
       />
+      {/*
+       * Still true while the teams are up and people are moving to their sides, and **gone the
+       * moment the game starts**, when there is nothing left to join (M4.10). `in_game` renders
+       * this same block, so the line is gated on the status and not on the block.
+       */}
+      {lobby.status === 'balanced' ? <MissedInvite lobby={lobby} linked={linked} /> : null}
     </section>
+  );
+}
+
+/**
+ * `Missed the invite? The lobby is Customs 09 Sep #1, password 4821.` (M4.10).
+ *
+ * The one thing on this page that is not a scoreboard: a friend whose invite popup expired, or
+ * who opened League late, can join by hand from the client's own lobby list. The name and the
+ * password are **data**, so they are mono; the sentence around them is language, so it is
+ * Archivo.
+ *
+ * **Only for a signed-in viewer matched to a player row** (product and the designer,
+ * 2026-09-10). The password is not a secret among the twenty people who play, and it is in the
+ * Discord embed already — but this page's link gets forwarded, and a page that hands a lobby
+ * password to whoever opens it is a page that invites a stranger into the game. Anonymous and
+ * signed-in-but-unlinked visitors get **no element at all**, not a hidden one.
+ *
+ * With no name there is nothing to say — a password with no lobby to type it into is not an
+ * instruction — so the whole element is absent, exactly as the copy table says.
+ */
+function MissedInvite({ lobby, linked }: { lobby: LobbyView; linked: boolean }) {
+  if (!linked || lobby.lobbyName === null) return null;
+
+  return (
+    <p className="cn-missed">
+      {MISSED_INVITE_LEAD}
+      <span className="cn-num">{lobby.lobbyName}</span>
+      {lobby.lobbyPassword === null ? null : (
+        <>
+          {MISSED_INVITE_PASSWORD}
+          {/* One tap selects all four digits on a phone, not one of them. */}
+          <span className="cn-num cn-missed-password">{lobby.lobbyPassword}</span>
+        </>
+      )}
+      {MISSED_INVITE_END}
+    </p>
   );
 }
 

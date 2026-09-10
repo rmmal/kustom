@@ -1,6 +1,6 @@
 import { displayRating, seedFromRank } from '@customs/core';
 import { describe, expect, it } from 'vitest';
-import { displayDelta, formatWebDelta } from '../ratingDisplay';
+import { favoredClause } from '../discord/embeds';
 import { workedPlayer, workedRecentGame } from '../testing/boardFixtures';
 import { rankLabel, UNRANKED_LABEL } from './copy';
 import { explainGame, explainRatingStart, sideWinChance } from './explain';
@@ -25,6 +25,19 @@ describe('the win chance, for the side the player was on', () => {
     expect(sideWinChance(0.425, 100)).toBe(43);
   });
 
+  /**
+   * The half-percent case, which is the only one where "round red's own share" and "100 minus
+   * blue's" disagree. The embed is the tie-breaker: it prints `100 - round(p × 100)`, so this
+   * does too, and the two halves always add to 100 (the reviewer, 2026-09-10).
+   */
+  it('is 100 minus blue on the other side, so the page and the embed name one number', () => {
+    expect(sideWinChance(0.425, 200)).toBe(57);
+    expect(favoredClause(0.425)).toBe('Red was favored 57%.');
+    for (const probability of [0.425, 0.58, 0.5, 0.005]) {
+      expect((sideWinChance(probability, 100) ?? 0) + (sideWinChance(probability, 200) ?? 0)).toBe(100);
+    }
+  });
+
   it('is nothing at all when no split was stored, rather than 50', () => {
     expect(sideWinChance(null, 100)).toBeNull();
     expect(sideWinChance(null, 200)).toBeNull();
@@ -32,27 +45,30 @@ describe('the win chance, for the side the player was on', () => {
 });
 
 describe('one row of Recent games', () => {
-  it("names the chance their side was given and the change, in product's shape", () => {
+  /**
+   * **The clause and nothing else** (product and the designer, 2026-09-10): the row's head
+   * already prints `Won`, the date and `1392 (−42)`, and a caption that repeated them would
+   * say three of the four things on the line twice.
+   */
+  it("is the chance their own side was given, in product's exact words", () => {
     // Won on red, where the split gave blue 58%: their own side was the 42% one.
     const game = workedRecentGame({ won: true, side: 200, blueWinProb: 0.58, muBefore: 23.2, muAfter: 23.9 });
 
-    expect(explainGame(game)).toBe(`Won as the 42% side, ${formatWebDelta(displayDelta(23.2, 23.9))}`);
-    // And the number in it is the column's own, not a second rounding of the same two mus.
-    expect(explainGame(game)).toContain(formatWebDelta(displayDelta(23.2, 23.9)));
+    expect(explainGame(game)).toBe('As the 42% side.');
   });
 
-  it('says `Lost as the 58% side` for the favourite that lost', () => {
+  it('says the same thing about the favourite that lost, without repeating the result', () => {
     const game = workedRecentGame({ won: false, side: 100, blueWinProb: 0.58 });
 
-    expect(explainGame(game)).toBe(`Lost as the 58% side, ${formatWebDelta(displayDelta(23.9, 23.2))}`);
+    expect(explainGame(game)).toBe('As the 58% side.');
+    // No `Won`, no `Lost`, no delta: they are the row, not the caption.
+    expect(explainGame(game)).not.toMatch(/Won|Lost|[+−]/);
   });
 
-  it('drops the clause for a backfilled game and keeps the result and the change', () => {
+  it('is nothing at all for a backfilled game: no chance, and no line repeating the row', () => {
     const game = workedRecentGame({ won: true, blueWinProb: null, muBefore: 23.2, muAfter: 23.9 });
 
-    // No chance, no placeholder, no `50%` invented for a game nobody balanced.
-    expect(explainGame(game)).toBe(`Won, ${formatWebDelta(displayDelta(23.2, 23.9))}`);
-    expect(explainGame(game)).not.toContain('%');
+    expect(explainGame(game)).toBeNull();
   });
 
   it('says nothing at all about an unrated game: M3.23 owns that row whole', () => {

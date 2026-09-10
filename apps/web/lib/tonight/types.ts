@@ -93,6 +93,17 @@ export interface ResultView {
 export interface LobbyView {
   id: string;
   status: LobbyStatusValue;
+  /**
+   * The lobby's own name in the client (`Customs 09 Sep #1`), or `null` when no companion has
+   * reported one. With it and {@link LobbyView.lobbyPassword} the page tells a friend who
+   * missed the invite how to get in by hand (M4.10).
+   */
+  lobbyName: string | null;
+  /**
+   * The four digits, or `null` until a companion that knows them posts (M4.2's never-clear
+   * rule). **Not a secret**: it goes in the Discord embed and is read out in voice.
+   */
+  lobbyPassword: string | null;
   /** In join order, oldest first. Newest is appended; the list never reorders. */
   members: MemberView[];
   /** The promoted split, when there is one. */

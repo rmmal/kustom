@@ -298,20 +298,21 @@ function sinceClause(games: number): string {
 }
 
 /**
- * Why a rating change is the size it is, on one row of `Recent games` (M5.15):
+ * Why a rating change is the size it is, on one row of `Recent games`: `As the 58% side.`
+ * (product and the designer, 2026-09-10).
  *
- * - `Won as the 42% side, +43`
- * - `Lost as the 58% side, −31`
- * - no stored win chance: `Won, +43`
+ * **The clause and nothing else.** The row's own head already prints `Won`, the date, the
+ * duration and `1392 (−42)`; a caption under it that said `Lost as the 58% side, −42` would say
+ * the result twice and the change twice, which is three of the four words on the line repeated
+ * in grey. What the head cannot say is the one thing this task is for: what the balancer
+ * thought the odds were.
  *
- * The percentage is the chance the balancer gave **their** side, and the change is the string
- * `formatWebDelta` already prints in the column beside it — one number, two places, so the
- * sentence and the column can never disagree. A row with no rating has no sentence at all
- * (M3.23's `not rated` is the whole row).
+ * The percentage is the chance the balancer gave **their** side. A game with no stored chance
+ * has no caption at all — no `Won, +43` form — and neither has an unrated row, which M3.23
+ * answers whole in three words.
  */
-export function gameExplanation(won: boolean, chance: number | null, delta: string): string {
-  const result = won ? WON : LOST;
-  return chance === null ? `${result}, ${delta}` : `${result} as the ${chance}% side, ${delta}`;
+export function gameExplanation(chance: number): string {
+  return `As the ${chance}% side.`;
 }
 
 /**
