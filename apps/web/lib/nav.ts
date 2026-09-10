@@ -1,12 +1,13 @@
 import type { Route } from 'next';
+import { STATS_LABEL } from './stats/copy';
 
 /**
  * Where the shell can send you, in one list (05-design.md, "The app shell").
  *
- * **A tab is rendered only if its route exists.** `Tonight` and `Leaderboard` are routes in
- * this app; `Stats` lands with M5.4 and is not in the list until it does; `Companion ↗` is
- * external and is always there. A nav item that 404s is worse than a missing one, and keeping
- * the list here is what stops a second page hand-writing a fifth answer.
+ * **A tab is rendered only if its route exists.** `Tonight`, `Leaderboard` and — since M5.4 —
+ * `Stats` are routes in this app; `Companion ↗` is external and is always there. A nav item
+ * that 404s is worse than a missing one, and keeping the list here is what stops a second page
+ * hand-writing a fifth answer.
  *
  * The wordmark and every label are product's, from the final copy table (2026-09-09). The
  * product is called **Kustom**; the repo's codename appears on no
@@ -49,7 +50,12 @@ export type NavItem =
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Tonight', href: '/' },
   { label: 'Leaderboard', href: '/leaderboard' },
-  // `Stats` (M5.4) joins here when the route exists, and not before.
+  /**
+   * `Stats` (M5.4), beside `Leaderboard` and before the external one: it is the same numbers
+   * read a different way, and its label is `lib/stats/copy.ts`'s own word — the tab, the page
+   * heading and the `<title>` are one string.
+   */
+  { label: STATS_LABEL, href: '/stats' },
   { label: 'Companion ↗', href: RELEASES_URL, external: true },
 ];
 
