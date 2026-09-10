@@ -2057,7 +2057,7 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     > and duo stats (M5.4), any filter or search on the board, and pagination beyond what the group's size
     > needs.
 
-- [ ] **M3.6** Role override for tonight: a player taps their role on the tonight page (Discord login) or an admin sets it. Held for the rest of the night's lobby cycles and gone by the next night — the original "cleared when the lobby finishes" would mean re-tapping between every game (plan changed 2026-09-09; see the brief and `04-decisions.md`, and a new migration updates the comment on `lobby_members.role_override`).
+- [ ] **M3.6** Role override for tonight: a player taps their role on the tonight page (Discord login) or an admin sets it. Held for the rest of the night's lobby cycles and gone by the next night — the original "cleared when the lobby finishes" would mean re-tapping between every game (plan changed 2026-09-09; see the brief and `04-decisions.md`, and a new migration updates the comment on `lobby_members.role_override`). **Copy source of truth (2026-09-10):** the strings in this brief are superseded by the `05-design.md` table "Copy — the role tap and picking yourself (M3.6, product 2026-09-10)"; read from there, not from here.
 
     > **Brief (product, 2026-09-09)**
     >
