@@ -2211,7 +2211,9 @@ place the code has to move to meet it.
 Constraints this layout is built against, and none of them are negotiable: no custom fonts, no CSS, one accent
 colour per embed (a 4px bar down the left edge), field **name** ≤ 256 and field **value** ≤ 1024 characters,
 25 fields max, 6000 characters total. Inline fields pack up to three per row on desktop and re-wrap on mobile,
-so **every field must make sense read alone**, in any order, on one column.
+so **every field must make sense read alone**, in any order, on one column. Nothing in this section comes near
+those numbers; **M4.12**'s shared guard sits behind every builder as a last resort and is specified once,
+under "Teams embed", because `Seats` is the one field that grows with the night.
 
 Two consequences that shape everything below:
 
@@ -2331,8 +2333,31 @@ field 5 value  `customs-night` · password `4471`
 footer         Kustom · more on the tonight page
 ```
 
-Budget: a side field is ~110 characters against a 1024 limit, so a name would have to be ~180 characters to
-threaten it. Truncate a display name at 32 characters with `…` at the source anyway; do not truncate the field.
+**Budget, and the last-resort guard** *(amended 2026-09-11 for **M4.12**; the old half-sentence "do not
+truncate the field" is now false, and the half in front of it is not)*. A side field is ~110 characters
+against the 1024 limit, so a name would have to be ~180 characters to threaten it: nothing this section draws
+is expected to be cut, and no layout here is designed around being cut. **The 32-character name rule stands
+and is still the real defence** — a display name is truncated at 32 with `…` at the source, before escaping,
+so the word in `splits.explanation` and the word in the field are the same word.
+
+Behind it, and only behind it, **M4.12's shared guard** holds every value inside Discord's limits — 1024 a
+field value, 256 a title, 4096 a description, 2048 a footer, 6000 the message — so that a pathological night
+cannot 400 the whole webhook and cost the group the post. It is a guard, not a layout: if it fires on an
+ordinary night, the fix is the line that grew, not the limit. Three rules make it a design decision rather
+than a `slice`:
+
+- **It cuts on line boundaries**, never mid-line and never mid-word. Half of `Swap: Omar out, Nad` is a
+  message that looks corrupted; a missing line is a message with fewer lines in it, which is what actually
+  happened.
+- **It drops the lowest-priority lines first**, so what survives is what the field exists to say: the **side
+  line** in `Seats`, the **first line of each award** in the window post, and the **top rows** of a board. A
+  `Seats` field cut back to its instruction is still an instruction; cut back to nine `Swap:` lines and no
+  instruction it is a list.
+- **One `…` line marks the gap** — the character alone on its own line, **at the cut and not at the end of the
+  field**, plain text, no count and no `and 3 more`. It is the same mark the 32-character name rule uses, so
+  one character means "there was more here" everywhere in the message; a count is a number the reader can do
+  nothing with and one more thing that can be wrong; and putting it where the lines were removed is what says
+  *which* part is missing. Whoever wants the rest opens the tonight page, which the footer already points at.
 
 **The title on a reroll** (product, 2026-09-09, for M3.2). A reroll is a new message, never an edit of the
 old one, and the title says how far down the list the group has gone: `Teams are set · reroll 1 of 2` for
