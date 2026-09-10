@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { PlayerBoardView, PlayerSeasonView } from '@/lib/board/types';
+import type { PlayerBoardView } from '@/lib/board/types';
 import { resolveLocalStack } from '@/lib/testing/localStack';
 
 /**
@@ -53,6 +53,9 @@ if (stack === null) {
     zoe: `it-${runId}-lb0`,
     nameless: `it-${runId}-lb1`,
     ali: `it-${runId}-lb2`,
+    // The window pair (M5.12): two games last week and one this week, at fixed instants.
+    weekly: `it-${runId}-lb3`,
+    other: `it-${runId}-lb4`,
   };
 
   /**
@@ -71,18 +74,45 @@ if (stack === null) {
       .replace(/&amp;/g, '&');
   }
 
-  /**
-   * `loadPlayerBoard` answers a discriminated union, and every test below is about the arm
-   * with a season on it. Asserting the tag first means a regression that returned the
-   * no-season shape fails here rather than through a pile of `undefined`s.
-   */
-  function seasonPlayer(player: PlayerBoardView | null): PlayerSeasonView {
-    expect(player?.kind).toBe('season');
-    return player as PlayerSeasonView;
+  /** `null` is "no such puuid", which the page turns into a 404; every test below has one. */
+  function found(player: PlayerBoardView | null): PlayerBoardView {
+    expect(player).not.toBeNull();
+    return player as PlayerBoardView;
   }
 
+  /**
+   * **`All time` is the window M3.5 shipped**, so every assertion pinned before M5.12 reads
+   * the board through it and the numbers are byte-identical. The window cases below pass their
+   * own `now`, because a board that depended on the wall clock of the machine running the
+   * suite would pass all week and fail on a Monday morning.
+   */
+  const ALL_TIME = { window: 'all-time' } as const;
+
+  /**
+   * The three players M3.5's assertions are pinned on. The window pair below plays its own
+   * games at its own instants and is filtered out of them, so those numbers do not move.
+   */
+  const PINNED = [puuid.zoe, puuid.nameless, puuid.ali];
+
+  /**
+   * Wednesday 2026-06-10, 21:00 Cairo. This week is Monday the 8th 06:00 to Monday the 15th
+   * 06:00; last week is the 1st to the 8th of June (M5.9).
+   *
+   * **Deliberately a pair of weeks in the past.** The `All time` block's games are inserted at
+   * the wall clock of the run, so a fixture week that could contain "now" would put those
+   * players on this board on some days of the year and not others.
+   */
+  const NOW = new Date('2026-06-10T18:00:00Z');
+  const WEEK = { now: NOW } as const;
+
   let seasonId = '';
-  const playerIds: Record<keyof typeof puuid, string> = { zoe: '', nameless: '', ali: '' };
+  const playerIds: Record<keyof typeof puuid, string> = {
+    zoe: '',
+    nameless: '',
+    ali: '',
+    weekly: '',
+    other: '',
+  };
   const gameIds: string[] = [];
 
   beforeAll(async () => {
@@ -97,6 +127,8 @@ if (stack === null) {
         // The M3.10 case: the database has never been told this player's name.
         { puuid: puuid.nameless, rank_tier: 'SILVER', rank_division: 'IV' },
         { puuid: puuid.ali, display_name: 'Ali', rank_tier: 'GOLD', rank_division: 'IV' },
+        { puuid: puuid.weekly, display_name: 'Wren', rank_tier: 'GOLD', rank_division: 'IV' },
+        { puuid: puuid.other, display_name: 'Otto', rank_tier: 'GOLD', rank_division: 'IV' },
       ])
       .select('id, puuid');
     expect(error).toBeNull();
@@ -104,6 +136,8 @@ if (stack === null) {
       if (row.puuid === puuid.zoe) playerIds.zoe = row.id;
       if (row.puuid === puuid.nameless) playerIds.nameless = row.id;
       if (row.puuid === puuid.ali) playerIds.ali = row.id;
+      if (row.puuid === puuid.weekly) playerIds.weekly = row.id;
+      if (row.puuid === puuid.other) playerIds.other = row.id;
     }
 
     // Two of the three have a rating row; the nameless one is seeded from rank in memory, the
@@ -111,6 +145,9 @@ if (stack === null) {
     await db.from('ratings').insert([
       { player_id: playerIds.zoe, season_id: seasonId, mu: 25.2, sigma: 5, games: 2, wins: 1 },
       { player_id: playerIds.ali, season_id: seasonId, mu: 22, sigma: 6, games: 2, wins: 1 },
+      // Where the fold left the window pair after all three of their games.
+      { player_id: playerIds.weekly, season_id: seasonId, mu: 25.8, sigma: 5, games: 3, wins: 2 },
+      { player_id: playerIds.other, season_id: seasonId, mu: 21.3, sigma: 5, games: 3, wins: 1 },
     ]);
 
     const startedAt = Date.now();
@@ -159,6 +196,55 @@ if (stack === null) {
         { game_id: gameId, player_id: playerIds.nameless, side: 100, role: 'jungle' },
       ]);
     }
+
+    /**
+     * The window pair's three games, at **fixed** instants either side of a Monday 06:00
+     * boundary (M5.9): two last week and one this week, relative to {@link NOW}. Wren climbs
+     * 25 → 25.6 → 25.2 → 25.8; Otto is on the other side of all three.
+     */
+    for (const [index, game] of [
+      { startedAt: '2026-06-03T19:00:00Z', winning_side: 100, wren: [25, 25.6], otto: [22, 21.4] },
+      { startedAt: '2026-06-05T19:00:00Z', winning_side: 200, wren: [25.6, 25.2], otto: [21.4, 21.9] },
+      { startedAt: '2026-06-09T19:00:00Z', winning_side: 100, wren: [25.2, 25.8], otto: [21.9, 21.3] },
+    ].entries()) {
+      const { data: row } = await db
+        .from('games')
+        .insert({
+          lcu_game_id: Number(`9${(startedAt % 1_000_000_00) * 10 + index}`),
+          season_id: seasonId,
+          started_at: game.startedAt,
+          duration_s: 2_000,
+          winning_side: game.winning_side,
+          raw: {},
+        })
+        .select('id')
+        .single();
+      const gameId = row?.id ?? '';
+      gameIds.push(gameId);
+
+      await db.from('game_players').insert([
+        {
+          game_id: gameId,
+          player_id: playerIds.weekly,
+          side: 100,
+          role: 'mid',
+          mu_before: game.wren[0] as number,
+          sigma_before: 5,
+          mu_after: game.wren[1] as number,
+          sigma_after: 5,
+        },
+        {
+          game_id: gameId,
+          player_id: playerIds.other,
+          side: 200,
+          role: 'adc',
+          mu_before: game.otto[0] as number,
+          sigma_before: 5,
+          mu_after: game.otto[1] as number,
+          sigma_after: 5,
+        },
+      ]);
+    }
   });
 
   afterAll(async () => {
@@ -172,8 +258,8 @@ if (stack === null) {
 
   describe('the board with the anon key', () => {
     it('orders this run three by Proven, and prints the number it ordered them by', async () => {
-      const board = await loadBoard(anon);
-      const mine = board.rows.filter((row) => Object.values(puuid).includes(row.puuid));
+      const board = await loadBoard(anon, ALL_TIME);
+      const mine = board.rows.filter((row) => PINNED.includes(row.puuid));
 
       expect(mine.map((row) => row.puuid)).toEqual([puuid.zoe, puuid.ali, puuid.nameless]);
       // `mu - 2 * sigma`, times sixty: 25.2 - 10 = 15.2, 22 - 12 = 10, and the seeded silver.
@@ -183,7 +269,7 @@ if (stack === null) {
     });
 
     it('counts the games and the wins the fold recorded, and the run at the front', async () => {
-      const board = await loadBoard(anon);
+      const board = await loadBoard(anon, ALL_TIME);
       const zoe = board.rows.find((row) => row.puuid === puuid.zoe);
       const ali = board.rows.find((row) => row.puuid === puuid.ali);
 
@@ -194,14 +280,14 @@ if (stack === null) {
     });
 
     it('keeps a seeded player with no games on the board, at the bottom, with `0 games`', async () => {
-      const board = await loadBoard(anon);
+      const board = await loadBoard(anon, ALL_TIME);
       const seeded = board.rows.find((row) => row.puuid === puuid.nameless);
 
       expect(seeded).toMatchObject({ name: null, games: 0, wins: 0, streak: null, settling: true });
     });
 
     it('renders the nameless row as `Someone`, with the hint once and no puuid', async () => {
-      const board = await loadBoard(anon);
+      const board = await loadBoard(anon, ALL_TIME);
       const html = renderToStaticMarkup(createElement(BoardView, { board, viewerPuuid: null }));
 
       const text = textOf(html);
@@ -212,9 +298,128 @@ if (stack === null) {
     });
   });
 
+  /**
+   * The windowed board (M5.12), against real rows and the anon key. Everything here is a fact
+   * about *which games are looked at*: the sort, the two numbers' definitions and the fold
+   * itself are untouched, which is what the `All time` block above still pins.
+   */
+  describe('the board through a window', () => {
+    it('lists only the players who played inside it', async () => {
+      const lastWeek = await loadBoard(anon, { window: 'last-week', ...WEEK });
+      const thisWeek = await loadBoard(anon, { window: 'this-week', ...WEEK });
+
+      const puuids = (board: { rows: { puuid: string }[] }): string[] =>
+        board.rows.map((row) => row.puuid).filter((id) => id.startsWith(`it-${runId}-`));
+
+      expect(puuids(lastWeek)).toEqual([puuid.weekly, puuid.other]);
+      expect(puuids(thisWeek)).toEqual([puuid.weekly, puuid.other]);
+      // The three players of the `All time` block played at the wall clock of the test run and
+      // are in neither of these two fixed weeks: the board is who played *then*. The nameless
+      // one has no rated row at all and is on no window's board at any time.
+      for (const board of [lastWeek, thisWeek]) {
+        expect(puuids(board)).not.toContain(puuid.zoe);
+        expect(puuids(board)).not.toContain(puuid.nameless);
+      }
+    });
+
+    /**
+     * **The board as it stood when the week closed.** Wren finished last week on `mu` 25.2 and
+     * has played since; `Last week` must still say 25.2, which is what makes the Monday post
+     * reproducible on Tuesday and after a late backfill.
+     */
+    it('is each player as of their last counted game inside the window', async () => {
+      const board = await loadBoard(anon, { window: 'last-week', ...WEEK });
+      const wren = board.rows.find((row) => row.puuid === puuid.weekly);
+
+      expect(wren?.rating).toBe(1_512);
+      // `mu - 2σ` as of that game: 25.2 - 10 = 15.2, times sixty.
+      expect(wren?.proven).toBe(912);
+      expect(wren).toMatchObject({ games: 2, wins: 1, losses: 1 });
+      // The climb is the two mu values, never a formatted delta: 25 in, 25.2 out.
+      expect(wren?.climb).toEqual({ muBefore: 25, muAfter: 25.2 });
+    });
+
+    it('is their current rating on the running week, because that game is their last', async () => {
+      const [board, all] = await Promise.all([
+        loadBoard(anon, { window: 'this-week', ...WEEK }),
+        loadBoard(anon, ALL_TIME),
+      ]);
+
+      const inWeek = board.rows.find((row) => row.puuid === puuid.weekly);
+      const allTime = all.rows.find((row) => row.puuid === puuid.weekly);
+
+      expect(inWeek?.rating).toBe(1_548);
+      expect(inWeek?.rating).toBe(allTime?.rating);
+      expect(inWeek).toMatchObject({ games: 1, wins: 1, losses: 0 });
+      expect(inWeek?.climb).toEqual({ muBefore: 25.2, muAfter: 25.8 });
+    });
+
+    it('sorts every window on Proven, and never on who climbed most', async () => {
+      const board = await loadBoard(anon, { window: 'last-week', ...WEEK });
+      const mine = board.rows.filter((row) => row.puuid.startsWith(`it-${runId}-`));
+
+      // Otto climbed last week (21.4 → 21.9) and Wren lost ground (25.6 → 25.2); Wren is still
+      // first, because the board sorts on the number it prints.
+      expect(mine.map((row) => row.puuid)).toEqual([puuid.weekly, puuid.other]);
+      expect(mine.map((row) => row.proven)).toEqual([912, 714]);
+    });
+
+    it('carries the whole history into the settling chip, not the window', async () => {
+      const board = await loadBoard(anon, { window: 'this-week', ...WEEK });
+      const wren = board.rows.find((row) => row.puuid === puuid.weekly);
+
+      // One game this week, three in the `ratings` row: the chip is a fact about the rating.
+      expect(wren?.games).toBe(1);
+      expect(wren?.settling).toBe(true);
+    });
+
+    it('is an empty board for a window nobody played in', async () => {
+      // May: the month before the pair's first game, a closed window with nothing in it.
+      const board = await loadBoard(anon, { window: 'last-month', ...WEEK });
+
+      expect(board.window).toBe('last-month');
+      expect(board.rows.filter((row) => row.puuid.startsWith(`it-${runId}-`))).toEqual([]);
+    });
+  });
+
+  describe('the player page through a window', () => {
+    it('counts the window games, plots them, and starts the line where the week found them', async () => {
+      const player = found(await loadPlayerBoard(anon, puuid.weekly, { window: 'last-week', ...WEEK }));
+
+      expect(player).toMatchObject({ window: 'last-week', games: 2, wins: 1, losses: 1 });
+      // As of their last game inside the week, not where they are today.
+      expect(player.rating).toBe(1_512);
+      // The rating carried **into** the window, labelled `start` on the chart.
+      expect(player.reference).toBe(1_500);
+      expect(player.history).toEqual([1_500, 1_536, 1_512]);
+      expect(player.recent).toHaveLength(2);
+      expect(player.roles.map((record) => record.games)).toEqual([2]);
+    });
+
+    it('is where they are today on `All time`, with the seed line back', async () => {
+      const player = found(await loadPlayerBoard(anon, puuid.weekly, ALL_TIME));
+
+      expect(player).toMatchObject({ window: 'all-time', games: 3, wins: 2, losses: 1 });
+      expect(player.rating).toBe(1_548);
+      // `seedFromRank('GOLD', 'IV')` is mu 23 — the seed, not the window's start.
+      expect(player.reference).toBe(1_380);
+      expect(player.history).toEqual([1_500, 1_536, 1_512, 1_548]);
+    });
+
+    it('keeps a player who did not play in the window on their own page', async () => {
+      const player = found(await loadPlayerBoard(anon, puuid.weekly, { window: 'last-month', ...WEEK }));
+
+      expect(player).toMatchObject({ games: 0, wins: 0, losses: 0 });
+      // Their number is still theirs: the page is a person, and the empty line says the rest.
+      expect(player.rating).toBe(1_548);
+      expect(player.history).toEqual([]);
+      expect(player.recent).toEqual([]);
+    });
+  });
+
   describe('the player page with the anon key', () => {
     it('is the two numbers, the history in started_at order, and the role record', async () => {
-      const player = seasonPlayer(await loadPlayerBoard(anon, puuid.zoe));
+      const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
 
       expect(player).toMatchObject({ name: 'Zoe', rating: 1_512, proven: 912, games: 2, wins: 1 });
       // The rating carried into the first game, then out of each one: oldest first.
@@ -224,11 +429,11 @@ if (stack === null) {
       expect(player.roles.map((record) => record.wins)).toEqual([1, 0]);
       // `seedFromRank('GOLD', 'IV')` is mu 23, so the reference line is 1380 — in the series'
       // own units, never the seed's ordinal.
-      expect(player.seed).toBe(1_380);
+      expect(player.reference).toBe(1_380);
     });
 
     it('lists the recent games newest first, with the five of their own side', async () => {
-      const player = seasonPlayer(await loadPlayerBoard(anon, puuid.zoe));
+      const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
 
       expect(player.recent).toHaveLength(2);
       expect(player.recent[0]?.won).toBe(false);
@@ -239,7 +444,7 @@ if (stack === null) {
     });
 
     it('renders a nameless teammate as `Someone` and never a puuid', async () => {
-      const player = seasonPlayer(await loadPlayerBoard(anon, puuid.zoe));
+      const player = found(await loadPlayerBoard(anon, puuid.zoe, ALL_TIME));
       const html = renderToStaticMarkup(createElement(PlayerView, { player }));
 
       const text = textOf(html);
@@ -254,7 +459,7 @@ if (stack === null) {
     });
 
     it('is nobody for a puuid the database has never met', async () => {
-      expect(await loadPlayerBoard(anon, `it-${runId}-nope`)).toBeNull();
+      expect(await loadPlayerBoard(anon, `it-${runId}-nope`, ALL_TIME)).toBeNull();
     });
 
     it('reads names through `players_public`, never the base table', async () => {

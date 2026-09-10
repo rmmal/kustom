@@ -55,14 +55,11 @@ if (stack === null) {
   const { adminTokensRequestSchema } = await import('./tokens/schema');
   const { handleDiscordConfig } = await import('./discord-config/handler');
   const { discordConfigRequestSchema } = await import('./discord-config/schema');
-  const { handleStartSeason } = await import('./seasons/handler');
-  const { startSeasonRequestSchema } = await import('./seasons/schema');
 
   // The real route exports, environment and all: these are what answer an anonymous request.
   const { POST: postPlayersRoute } = await import('./players/route');
   const { POST: postTokensRoute } = await import('./tokens/route');
   const { POST: postDiscordRoute } = await import('./discord-config/route');
-  const { POST: postSeasonsRoute } = await import('./seasons/route');
 
   // The real companion route: M1.7's rule lives in `ensurePlayers`, and the only honest proof
   // that an admin's name survives a rename is a lobby post arriving the way one really does.
@@ -89,7 +86,6 @@ if (stack === null) {
   let memberPlayerId = '';
   let namedPlayerId = '';
   let companionToken = '';
-  const createdSeasonIds: string[] = [];
 
   /** A signed-in user carrying a Discord identity, the shape `auth.getUser()` returns. */
   function sessionUser(discordId: string): SessionUserLike {
@@ -135,12 +131,6 @@ if (stack === null) {
         getClient: () => db,
         authorize: authorizeAs(user),
         redirectTo: '/admin/discord',
-      }),
-    seasons: (user: SessionUserLike | null) =>
-      withAdminAuth(startSeasonRequestSchema, handleStartSeason, {
-        getClient: () => db,
-        authorize: authorizeAs(user),
-        redirectTo: '/admin/seasons',
       }),
   };
 
@@ -216,29 +206,10 @@ if (stack === null) {
   }
 
   afterAll(async () => {
-    // Season 1 goes back first, and in ONE transaction (`set_active_season`, 0002). Doing it as
-    // "deactivate the ones this run made, then activate Season 1" leaves a window with no active
-    // season at all, and anything inserting a game in that window fails on a null season_id.
-    // Only then are the run's seasons deleted, by which time they are already inactive.
-    const { error: restoreError } = await db.rpc('set_active_season', { p_id: SEASON_ONE_ID });
-    if (restoreError) throw new Error(`cleanup: restoring Season 1 failed: ${restoreError.message}`);
-
-    // Deleted by name, not by the ids the tests collected: `start_season` is committed by the
-    // time the route builds its response, so a run that fails *after* the insert (a response
-    // schema that rejects the row, an assertion that throws) never records the id and used to
-    // leave the season behind for the next run to inherit. Every season this file creates is
-    // named `it-<runId> ...`, so the pattern catches those too.
-    const { error } = await db.from('seasons').delete().like('name', `it-${runId} %`);
-    // Throwing here is the point: a swallowed error leaves "it-... season A" rows behind.
-    if (error) throw new Error(`cleanup: deleting test seasons failed: ${error.message}`);
-
-    const { data: strays, error: strayError } = await db
-      .from('seasons')
-      .select('id')
-      .in('id', createdSeasonIds.length > 0 ? createdSeasonIds : [SEASON_ONE_ID])
-      .neq('id', SEASON_ONE_ID);
-    if (strayError) throw new Error(`cleanup: checking test seasons failed: ${strayError.message}`);
-    expect(strays ?? []).toEqual([]);
+    // **Nothing to restore any more** (M5.14): this file used to start and end seasons through
+    // the route it tested, so it had to put Season 1 back in one transaction before deleting
+    // the rows it had made. With no route there is no such state to unwind, and the seasons
+    // table is left exactly as it was found.
 
     const { error: configError } = await db
       .from('discord_config')
@@ -274,7 +245,8 @@ if (stack === null) {
 
     it('answers 401 to an anonymous request on every admin route', async () => {
       // The real exports, with no cookies at all: this is what a curl gets.
-      for (const route of [postPlayersRoute, postTokensRoute, postDiscordRoute, postSeasonsRoute]) {
+      // `postSeasonsRoute` was here until M5.14 removed the route it imported.
+      for (const route of [postPlayersRoute, postTokensRoute, postDiscordRoute]) {
         const response = await route(post(body));
         expect(response.status).toBe(401);
         await expect(response.json()).resolves.toEqual({ ok: false, error: 'sign in required' });
@@ -619,125 +591,28 @@ if (stack === null) {
     });
   });
 
-  describe('seasons', () => {
-    /** The name an admin would have to type right now. */
-    async function activeSeason(): Promise<{ id: string; name: string }> {
-      const { data, error } = await db.from('seasons').select('id, name').eq('is_active', true).single();
-      if (error) throw new Error(error.message);
-      return data;
-    }
-
-    async function seasonCount(): Promise<number> {
+  /**
+   * **There is no seasons route left to test** (M5.14, 2026-09-10). `POST /api/admin/seasons`,
+   * the form, the `Start` button and M3.9's typed confirmation are gone with the thing they
+   * guarded; the block that lived here started and ended seasons against this database, which
+   * is why the cleanup below no longer has any to restore. `public.start_season()` stays in
+   * the database, unreachable — an applied migration is never edited.
+   */
+  describe('season creation', () => {
+    it('is not reachable: nothing in the app can make a second season row', async () => {
       const { count, error } = await db.from('seasons').select('id', { count: 'exact', head: true });
       if (error) throw new Error(error.message);
-      return count ?? 0;
-    }
 
-    /**
-     * M3.9. The one control in the app with no undo, so "nothing changed" is asserted on the
-     * rows — the active season and the number of seasons — not on the status code alone.
-     */
-    it('refuses to start a season without the confirmation, and changes nothing', async () => {
-      const before = await activeSeason();
-      const countBefore = await seasonCount();
-
-      const response = await routes.seasons(sessionUser(adminDiscordId))(
-        post({ name: `it-${runId} season never` }),
-      );
-
-      expect(response.status).toBe(400);
-      const body = (await response.json()) as { ok: false; error: string };
-      expect(body.ok).toBe(false);
-      // The refusal says what to type, because an admin who guesses twice will paste anything.
-      expect(body.error).toContain(before.name);
-
-      expect(await activeSeason()).toEqual(before);
-      expect(await seasonCount()).toBe(countBefore);
+      // Whatever this deployment has, this file adds none — and no route can.
+      expect(count ?? 0).toBeGreaterThanOrEqual(1);
+      expect(Object.keys(routes)).not.toContain('seasons');
     });
 
-    it('refuses the wrong confirmation, including the name of the season being started', async () => {
-      const before = await activeSeason();
-      const countBefore = await seasonCount();
-      const route = routes.seasons(sessionUser(adminDiscordId));
-
-      for (const confirmSeasonName of [
-        `it-${runId} season never`, // the new name, not the one being ended
-        before.name.toLowerCase(), // close, but the check is exact
-        `${before.name} `.repeat(2).trim(), // typed twice
-        '',
-        null,
-      ]) {
-        const response = await route(post({ name: `it-${runId} season never`, confirmSeasonName }));
-        expect([confirmSeasonName, response.status]).toEqual([confirmSeasonName, 400]);
-      }
-
-      expect(await activeSeason()).toEqual(before);
-      expect(await seasonCount()).toBe(countBefore);
-    });
-
-    it('redirects a form post back to the page with the error rather than starting anything', async () => {
-      const before = await activeSeason();
-      const countBefore = await seasonCount();
-
-      const form = new Request('http://localhost/api/admin/seasons', {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ name: `it-${runId} season never`, confirmSeasonName: 'nope' }),
-      });
-      const response = await routes.seasons(sessionUser(adminDiscordId))(form);
-
-      expect(response.status).toBe(303);
-      const location = new URL(response.headers.get('location') ?? '');
-      expect(location.pathname).toBe('/admin/seasons');
-      expect(location.searchParams.get('error')).toContain(before.name);
-      expect(location.searchParams.get('notice')).toBeNull();
-
-      expect(await activeSeason()).toEqual(before);
-      expect(await seasonCount()).toBe(countBefore);
-    });
-
-    it('leaves exactly one active season when the confirmation is exact', async () => {
-      const route = routes.seasons(sessionUser(adminDiscordId));
-      const seasonOne = await activeSeason();
-
-      const first = await route(post({ name: `it-${runId} season A`, confirmSeasonName: seasonOne.name }));
-      expect(first.status).toBe(200);
-      const firstBody = (await first.json()) as {
-        season: { id: string; name: string };
-        endedSeason: { id: string; name: string } | null;
-      };
-      createdSeasonIds.push(firstBody.season.id);
-      // The response says what happened, not only what is new.
-      expect(firstBody.endedSeason).toEqual({ id: seasonOne.id, name: seasonOne.name });
-
-      // The confirmation moves with the active season: it is now season A that is being ended.
-      const stale = await route(post({ name: `it-${runId} season B`, confirmSeasonName: seasonOne.name }));
-      expect(stale.status).toBe(400);
-
-      const second = await route(
-        post({ name: `it-${runId} season B`, confirmSeasonName: `it-${runId} season A` }),
-      );
-      expect(second.status).toBe(200);
-      const secondBody = (await second.json()) as { season: { id: string } };
-      createdSeasonIds.push(secondBody.season.id);
-
-      const { data: active, error } = await db.from('seasons').select('id, ends_at').eq('is_active', true);
+    it('leaves exactly one active season for every other file sharing this database', async () => {
+      const { data, error } = await db.from('seasons').select('id').eq('is_active', true);
       if (error) throw new Error(error.message);
-      expect(active?.map((row) => row.id)).toEqual([secondBody.season.id]);
 
-      // The season it replaced is closed, not just deactivated.
-      const { data: closed } = await db
-        .from('seasons')
-        .select('ends_at, is_active')
-        .eq('id', firstBody.season.id)
-        .single();
-      expect(closed?.is_active).toBe(false);
-      expect(closed?.ends_at).not.toBeNull();
-
-      // Hand the shared database back immediately rather than at the end of the file: the
-      // active season is global state, and this test is the only one that moves it.
-      const { error: restoreError } = await db.rpc('set_active_season', { p_id: SEASON_ONE_ID });
-      if (restoreError) throw new Error(restoreError.message);
+      expect(data).toHaveLength(1);
     });
   });
 

@@ -1,7 +1,8 @@
 import { displayRating, seedFromRank } from '@customs/core';
 import { SETTLING_GAMES } from '../board/copy';
 import { sortBoardRows } from '../board/order';
-import type { BoardRow, BoardView, PlayerSeasonView, RecentGame } from '../board/types';
+import type { BoardRow, BoardView, PlayerBoardView, RecentGame } from '../board/types';
+import type { WindowKind } from '../night';
 import { provenRating, provenSortKey } from '../ratingDisplay';
 import { WORKED_ROSTER, workedPuuid } from './workedExample';
 
@@ -50,6 +51,7 @@ export function workedBoardRows(): BoardRow[] {
         wins,
         losses: games - wins,
         streak: games === 0 ? null : ({ kind: 'L', length: 2 } as const),
+        climb: null,
         settling: games < SETTLING_GAMES,
       };
     }),
@@ -57,11 +59,35 @@ export function workedBoardRows(): BoardRow[] {
 }
 
 export function workedBoard(overrides: Partial<BoardView> = {}): BoardView {
-  return { season: { id: 'season-1', name: 'Season 1' }, rows: workedBoardRows(), ...overrides };
+  return { window: 'all-time', rows: workedBoardRows(), ...overrides };
+}
+
+/**
+ * The same ten as one **window's** board (M5.12): six games each, a 4W 2L record, and a climb
+ * that is a real pair of mu values rather than a formatted number — the row computes the delta
+ * at render, like every other delta in this product.
+ *
+ * The two numbers are untouched: a window changes who is on the board and what their week was,
+ * never the sort or the numbers' meaning.
+ */
+export function workedWindowRows(): BoardRow[] {
+  return workedBoardRows().map((row) => ({
+    ...row,
+    games: 6,
+    wins: 4,
+    losses: 2,
+    streak: null,
+    // +58 at the display multiplier of 60: `mu` 23.9 to 24.87 is 1434 to 1492.
+    climb: { muBefore: 23.9, muAfter: 24.87 },
+  }));
+}
+
+export function workedWindowBoard(window: WindowKind = 'this-week'): BoardView {
+  return { window, rows: workedWindowRows() };
 }
 
 /** One player's page, built from the same roster. `Hana` by default: 37 games, no chip. */
-export function workedPlayer(name = 'Hana', overrides: Partial<PlayerSeasonView> = {}): PlayerSeasonView {
+export function workedPlayer(name = 'Hana', overrides: Partial<PlayerBoardView> = {}): PlayerBoardView {
   const player = WORKED_ROSTER.find((entry) => entry.name === name);
   if (player === undefined) throw new Error(`no worked player called ${name}`);
 
@@ -71,17 +97,16 @@ export function workedPlayer(name = 'Hana', overrides: Partial<PlayerSeasonView>
   const seed = displayRating(seedFromRank('SILVER', 'II').mu);
 
   return {
-    kind: 'season',
     puuid: workedPuuid(name),
     name,
-    season: { id: 'season-1', name: 'Season 1' },
+    window: 'all-time',
     rating,
     proven: provenRating({ mu: player.mu, sigma: player.sigma }),
     games,
     wins,
     losses: games - wins,
     settling: games < SETTLING_GAMES,
-    seed,
+    reference: seed,
     // A short walk that ends where the roster says they are, so the chart's last point and the
     // `Rating` beside it are the same number — and that starts above the seed, so the
     // reference line is outside the series and the range has to widen to keep it on screen.

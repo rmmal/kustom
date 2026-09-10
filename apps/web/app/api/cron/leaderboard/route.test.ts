@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WebhookOutcome } from '@/lib/discord/webhook';
+import { DEFAULT_NIGHT_TIME_ZONE, windowRange } from '@/lib/night';
+import { nightTimeZone } from '@/lib/tonight/night';
 import { GET } from './route';
 
 /**
@@ -11,10 +13,18 @@ import { GET } from './route';
  */
 const outcome = vi.hoisted(() => ({
   value: { status: 'posted', httpStatus: 204, reason: null, attempts: 1 } as WebhookOutcome,
+  /** What the route asked the post for, so the window it prints can be asserted here. */
+  options: undefined as { timeZone?: string; now?: Date } | undefined,
 }));
 
 vi.mock('@/lib/discord/post', () => ({
-  postNightlyLeaderboard: async (): Promise<WebhookOutcome> => outcome.value,
+  postNightlyLeaderboard: async (
+    _client: unknown,
+    options: { timeZone?: string; now?: Date },
+  ): Promise<WebhookOutcome> => {
+    outcome.options = options;
+    return outcome.value;
+  },
 }));
 
 /**
@@ -90,12 +100,12 @@ describe('GET /api/cron/leaderboard', () => {
     expect(await response.json()).toEqual({ ok: true, status: 'posted', reason: null });
   });
 
-  it('reports the silence on the first morning of a season, and why', async () => {
+  it('reports the silence on a week nobody has played, and why', async () => {
     process.env.CRON_SECRET = 'secret-value';
     outcome.value = {
       status: 'skipped',
       httpStatus: null,
-      reason: 'no games this season',
+      reason: 'nobody has played in this window',
       attempts: 0,
     };
 
@@ -107,8 +117,40 @@ describe('GET /api/cron/leaderboard', () => {
     expect(await response.json()).toEqual({
       ok: true,
       status: 'skipped',
-      reason: 'no games this season',
+      reason: 'nobody has played in this window',
     });
+  });
+
+  /**
+   * **The post and the page must name the same week** (M5.12, the reviewer 2026-09-10). The
+   * board is windowed now, and a week is a pair of 06:00 boundaries in `CUSTOMS_NIGHT_TZ`: a
+   * route that let the post fall back to the built-in default would post one week and link to
+   * a page showing another, on any deployment that configured the variable.
+   */
+  it('posts the week the pages read, in the configured zone', async () => {
+    process.env.CRON_SECRET = 'secret-value';
+    process.env.CUSTOMS_NIGHT_TZ = 'America/New_York';
+
+    const response = await GET(get('Bearer secret-value'));
+    expect(response.status).toBe(200);
+
+    expect(outcome.options?.timeZone).toBe('America/New_York');
+    // The same answer `/leaderboard` and `/p/[puuid]` build their range from, and the same
+    // range: 21:00 on a Sunday in New York is still the week that is ending.
+    expect(outcome.options?.timeZone).toBe(nightTimeZone());
+    const sundayNight = new Date('2026-09-07T01:00:00Z');
+    expect(windowRange('this-week', sundayNight, outcome.options?.timeZone).start?.toISOString()).toBe(
+      windowRange('this-week', sundayNight, nightTimeZone()).start?.toISOString(),
+    );
+  });
+
+  it("falls back to the group's own zone when the variable is not set", async () => {
+    process.env.CRON_SECRET = 'secret-value';
+    delete process.env.CUSTOMS_NIGHT_TZ;
+
+    await GET(get('Bearer secret-value'));
+
+    expect(outcome.options?.timeZone).toBe(DEFAULT_NIGHT_TIME_ZONE);
   });
 
   it('reports a webhook that would not take it, without ever naming the URL', async () => {

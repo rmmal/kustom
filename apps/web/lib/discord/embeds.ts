@@ -137,8 +137,11 @@ export interface ResultEmbedInput {
   blueWinProb: number | null;
   /** The single highest `damage_to_champs`, or `null` when the block carried none. */
   topDamage: { name: PlayerName; damage: number } | null;
-  seasonName: string;
-  /** Which game of the season this is, or `null` when it could not be counted. */
+  /**
+   * Which game this is, counted from the group's first, or `null` when it could not be
+   * counted. **Not a season's game number** (M5.12, product 2026-09-10): there is one running
+   * history and the count reads it, so game 47 is the forty-seventh custom this group played.
+   */
   gameNumber: number | null;
   url?: string | undefined;
   timestamp: string;
@@ -154,7 +157,11 @@ export interface LeaderboardEntry {
 }
 
 export interface LeaderboardEmbedInput {
-  seasonName: string;
+  /**
+   * The window's own name — `This week` (M5.12), never a season's name. The title reads
+   * `This week · leaderboard`, in the same five words the picker and the board heading use.
+   */
+  windowLabel: string;
   /** Already ordered by Proven, descending. {@link TOP_N} is the most that will be printed. */
   entries: readonly LeaderboardEntry[];
   /** The board, or `undefined` when there is no honest URL to post. */
@@ -257,10 +264,7 @@ export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
           { name: 'Blue', value: inLaneOrder(input.blue).map(resultLine).join('\n'), inline: true },
           { name: 'Red', value: inLaneOrder(input.red).map(resultLine).join('\n'), inline: true },
         ],
-        footer: {
-          text:
-            input.gameNumber === null ? input.seasonName : `${input.seasonName} · game ${input.gameNumber}`,
-        },
+        footer: { text: resultFooter(input.gameNumber) },
         timestamp: input.timestamp,
       },
     ],
@@ -278,6 +282,12 @@ export function resultEmbed(input: ResultEmbedInput): WebhookPayload {
  * by a number it does not show is exactly the complaint this rule exists to prevent (M3.5
  * brief). `Rating` is on the web page, where there is a column for it.
  *
+ * **The title names the window, not a season** (M5.12): `This week · leaderboard`, linking to
+ * `?window=this-week`. A season name in a Discord title was always going to read as
+ * `gamesd · leaderboard` on the deployment that exists; more to the point, "the season" is no
+ * longer a thing the product has. The field-name rule (M3.22) and the ten-line cap are
+ * untouched.
+ *
  * The footer is the short still-settling sentence, on **every** one of these posts and not
  * just the first: the reason Yuki is last by more than her rating suggests is her sigma, and a
  * post without the sentence is a post that invites the question again (M3.8). There is no
@@ -291,7 +301,7 @@ export function leaderboardEmbed(input: LeaderboardEmbedInput): WebhookPayload {
     embeds: [
       {
         color: ACCENT_COLOR,
-        title: `${input.seasonName} · ${LEADERBOARD_LABEL.toLowerCase()}`,
+        title: `${input.windowLabel} · ${LEADERBOARD_LABEL.toLowerCase()}`,
         ...(input.url === undefined ? {} : { url: input.url }),
         fields: [
           {
@@ -387,6 +397,24 @@ export function renderName(name: PlayerName): string {
 /** Backtick, `*`, `_`, `~`, `|` and the backslash itself. There is no name we want italicised. */
 function escapeMarkdown(value: string): string {
   return value.replace(/([`*_~|\\])/g, '\\$1');
+}
+
+/**
+ * `Kustom · game 47`, and `Kustom` alone when the count could not be taken (M5.12, product
+ * 2026-09-10; `05-design.md`, "Result embed").
+ *
+ * It used to be `Season 1 · game 47`. Seasons left the friend-facing vocabulary with the
+ * window picker, and the last place the word survived was this footer — where it read as
+ * `gamesd · game 47` on the deployment that exists. **The count keeps its meaning**: it is
+ * every game this group has played up to this one, which is what it always counted, because
+ * there has only ever been one season row for it to count inside.
+ *
+ * The bare name is right and needs no apology (product, 2026-09-09, for the same footer): a
+ * count we could not take is simply not printed. Never `game ?`, never `game 0`, never a
+ * sentence explaining that something did not add up.
+ */
+function resultFooter(gameNumber: number | null): string {
+  return gameNumber === null ? 'Kustom' : `Kustom · game ${gameNumber}`;
 }
 
 /**

@@ -4,8 +4,6 @@ import Link from 'next/link';
 import {
   gamesLabel,
   LOST,
-  NO_GAMES_YET,
-  NO_SEASON_BOARD,
   NOT_RATED,
   NOT_RATED_HINT,
   PROVEN_LABEL,
@@ -13,10 +11,11 @@ import {
   RECENT_GAMES_HEADING,
   RECENT_RATING_LEGEND,
   ROLE_RECORD_HEADING,
+  WINDOW_EMPTY,
   WON,
   winLossLabel,
 } from '@/lib/board/copy';
-import type { PlayerBoardView, PlayerSeasonView, RecentGame, RecentTeammate } from '@/lib/board/types';
+import type { PlayerBoardView, RecentGame, RecentTeammate } from '@/lib/board/types';
 import { formatDuration } from '@/lib/discord/embeds';
 import { formatDayMonth } from '@/lib/night';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
@@ -26,6 +25,7 @@ import '../board-parts.css';
 import { RoleIcon } from '../_icons/RoleIcon';
 import { NamelessHint, SettlingChip, SettlingNote } from './parts';
 import { RatingChart } from './RatingChart';
+import { WindowPicker } from './WindowPicker';
 
 /**
  * `/p/[puuid]` (M3.5, M3.8, M3.10; dressed for Floodlit in M3.19): the two numbers, the
@@ -62,28 +62,29 @@ export function PlayerView({ player }: PlayerViewProps) {
       <header className="cn-strip">
         {/* The person is the page: the display cut, and the biggest language on it. */}
         <h1 className="cn-display cn-player-name">{renderWebName(player.name)}</h1>
+        {/*
+         * The same five options, in the same order and the same words, as `/leaderboard`
+         * (M5.12) — the control looks the same on all three pages, and the parameter is the
+         * same word. This page's default is `All time`, because it is a person's history.
+         */}
+        <WindowPicker path={`/p/${player.puuid}`} selected={player.window} />
+
+        {/*
+         * The same slot the board's header carries (the designer, 2026-09-10): the window's one
+         * line, under the chips and above the hairline. A player with no counted game in the
+         * window says so here rather than inside the card, where it used to sit between the two
+         * numbers and the chart.
+         */}
+        {player.games === 0 ? <p className="cn-empty">{WINDOW_EMPTY[player.window]}</p> : null}
       </header>
 
-      {/*
-       * **No season: the name, one sentence, and nothing else** (product, 2026-09-09).
-       *
-       * Ratings are per season, so there is no rating, no Proven, no history and no games to
-       * show — and the first cut of this page filled those fields with zeros and printed
-       * `Rating 0 · Proven 0 · settling` directly above the sentence saying there was no board.
-       * The loader now hands over a shape with no numbers in it at all, so this is not a branch
-       * that has to remember to hide them; there is nothing to hide.
-       */}
-      {player.kind === 'no-season' ? (
-        <p className="cn-notice">{NO_SEASON_BOARD}</p>
-      ) : (
-        <PlayerSeason player={player} />
-      )}
+      <PlayerWindow player={player} />
     </main>
   );
 }
 
 /** The page proper: the two numbers, the chart, the record and the last few games. */
-function PlayerSeason({ player }: { player: PlayerSeasonView }) {
+function PlayerWindow({ player }: { player: PlayerBoardView }) {
   const nameless =
     isNameless(player.name) || player.recent.some((game) => game.team.some((seat) => isNameless(seat.name)));
   /** M3.23: the sentence is printed once, and only while a row on the page reads `not rated`. */
@@ -120,7 +121,7 @@ function PlayerSeason({ player }: { player: PlayerSeasonView }) {
              * the chart. It counts the **rated** games, the ones the fold counted (M3.23).
              *
              * At zero games there is no record to print: `0 games · 0W 0L` is three zeros
-             * saying what `No games this season yet.` says underneath in words (the designer,
+             * saying what the window's empty line says underneath in words (the designer,
              * 2026-09-10).
              */}
             {player.games === 0 ? null : (
@@ -134,12 +135,16 @@ function PlayerSeason({ player }: { player: PlayerSeasonView }) {
 
           {/*
            * **Gated on games played, not on points to plot.** `history.length === 0` also means
-           * "this player has games the season read did not reach", and the page then told
-           * somebody with forty games that the season had none. A player with games and nothing
+           * "this player has games the window's read did not reach", and the page then told
+           * somebody with forty games that they had none. A player with games and nothing
            * to draw gets no chart and no sentence rather than a false one.
            */}
-          {player.games === 0 ? <p className="cn-empty">{NO_GAMES_YET}</p> : null}
-          {player.history.length === 0 ? null : <RatingChart history={player.history} seed={player.seed} />}
+          {player.history.length === 0 ? null : (
+            // The hairline is the seed on `All time` and the rating carried **into** the
+            // window on the other four, labelled `start` — it is not a seed and does not
+            // borrow the word (M5.12).
+            <RatingChart history={player.history} reference={player.reference} window={player.window} />
+          )}
 
           {/* Under the chart, once per page (M3.8). */}
           {player.settling ? <SettlingNote /> : null}

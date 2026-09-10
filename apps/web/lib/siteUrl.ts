@@ -1,4 +1,5 @@
 import { readAuthEnv } from './env';
+import type { WindowKind } from './night';
 
 /**
  * The origin OAuth comes back to.
@@ -48,13 +49,22 @@ export function tonightPageUrl(origin: string | null | undefined): string | unde
 }
 
 /**
- * The board's link for the nightly embed (M3.5), or `undefined` under the same localhost rule
- * as {@link tonightPageUrl}: no domain exists yet, and a link that works for one person is
- * worse in a channel than no link at all.
+ * The board's link for a Discord embed (M3.5), or `undefined` under the same localhost rule as
+ * {@link tonightPageUrl}: no domain exists yet, and a link that works for one person is worse
+ * in a channel than no link at all.
+ *
+ * **It carries the window the post printed** (M5.12): the nightly post links to
+ * `?window=this-week`, and the Monday post (M5.10) to `?window=last-week`. A tap from the
+ * channel has to land on the board whose numbers are in the message above it, and the page's
+ * own default would land on a different one every time the post is not about this week.
  */
-export function leaderboardPageUrl(origin: string | null | undefined): string | undefined {
+export function leaderboardPageUrl(
+  origin: string | null | undefined,
+  window?: WindowKind,
+): string | undefined {
   const base = tonightPageUrl(origin);
-  return base === undefined ? undefined : `${base}/leaderboard`;
+  if (base === undefined) return undefined;
+  return window === undefined ? `${base}/leaderboard` : `${base}/leaderboard?window=${window}`;
 }
 
 function firstHeaderValue(value: string | null): string | null {

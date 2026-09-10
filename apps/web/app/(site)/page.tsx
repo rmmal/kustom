@@ -1,4 +1,5 @@
 import { loadTopPlayersOrNone } from '@/lib/board/load';
+import { LEADERBOARD_WINDOW } from '@/lib/board/window';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import { nightTimeZone, tonightStart } from '@/lib/tonight/night';
@@ -36,7 +37,15 @@ export default async function TonightPage() {
     // happening and am I in it", and it did not depend on the board's queries until the rail
     // arrived; awaited raw, a season lookup that times out would 500 a working teams screen for
     // a snapshot in a sidebar. `…OrNone` logs once and renders an empty rail instead.
-    loadTopPlayersOrNone(client, { limit: RAIL_BOARD_ROWS }),
+    //
+    // **The rail follows the leaderboard's default**, `This week` (M5.12): it is a slice of
+    // that page, and a rail showing an all-time top five beside a page whose first screen is
+    // the week would be two boards disagreeing about who is first.
+    loadTopPlayersOrNone(client, {
+      limit: RAIL_BOARD_ROWS,
+      window: LEADERBOARD_WINDOW,
+      timeZone: nightTimeZone(),
+    }),
   ]);
 
   return <TonightLive initial={snapshot} viewer={viewer} topPlayers={topPlayers} />;

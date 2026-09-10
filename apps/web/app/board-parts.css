@@ -162,6 +162,21 @@
   color: var(--cn-dim);
 }
 
+/*
+ * The window's climb, inside line 2 (M5.12, the designer's review): `+58` is the last item of
+ * `6 games · 4W 2L · +58` and has to be the same size as the words around it. `.cn-delta` is a
+ * `t-sm` rule written for the player page's game rows, and inheriting it here set one item of a
+ * `t-xs` line two steps larger than its neighbours.
+ *
+ * **Weight and colour are untouched**: a gain is still `text` at 600 and a loss still `dim` at
+ * 400, which is the one thing that may not change about a delta anywhere in this product. It is
+ * declared here rather than in `board.css` because the tonight page's rail renders this row too,
+ * and `board.css` is not loaded there.
+ */
+.cn-row-meta .cn-delta {
+  font-size: inherit;
+}
+
 /* Directly under the Proven number, right-aligned to the same edge: one vertical pair. */
 .cn-row-rating {
   flex: 0 0 auto;

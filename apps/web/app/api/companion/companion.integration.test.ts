@@ -1078,13 +1078,15 @@ if (stack === null) {
       expect(data?.map((row) => row.id)).toEqual([SEASON_ONE_ID]);
     });
 
-    it('refuses the post with a sentence naming the missing season, and writes nothing', async () => {
+    it('refuses the post with a sentence naming the missing season row, and writes nothing', async () => {
       const response = await postGame(post(eogBody({ gameId: noSeasonGameId, puuids, partyId }), ownerToken));
 
       expect(response.status).toBe(503);
       expect(await response.json()).toEqual({
         ok: false,
-        error: 'No season is active, so games cannot be saved. Start a season on the Seasons page.',
+        // Reworded by M5.14 (product, 2026-09-10): season creation is gone, so this is a
+        // broken deployment and the sentence names the fault instead of a page action.
+        error: 'Games cannot be saved: the database is missing its one season row.',
       });
       // Nothing about the game, and nothing the fold could half-write.
       expect(await countGames(noSeasonGameId)).toBe(0);

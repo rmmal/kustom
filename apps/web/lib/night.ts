@@ -193,3 +193,167 @@ export function nightStart(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE
 export function nightEnd(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): Date {
   return nightStart(new Date(nightStart(now, timeZone).getTime() + 26 * 60 * 60 * 1000), timeZone);
 }
+
+/* ---------------------------------------------------------------------------
+ * Window boundaries (M5.9): which week and which month a game belongs to.
+ *
+ * Nobody sees this half of the file. They see `This week` on the leaderboard and the Monday
+ * post in Discord, and both are only ever as right as these twenty lines. It lives here rather
+ * than in `packages/core` for the reason the top of the file already gives: the zone comes
+ * from `CUSTOMS_NIGHT_TZ` and core takes no environment.
+ *
+ * **A game belongs to the week and the month its `started_at` falls in, by the 06:00
+ * boundary** — the night's own boundary (M2.5), for the night's own reason: a Sunday-night
+ * game that starts at 01:40 belongs to the week that is ending, with the rest of that night's
+ * games. Windows are half-open, `[start, end)`, and every one of them starts at 06:00 local.
+ *
+ * No column, no migration, no backfill: the window is computed at read time from
+ * `games.started_at`, which is what makes a game backfilled three weeks late land in the week
+ * it was actually played, on every page and in every past post, with nothing rewritten.
+ * ------------------------------------------------------------------------- */
+
+/** The five windows the board is read through (M5.12). The parameter is the same word everywhere. */
+export type WindowKind = 'this-week' | 'last-week' | 'this-month' | 'last-month' | 'all-time';
+
+/**
+ * A half-open interval `[start, end)`. `all-time` is `{ start: null, end: null }` — one
+ * predicate for every caller and no branch, which is what stops five surfaces each inventing
+ * an "except all time" clause.
+ */
+export interface WindowRange {
+  start: Date | null;
+  end: Date | null;
+}
+
+/** A civil date, with no time and no zone: the calendar arithmetic below works in these. */
+interface CivilDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/** The civil date of the **night** containing `instant` — 01:40 Monday is still Sunday's date. */
+function nightDate(instant: Date, timeZone: string): CivilDate {
+  const civil = civilTimeIn(nightStart(instant, timeZone), timeZone);
+  return { year: civil.year, month: civil.month, day: civil.day };
+}
+
+/** Calendar arithmetic through UTC, so month and year ends carry themselves. */
+function addDays(date: CivilDate, days: number): CivilDate {
+  const shifted = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
+}
+
+/** 1 for Monday … 7 for Sunday, of a civil date. No instant and no zone are involved. */
+function weekdayOf(date: CivilDate): number {
+  return ((new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay() + 6) % 7) + 1;
+}
+
+/** The instant at which the clock in `timeZone` reads 06:00 on this civil date. */
+function boundaryOf(date: CivilDate, timeZone: string): Date {
+  return instantOfCivilTime({ ...date, hour: NIGHT_START_HOUR, minute: 0, second: 0 }, timeZone);
+}
+
+/** The civil date a 06:00 boundary sits on, so a range can step a week or a month off it. */
+function dateOfBoundary(boundary: Date, timeZone: string): CivilDate {
+  const civil = civilTimeIn(boundary, timeZone);
+  return { year: civil.year, month: civil.month, day: civil.day };
+}
+
+/**
+ * The Monday 06:00 that opens the week containing `instant`.
+ *
+ * **One step off `nightStart`, deliberately.** It reads the weekday of the *night's* 06:00
+ * boundary, not of the instant: taken from the instant directly, a 02:00 Monday game would
+ * open a new week six hours before the night it was played in had ended. Same reasoning as
+ * M2.5's, for the two games a year somebody actually notices.
+ */
+export function weekStart(instant: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): Date {
+  const date = nightDate(instant, timeZone);
+  return boundaryOf(addDays(date, 1 - weekdayOf(date)), timeZone);
+}
+
+/** The 1st at 06:00 that opens the month containing `instant`, by the same night boundary. */
+export function monthStart(instant: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): Date {
+  const date = nightDate(instant, timeZone);
+  return boundaryOf({ year: date.year, month: date.month, day: 1 }, timeZone);
+}
+
+/**
+ * The window's bounds, half-open and both ends at 06:00 local.
+ *
+ * `this-week` and `this-month` **end in the future** — the end is the next boundary, not `now`
+ * — so a game that lands mid-evening is inside the window it was played in without the range
+ * moving under it.
+ *
+ * **Daylight saving is `nightStart`'s answer, not a second one.** The boundary is a local wall
+ * clock, so a week can be 167 or 169 hours; this adds nothing to that and must not "fix" it by
+ * working in UTC offsets. `Africa/Cairo` is the configured zone and it does observe DST.
+ *
+ * Pure: the instant is a parameter and so is the zone. Nothing here reads `Date.now()` or the
+ * environment; `nightTimeZone()` in `lib/tonight/night.ts` is the one place the variable is read.
+ */
+export function windowRange(
+  kind: WindowKind,
+  now: Date,
+  timeZone: string = DEFAULT_NIGHT_TIME_ZONE,
+): WindowRange {
+  if (kind === 'all-time') return { start: null, end: null };
+
+  if (kind === 'this-week' || kind === 'last-week') {
+    const thisWeek = weekStart(now, timeZone);
+    const date = dateOfBoundary(thisWeek, timeZone);
+    if (kind === 'this-week') return { start: thisWeek, end: boundaryOf(addDays(date, 7), timeZone) };
+    return { start: boundaryOf(addDays(date, -7), timeZone), end: thisWeek };
+  }
+
+  const thisMonth = monthStart(now, timeZone);
+  const date = dateOfBoundary(thisMonth, timeZone);
+  const next = boundaryOf({ year: date.year, month: date.month + 1, day: 1 }, timeZone);
+  if (kind === 'this-month') return { start: thisMonth, end: next };
+  return { start: boundaryOf({ year: date.year, month: date.month - 1, day: 1 }, timeZone), end: thisMonth };
+}
+
+/** Is this game inside this window? Half-open: the start is in, the end is not. */
+export function isInWindow(startedAt: Date, range: WindowRange): boolean {
+  const at = startedAt.getTime();
+  if (range.start !== null && at < range.start.getTime()) return false;
+  if (range.end !== null && at >= range.end.getTime()) return false;
+  return true;
+}
+
+/** The two windows that close by themselves and post themselves (M5.10, M5.13). */
+export type ClosedWindowKind = 'last-week' | 'last-month';
+
+/**
+ * The window of that kind that most recently **closed**, for the cron route that posts it
+ * (M5.13): its kind, its bounds, and the key its dedupe row is written under.
+ *
+ * `key` is the window's start as an ISO instant, which is `window_posts.window_start` — the
+ * other half of that table's primary key. It is derived here rather than in the route so that
+ * "which week have we already posted" and "which week are we about to post" cannot be computed
+ * two different ways.
+ */
+export interface ClosedWindow {
+  kind: ClosedWindowKind;
+  start: Date;
+  end: Date;
+  /** `2026-09-07T03:00:00.000Z` — the `window_start` of the dedupe row. */
+  key: string;
+}
+
+export function closedWindow(
+  kind: ClosedWindowKind,
+  now: Date,
+  timeZone: string = DEFAULT_NIGHT_TIME_ZONE,
+): ClosedWindow {
+  const range = windowRange(kind, now, timeZone);
+  // `last-week` and `last-month` are always bounded; the nulls belong to `all-time` alone.
+  const start = range.start as Date;
+  const end = range.end as Date;
+  return { kind, start, end, key: start.toISOString() };
+}
