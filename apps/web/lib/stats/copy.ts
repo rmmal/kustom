@@ -176,6 +176,104 @@ export function percentLabel(percent: number): string {
 }
 
 /* ---------------------------------------------------------------------------
+ * The per-player sections on `/p/[puuid]` (M5.20).
+ *
+ * **These eight strings are unwritten copy and are with product** (M5.20 acceptance 9;
+ * `05-design.md`, "The per-player sections on `/p/[puuid]` (M5.20) are not in this table"). They
+ * are here rather than in a component so that the table product writes has one code half, the
+ * way the two above it do — nothing below may be re-typed into `PlayerStats.tsx`.
+ *
+ * Everything these sections say that product **has** already written is imported and not
+ * re-worded: the window's five labels and five empty sentences, `By role`, `Streaks`,
+ * `Best together`, `Worst together`, `Longest win streak`, `Longest losing streak`, the no-role
+ * footnote, the cap line, `13W 15L`, `71%` and `W3`. One page, one vocabulary.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * `By side` — the card under `By role` on a person's page (**engineer, for product**).
+ *
+ * The group's blue rate is `/stats`'s headline and is not repeated here, so this card is the
+ * one place in the product where a side is a record rather than a colour on a team, and it
+ * takes the same two words as the card above it: a preposition and the thing.
+ */
+export const SIDE_RECORD_HEADING = 'By side';
+
+/**
+ * `blue` and `red` as the two rows of that card (**engineer, for product**).
+ *
+ * Lower case, and the register roles are printed in everywhere on this page (`top`, `jungle`):
+ * they are the subject of a data row, not a heading, and the product's own nouns for `100` and
+ * `200`. The colour is not the mark — a row tinted blue in a list of two would be the tonight
+ * page's team card meaning something else.
+ */
+export const SIDE_LABELS: Readonly<Record<100 | 200, string>> = { 100: 'blue', 200: 'red' };
+
+/**
+ * `Partners` — the card of the three best and three worst (**engineer, for product**).
+ *
+ * `/stats` calls its own section `Duos` because every row there is a pair of other people; each
+ * row here is **one** other person, read from the page owner's side of it, and `Duos` over a
+ * list of single names would be the page asking the reader to do the subtraction.
+ */
+export const PARTNERS_HEADING = 'Partners';
+
+/**
+ * Nobody has reached the five (**engineer, for product**).
+ *
+ * The shape of the page's other two "not enough yet" lines, with the minimum as a digit and
+ * `yet` because it is a running count. `them`, third person, is this page's own pronoun
+ * (M3.26): the page is about somebody who is usually not the reader.
+ */
+export const NO_PARTNERS = `Nobody has ${MIN_DUO_GAMES} games with them yet.` as const;
+
+/**
+ * The first row of `Streaks` on a person's page (**engineer, for product**): the run ending at
+ * their most recent counted game, product's own name for it in the M5.4 brief ("**Current
+ * streak**: the run ending at their most recent counted game, printed `W3` / `L2`"), promoted
+ * to a label beside {@link LONGEST_WIN} and {@link LONGEST_LOSS}, which are already labels.
+ */
+export const CURRENT_STREAK = 'Current streak';
+
+/**
+ * `Average game 32 min.` (**engineer, for product**) — the mean over **their** counted games.
+ *
+ * The group's line carries the count it is over (`· 214 games`) because nothing else on
+ * `/stats` says it. On this page M5.15's seed line already ends `, 37 games since.`, and no
+ * page says one number twice — so this is the same sentence with that half dropped and a stop
+ * in its place. **Never `0 min` and never `NaN`**: a player with no counted game in the window
+ * has no line at all, because the whole band is undrawn there.
+ */
+export function playerAverageGameLine(minutes: number): string {
+  return `Average game ${minutes} min.`;
+}
+
+/**
+ * `Most improved, September.` / `Most improved, week of 1 Sep.` — one line for a player who won
+ * an award in a closed window (product, `05-design.md`'s copy table, 2026-09-10).
+ *
+ * **No badge and no icon**, and no rule, no delta and no percentage: the award's own line, with
+ * all of that in it, is on `/stats` and in the Monday post. This says which award and which
+ * calendar, and the reader taps through for the rest.
+ *
+ * The label is the award's own (`MOST_IMPROVED`, `BEST_OFF_ROLE`, `CURSED_DUO`), so the three
+ * cannot drift from the block they were won in.
+ */
+export function awardWonLine(label: string, period: string): string {
+  return `${label}, ${period}.`;
+}
+
+/**
+ * `week of 1 Sep` — the second half of that line on the two week windows (product's `week of 1
+ * Sep`, from the copy table; the month form is `formatMonthName`'s `September`, unwrapped).
+ *
+ * The day is the window's own Monday, formatted on the server in the fixed locale and the
+ * configured zone like every other date on a public page.
+ */
+export function weekOfLabel(day: string): string {
+  return `week of ${day}`;
+}
+
+/* ---------------------------------------------------------------------------
  * The awards (product's words, brief 2026-09-09, amended for windows 2026-09-10).
  *
  * `week` and `month` are the only difference between a weekly and a monthly award: one noun and

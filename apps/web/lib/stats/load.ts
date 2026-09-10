@@ -3,8 +3,9 @@ import { inChunks } from '../board/load';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import type { AwardRender } from './awards';
-import type { StatsGame, StatsPlayer, StatsRow, StatsView } from './types';
-import { statsView } from './view';
+import { playerStatsView } from './player';
+import type { PlayerStatsView, StatsGame, StatsPlayer, StatsRow, StatsView } from './types';
+import { type StatsInput, statsView } from './view';
 
 /**
  * Everything `/stats` shows (M5.4), read with the **anon key** through RLS — the same client,
@@ -54,6 +55,45 @@ export interface StatsOptions {
 }
 
 export async function loadStats(client: PublicClient, options: StatsOptions): Promise<StatsView> {
+  const read = await readWindow(client, options);
+
+  /**
+   * **The page itself is pure** (`view.ts`): everything from here down is arithmetic over the
+   * list the read came back with, so the whole of `/stats` is a unit test with a hand-built
+   * fixture and this file is a read.
+   */
+  return statsView({ ...read, awardRender: options.awardRender });
+}
+
+/**
+ * The same window, the same read, one player picked out of it (M5.20).
+ *
+ * **`/p/[puuid]` calls this and there is no second query path**: the brief's rule is that the
+ * player page "calls the same loader and picks one player out of the answer", so the sections
+ * under somebody's rating chart count exactly the games `/stats` counts and the two pages can
+ * never print two records for one person. The picking is `player.ts`, which is pure.
+ *
+ * A puuid nobody's scoreboard names comes back as the empty view rather than `null`: the page
+ * has already 404'd an unknown player through `loadPlayerBoard`, and a friend who did not play
+ * this week is not a missing page.
+ */
+export async function loadPlayerStats(
+  client: PublicClient,
+  puuid: string,
+  options: StatsOptions,
+): Promise<PlayerStatsView> {
+  const read = await readWindow(client, options);
+  return playerStatsView({ ...read, puuid });
+}
+
+/**
+ * One window, read once: the games, their scoreboards and the people on them.
+ *
+ * Both surfaces above take their input from here, so "a game counts" is decided in one place
+ * and the cap, the paging and the window filter cannot drift between a group page and a
+ * person's.
+ */
+async function readWindow(client: PublicClient, options: StatsOptions): Promise<WindowRead> {
   const window = options.window;
   const cap = options.maxGames ?? STATS_MAX_GAMES;
   const range = windowRange(window, options.now ?? new Date(), options.timeZone);
@@ -97,22 +137,11 @@ export async function loadStats(client: PublicClient, options: StatsOptions): Pr
     rows: byGame.get(game.id) ?? [],
   }));
 
-  /**
-   * **The page itself is pure** (`view.ts`): everything from here down is arithmetic over the
-   * list above, so the whole of `/stats` is a unit test with a hand-built fixture and this
-   * file is a read.
-   */
-  return statsView({
-    window,
-    games,
-    players,
-    range,
-    capped,
-    cap,
-    timeZone: options.timeZone,
-    awardRender: options.awardRender,
-  });
+  return { window, games, players, range, capped, cap, timeZone: options.timeZone };
 }
+
+/** What one window's read comes back with, before anything counts it. */
+type WindowRead = Omit<StatsInput, 'awardRender'>;
 
 interface GameRow {
   id: string;

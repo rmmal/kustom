@@ -229,6 +229,20 @@ export function noRoleGames(games: readonly StatsGame[]): number {
   return games.filter((game) => game.rows.every((row) => row.role === null)).length;
 }
 
+/**
+ * The same footnote's number for one person: **their own rows** with no role on them.
+ *
+ * On a page about one player the group's "a game where nobody's position was recorded" is the
+ * wrong count — what this reader wants to know is how many of *their* games are missing from
+ * the record above, and a game where the client caught nine positions and missed theirs is one
+ * of them. It is the only per-player number on that page the group form cannot answer.
+ */
+export function playerNoRoleGames(games: readonly StatsGame[], player: StatsPlayer): number {
+  return games.filter((game) =>
+    game.rows.some((row) => row.playerId === player.playerId && row.role === null),
+  ).length;
+}
+
 /* ---------------------------------------------------------------------------
  * 2. By side.
  * ------------------------------------------------------------------------- */

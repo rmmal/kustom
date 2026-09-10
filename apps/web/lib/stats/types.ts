@@ -190,3 +190,68 @@ export interface StatsView {
   onAStreak: PlayerStreaks[];
   awards: AwardsView | null;
 }
+
+/* ---------------------------------------------------------------------------
+ * The per-player sections on `/p/[puuid]` (M5.20).
+ *
+ * The same numbers as above, read for one person out of the same answer: `load.ts` makes one
+ * read, `player.ts` picks the player out of it, and the page renders this and decides nothing.
+ * There is no second fold and no second query — every field below comes from a function
+ * `/stats` already calls (`playerRoleRecords`, `playerSideRecords`, `duoRecords`,
+ * `playerStreaks`, `averageGameMinutes`, `awardsView`).
+ * ------------------------------------------------------------------------- */
+
+/** One row of `By role` on a person's page: their record at a position they actually played. */
+export interface PlayerRoleRecord extends StatsRecord {
+  role: RoleValue;
+}
+
+/** One row of `By side`: their record on blue, or on red. */
+export interface PlayerSideRecord {
+  side: SideValue;
+  record: StatsRecord;
+}
+
+/**
+ * One row of `Partners`: **the other person**, and how the two of them did on the same side.
+ *
+ * `games` is games *together*, not games played — a pair is credited with a game only when both
+ * have a counted row in it on **one** side, so a night they spent against each other is in
+ * neither the numerator nor the denominator.
+ */
+export type PartnerRecord = StatsRecord;
+
+/**
+ * Everything the sections under the rating chart print (M5.20), for one player and one window.
+ *
+ * **Zero counted games in the window is `games: 0` and nothing else** — no roles, no sides, no
+ * partners, no streak and no mean. The page draws no card at all there: the window's own empty
+ * sentence is already in the header strip and is the only true line about that window.
+ */
+export interface PlayerStatsView {
+  window: WindowKind;
+  /** This player's counted games inside the window. The universe every number below reads. */
+  games: number;
+  /** Lane order, and only the roles the scoreboard gave them. Under five rows, no percentage. */
+  roles: PlayerRoleRecord[];
+  /** Their counted games whose **own row** carries no role, for the section's footnote. */
+  noRoleGames: number;
+  /** Blue first, and only the sides they played. Same five-game minimum for a percentage. */
+  sides: PlayerSideRecord[];
+  /** Their three best partners at five games together on the same side, best first. */
+  bestPartners: PartnerRecord[];
+  /** The same list from the other end. With fewer than six partners a name is in both. */
+  worstPartners: PartnerRecord[];
+  /** The run they are on and the longest of each kind. `null` with no counted games. */
+  streaks: PlayerStreaks | null;
+  /** The mean of `duration_s` over their counted games, to the minute. Never `0`, never `NaN`. */
+  averageMinutes: number | null;
+  /**
+   * One line per award this player won in a **closed** window: `Most improved, September.`
+   * Empty on `This week`, `This month` and `All time`, which hand out nothing.
+   */
+  awards: string[];
+  /** True when the window holds more games than the read's cap, which prints one line. */
+  capped: boolean;
+  cap: number;
+}
