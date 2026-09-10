@@ -24,15 +24,21 @@ import '../../stats.css';
  */
 
 /**
- * Five minutes (product's brief). It is invisible on a page about a month and it means a
- * refresh war costs one query.
+ * **Dynamic, like `/leaderboard`, and product's five minutes cannot apply here.**
  *
- * A render that reads `searchParams` is dynamic, so Next applies this to the data cache rather
- * than serving a whole page from it — which is the honest outcome either way: **no precomputed
- * stats table and no materialised view**, because either would be a second thing that can
- * disagree with `game_players`, and `game_players` is the truth.
+ * The brief asks for `export const revalidate = 300`, on the reasoning that five minutes is
+ * invisible on a page about a month and means a refresh war costs one query. This page cannot
+ * take it: it reads `searchParams` (the window is the whole of its state) and it renders inside
+ * the shell, which reads the session cookie for the "you" rule — so Next renders it per request
+ * whatever the number says, and with `revalidate` on it the build spends a static attempt
+ * failing on `cookies` and logging it. `force-dynamic` is the same outcome, stated.
+ *
+ * What the brief's reasoning actually buys is unchanged and is the important half: **no
+ * precomputed stats table and no materialised view**, because either would be a second thing
+ * that can disagree with `game_players`, and `game_players` is the truth. If this page ever
+ * gets slow the fix is `STATS_MAX_GAMES`, not a cache table.
  */
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 interface StatsPageProps {
   searchParams: Promise<{ window?: string | string[] }>;
