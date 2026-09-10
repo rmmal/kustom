@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { chartGeometry } from '@/lib/board/chart';
-import { CHART_TITLE, gamesLabel, SEED_LABEL } from '@/lib/board/copy';
+import { CHART_TITLE, gamesLabel, SEED_LABEL, START_LABEL } from '@/lib/board/copy';
+import type { WindowKind } from '@/lib/night';
 
 /**
  * The rating history chart (`05-design.md`, "Rating history").
@@ -23,12 +24,27 @@ import { CHART_TITLE, gamesLabel, SEED_LABEL } from '@/lib/board/copy';
 export interface RatingChartProps {
   /** `displayRating(mu)` in `started_at` order, oldest first. */
   history: readonly number[];
-  /** `round(seedMu * 60)`. Never the seed's ordinal: one unit on one chart. */
-  seed: number;
+  /**
+   * The hairline, in the series' own units. Never an ordinal: one unit on one chart.
+   *
+   * `round(seedMu * 60)` on `All time`, and the rating carried **into** the window on the
+   * other four (M5.12).
+   */
+  reference: number;
+  /** Which window is plotted: it decides whether the line is labelled `seed` or `start`. */
+  window: WindowKind;
 }
 
-export function RatingChart({ history, seed }: RatingChartProps) {
-  const geometry = chartGeometry(history, seed);
+// `window` is destructured under another name on purpose: a parameter called `window` shadows
+// the global one, and this file is one `'use client'` away from that mattering.
+export function RatingChart({ history, reference, window: kind }: RatingChartProps) {
+  const geometry = chartGeometry(history, reference);
+  /**
+   * **`seed` is a fact about a whole history and `start` is a fact about a window** (M5.12,
+   * `05-design.md`'s copy table): where the board first put this player, against where the
+   * week found them. One word each, and the accessible label below says the same one.
+   */
+  const referenceLabel = kind === 'all-time' ? SEED_LABEL : START_LABEL;
   if (geometry === null) return null;
 
   const first = history[0] as number;
@@ -43,7 +59,7 @@ export function RatingChart({ history, seed }: RatingChartProps) {
    * record beside it uses, so the two counts are spelled the same way.
    */
   const plotted = Math.max(1, history.length - 1);
-  const label = `${CHART_TITLE} over ${gamesLabel(plotted)}, from ${first} to ${last}, ${SEED_LABEL} ${seed}.`;
+  const label = `${CHART_TITLE} over ${gamesLabel(plotted)}, from ${first} to ${last}, ${referenceLabel} ${reference}.`;
 
   return (
     <figure className="cn-chart">
@@ -76,7 +92,7 @@ export function RatingChart({ history, seed }: RatingChartProps) {
           className="cn-num cn-chart-seed-label"
           style={{ '--cn-seed-pos': `${geometry.seedPercent}%` } as CSSProperties}
         >
-          {SEED_LABEL}
+          {referenceLabel}
         </span>
       </div>
     </figure>

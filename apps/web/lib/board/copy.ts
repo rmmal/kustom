@@ -8,6 +8,8 @@
  * labels, lower case inside a sentence.
  */
 
+import type { WindowKind } from '../night';
+
 /** The primary number: `round(ordinal * 60)`. Named once per page, in the legend. */
 export const PROVEN_LABEL = 'Proven';
 
@@ -41,8 +43,8 @@ export const RECENT_RATING_LEGEND = RATING_LABEL.toLowerCase();
  * already policed against.
  *
  * Capitalised as a label — the page heading, the back link, the `<title>` — and lower case
- * inside the embed's title, where it follows the season name in a sentence-shaped line
- * (`Season 1 · leaderboard`), the same rule `Proven` and `Rating` follow.
+ * inside the embed's title, where it follows the **window's** name in a sentence-shaped line
+ * (`This week · leaderboard`, M5.12), the same rule `Proven` and `Rating` follow.
  */
 export const LEADERBOARD_LABEL = 'Leaderboard';
 
@@ -84,23 +86,78 @@ export const SETTLING_SENTENCE_SHORT =
   `${PROVEN_LABEL} is your rating minus how unsure the board still is about you, and it settles after about ${SETTLING_GAMES} games.` as const;
 
 /**
- * A season that has no games yet, and a player who has none (M3.5's edge cases: "not an empty
- * page, not a spinner").
+ * The five windows the board is read through (M5.12, `05-design.md`'s board copy table,
+ * product 2026-09-10). **The same five words are the option, the board heading and the post
+ * title** — a picker that said `Week` over a heading that said `This week` would be two names
+ * for one thing, which is the rule `Leaderboard` already won.
  *
- * New copy, 2026-09-09, in the shape of the tonight page's `Nobody in the lobby yet.` —
- * `05-design.md` designs the empty states for that page and names none for this one. A row in
- * `04-decisions.md`; product may replace the sentence without anything else moving.
+ * The parameter is the `WindowKind` itself (`?window=this-week`), so the URL and the label
+ * cannot drift: there is one map and it is this one.
  */
-export const NO_GAMES_YET = 'No games this season yet.';
+export const WINDOW_LABELS: Readonly<Record<WindowKind, string>> = {
+  'this-week': 'This week',
+  'last-week': 'Last week',
+  'this-month': 'This month',
+  'last-month': 'Last month',
+  'all-time': 'All time',
+};
 
 /**
- * No season is active at all. Neither of `lib/season.ts`'s two sentences fits: the admin one
- * ends by naming a page most readers cannot open, and the tonight one is about tonight's games
- * not being saved, which is not what an empty board is about. Same construction as the tonight
- * page's (M3.17): the fact, then who can fix it, and nothing to tap. Recorded in
- * `04-decisions.md`; product owns the words.
+ * `Monday 1 Sep to Sunday 7 Sep · 14 games`: the line under the picker (M5.12, the designer's
+ * slot; `05-design.md`'s copy table, product 2026-09-10).
+ *
+ * The range half is `lib/night.ts`'s — **and the week form is M5.10's post description byte for
+ * byte**, so the Monday post and the page a tap later say the same words. The count is the
+ * window's counted games and goes through {@link gamesLabel}, so a one-game week never reads
+ * `1 games`.
+ *
+ * Sentence case here; the stylesheet upper-cases it, exactly as the tonight page's slug line is
+ * a readable date in the DOM and a `SLUG` on the screen.
  */
-export const NO_SEASON_BOARD = 'No season is active, so there is no board yet. An admin can start one.';
+export function windowSlotLine(range: string, games: number): string {
+  return `${range} · ${gamesLabel(games)}`;
+}
+
+/**
+ * `Since 8 Sep 2025`: `All time`'s range half, from the group's first counted game — or, on a
+ * person's page, from theirs. The only window form that carries a year, because it is the only
+ * one that can reach one.
+ */
+export function sinceLabel(day: string): string {
+  return `Since ${day}`;
+}
+
+/**
+ * The picker's accessible name — the noun product uses for the control in `00-product.md`
+ * ("time windows the same board is read through"), because a `<nav>` landmark with five links
+ * in it and no name is announced as "navigation" beside the one that says `Leaderboard`.
+ *
+ * It is on screen nowhere: the five options name themselves. **M5.8 owns the visible control**
+ * and may give it a visible heading, in which case this string becomes that heading.
+ */
+export const WINDOW_PICKER_LABEL = 'Time window';
+
+/**
+ * A window with nothing in it — on the board and on a player page, the same sentence in both
+ * places, exactly as the deleted `No games this season yet.` was used in both.
+ *
+ * **A running window says `yet`; a closed one does not**, because nothing more is coming to
+ * `Last week`. Five constants and not one interpolation, so product can move any one of the
+ * five without touching the other four.
+ *
+ * The two strings that stood here until 2026-09-10 are gone with the word they carried:
+ * `NO_GAMES_YET` (`No games this season yet.`) is replaced by these five, and
+ * `NO_SEASON_BOARD` (`No season is active…`) is deleted with the button it pointed at
+ * (**M5.14**) — a deployment with no season row has no games either, so the empty-window line
+ * is both true and enough.
+ */
+export const WINDOW_EMPTY: Readonly<Record<WindowKind, string>> = {
+  'this-week': 'No games this week yet.',
+  'last-week': 'No games last week.',
+  'this-month': 'No games this month yet.',
+  'last-month': 'No games last month.',
+  'all-time': 'No games yet.',
+};
 
 /**
  * A game that moved nobody's rating, in the rating column of `Recent games` (M3.23, product
@@ -125,6 +182,15 @@ export const CHART_TITLE = RATING_LABEL;
 
 /** The label on the hairline reference line, in the same units as the series. */
 export const SEED_LABEL = 'seed';
+
+/**
+ * The same hairline, in a window: the rating the player carried **into** it (M5.12).
+ *
+ * `seed` is where the board started them from their rank and it is a fact about their whole
+ * history; the line on `This week`'s chart is where Monday found them, which is not a seed and
+ * may not borrow the word. `All time` keeps {@link SEED_LABEL}, unchanged.
+ */
+export const START_LABEL = 'start';
 
 /** The player page's two sections under the chart. Plain nouns; the content is the vocabulary. */
 export const ROLE_RECORD_HEADING = 'By role';

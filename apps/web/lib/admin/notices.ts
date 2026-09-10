@@ -13,7 +13,7 @@
  * page prints the route's own words.
  */
 
-export type AdminFormKind = 'players' | 'tokens' | 'discord' | 'seasons' | 'reroll';
+export type AdminFormKind = 'players' | 'tokens' | 'discord' | 'reroll';
 
 /** What a form posted: every value is a string, exactly as the no-JS form post sends it. */
 export type SubmittedValues = Record<string, string>;
@@ -26,8 +26,6 @@ export function adminNotice(kind: AdminFormKind, values: SubmittedValues, body: 
       return values.action === 'revoke' ? 'token revoked' : 'token minted';
     case 'discord':
       return 'Discord config saved';
-    case 'seasons':
-      return seasonsNotice(body);
     case 'reroll':
       return rerollNotice(body);
   }
@@ -55,19 +53,6 @@ function playersNotice(values: SubmittedValues): string {
     default:
       return 'saved';
   }
-}
-
-/**
- * `app/api/admin/seasons/handler.ts`. Composed from the **response**, not from the form: what
- * ended and what the group is looking at now are both facts the route reports back.
- */
-function seasonsNotice(body: unknown): string {
-  const started = readString(readField(body, 'season'), 'name');
-  const ended = readString(readField(body, 'endedSeason'), 'name');
-  if (started === null) return 'season started';
-
-  const now = `${started} is now the active season, and its leaderboard starts empty.`;
-  return ended === null ? now : `${ended} has ended. ${now}`;
 }
 
 /** `app/api/admin/lobbies/[lobbyId]/reroll/handler.ts`, `notice`. */
@@ -112,11 +97,6 @@ export function mintedToken(body: unknown): string | null {
 function readField(body: unknown, key: string): unknown {
   if (typeof body !== 'object' || body === null) return undefined;
   return (body as Record<string, unknown>)[key];
-}
-
-function readString(body: unknown, key: string): string | null {
-  const value = readField(body, key);
-  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 function readNumber(body: unknown, key: string): number | null {

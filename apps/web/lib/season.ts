@@ -1,7 +1,8 @@
 import type { ServiceClient } from './supabase';
 
 /**
- * The one sentence this app says when no season is active (M2.18).
+ * The one sentence this app says when the `seasons` row is missing (M2.18, rewritten by M5.14,
+ * product 2026-09-10).
  *
  * `games.season_id` is `not null default public.active_season_id()` (`0001_init.sql`), so with
  * no active season **every** game insert of the night fails — after the game, on a Vercel
@@ -9,22 +10,28 @@ import type { ServiceClient } from './supabase';
  * used to surface as a Postgres constraint message that named a column, not the thing a human
  * has to go and do.
  *
- * So the API checks first and says this, the admin index says this, and the seasons page says
- * this. Product-approved wording; one string, so the three cannot drift.
+ * It used to end `Start a season on the Seasons page.` **There is no such action now**: season
+ * creation is removed (M5.14) and `0001_init.sql` inserts the one row, so this state is a
+ * broken deployment and not a thing an admin forgot to do. The sentence therefore names the
+ * fault and promises no button. It is admin- and API-facing — the companion's log, the admin
+ * index, the seasons page — and one string, so the three cannot drift.
  */
-export const NO_ACTIVE_SEASON_MESSAGE =
-  'No season is active, so games cannot be saved. Start a season on the Seasons page.';
+export const NO_ACTIVE_SEASON_MESSAGE = 'Games cannot be saved: the database is missing its one season row.';
 
 /**
- * The same fact, for the whole group (M3.17, product 2026-09-09).
+ * The same fact, for the whole group (M3.17, product 2026-09-09; rewritten by M5.14).
  *
- * The sentence above ends by naming a page nineteen of the twenty people holding the WhatsApp
- * link cannot open, so the tonight page says this instead: what is happening, and who can fix
- * it, with nothing to tap. The two are separate constants on purpose — the tonight page must
- * never import the admin one, and neither may be edited into the other.
+ * The sentence above is written for whoever can open a database console, and nineteen of the
+ * twenty people holding the WhatsApp link cannot. This one says the only thing they can act
+ * on, which is **nothing, keep playing**: a game missed tonight can be added back from match
+ * history later (backfill, M5.1). It used to end `An admin can start one.` — which sent twenty
+ * people looking for an admin at 22:00 over a button that no longer exists.
+ *
+ * The two are separate constants on purpose: the tonight page must never import the admin one,
+ * and neither may be edited into the other.
  */
 export const NO_ACTIVE_SEASON_TONIGHT_MESSAGE =
-  "No season is active, so tonight's games are not being saved. An admin can start one.";
+  "Tonight's games are not being saved. Play on — they can be added back from match history later.";
 
 /**
  * Whether `public.active_season_id()` would find a season.

@@ -1,5 +1,7 @@
+import { WINDOW_LABELS } from '../board/copy';
 import { loadBoard } from '../board/load';
 import type { BoardView } from '../board/types';
+import { LEADERBOARD_WINDOW } from '../board/window';
 import { activeSeasonId, loadPool } from '../ingest/balance';
 import type { GameFinishedEvent, LobbyBalancedEvent, LobbyHook } from '../ingest/hooks';
 import { compareForSitOut, type PoolMember, planSeats } from '../ingest/selection';
@@ -114,31 +116,33 @@ export async function postResultForGame(
 }
 
 /**
- * The nightly board (M3.5). One post: the season's top ten by Proven, in the same order
- * `/leaderboard` puts them in, because it is the same `loadBoard`.
+ * The nightly board (M3.5, windowed by M5.12). One post: **this week's** top ten by Proven, in
+ * the same order `/leaderboard` puts them in, because it is the same `loadBoard` read through
+ * the same window that page opens on.
  *
- * **Three ways to say nothing**, all of them `skipped`, and none of them an empty message:
+ * The title is `This week · leaderboard` and the link carries `?window=this-week`, so the tap
+ * from the channel lands on the board the post printed. It stops naming a season: a season's
+ * name would read as `gamesd · leaderboard` on the deployment that exists, and "the season" is
+ * no longer a thing the product has.
  *
- * - no active season;
- * - nobody on the board at all;
- * - **a season nobody has played yet** (product, 2026-09-09). The board seeds every known
- *   player from their rank, so the morning a new season starts this would post
- *   `Season 2 · leaderboard` over ten lines all reading `0 games` — a ranking of a season that
- *   has not happened, in a channel, while `/leaderboard` correctly says `No games this season
- *   yet.` One rated game and it posts as it does today.
- *
- * That is the result embed's rule applied here: a message that says nothing is worse than
- * silence. Anything else is the webhook's answer, and a webhook that is down costs a log line.
+ * **Two ways to say nothing**, both `skipped`, neither an empty message — the result embed's
+ * rule applied here, that a message that says nothing is worse than silence. Anything else is
+ * the webhook's answer, and a webhook that is down costs a log line.
  *
  * **The schedule is not here.** This is a function and a route; something outside the app
  * calls it at a configured time (`GET /api/cron/leaderboard`, bearer `CRON_SECRET`), exactly
- * as the idle sweep works. No Vercel cron config ships with this milestone.
+ * as the idle sweep works. The weekly and monthly posts are M5.10 and M5.13, with their own
+ * route and their own window.
  */
 export async function postNightlyLeaderboard(
   client: ServiceClient,
   options: PostOptions = {},
 ): Promise<WebhookOutcome> {
-  const board = await loadBoard(client);
+  const board = await loadBoard(client, {
+    window: NIGHTLY_WINDOW,
+    now: options.now ?? new Date(),
+    timeZone: options.timeZone ?? DEFAULT_NIGHT_TIME_ZONE,
+  });
   const skip = nightlyLeaderboardSkip(board);
   if (skip !== null) return SKIPPED(skip);
 
@@ -146,34 +150,35 @@ export async function postNightlyLeaderboard(
     puuid: row.puuid,
     name: row.name,
     proven: row.proven,
+    // The window's games, like every other number on the row: `41 games` on a Tuesday would
+    // be a whole history printed under a heading that says this week.
     games: row.games,
   }));
 
   const payload = leaderboardEmbed({
-    // `nightlyLeaderboardSkip` has already refused a board with no season.
-    seasonName: (board.season as NonNullable<BoardView['season']>).name,
+    windowLabel: WINDOW_LABELS[board.window],
     entries,
-    url: leaderboardPageUrl(options.requestOrigin),
+    url: leaderboardPageUrl(options.requestOrigin, board.window),
     timestamp: (options.now ?? new Date()).toISOString(),
   });
   return postToWebhook(client, payload, 'leaderboard embed', options);
 }
 
+/** The nightly post prints the board `/leaderboard` opens on, and follows it if it ever moves. */
+const NIGHTLY_WINDOW = LEADERBOARD_WINDOW;
+
 /**
- * Why tonight's board is not worth posting, or `null` when it is. Pure, so the three rules are
- * a unit test rather than a season nobody can arrange.
+ * Why tonight's board is not worth posting, or `null` when it is. Pure, so the rules are a
+ * unit test rather than a week nobody can arrange.
  *
- * The third one is the one that is easy to miss: the board seeds every known player from their
- * rank, so a season nobody has played yet is a full list of real names with real Proven numbers
- * and `0 games` against every one of them. Posting that is a ranking of a season that has not
- * happened.
+ * With the board windowed, the two rules are one fact from two directions: **membership is the
+ * games**, so a week nobody has played has no rows at all. The `every(games === 0)` rule is
+ * kept because `All time` — the window a future caller might pass — still seeds every known
+ * player from their rank, and posting that is a ranking of games that have not happened.
  */
 export function nightlyLeaderboardSkip(board: BoardView): string | null {
-  if (board.season === null) return 'no active season';
   if (board.rows.length === 0) return 'nobody on the board';
-  // Asked of the whole board rather than of the ten printed: a season is played or it is not,
-  // and `loadBoard`'s `games` is the fold's own count for the active season.
-  if (board.rows.every((row) => row.games === 0)) return 'no games this season';
+  if (board.rows.every((row) => row.games === 0)) return 'nobody has played in this window';
   return null;
 }
 

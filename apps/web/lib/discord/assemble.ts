@@ -129,7 +129,7 @@ function toSeatLine(move: SeatMove, names: NameLookup): SeatLine {
 export interface ResultSource {
   winningSide: SideValue;
   durationS: number;
-  seasonName: string;
+  /** Which game this is, counted from the group's first. `null` when the count failed. */
   gameNumber: number | null;
   blueWinProb: number | null;
   /** ISO 8601: when the game ended (`started_at + duration_s`). */
@@ -182,7 +182,6 @@ export function buildResultInput(source: ResultSource, context: EmbedContext): R
     red: rated.filter((player) => player.side === 200).map(toPlayer),
     blueWinProb: source.blueWinProb,
     topDamage: top === undefined || top.damage <= 0 ? null : { name: top.name, damage: top.damage },
-    seasonName: source.seasonName,
     gameNumber: source.gameNumber,
     url: context.url,
     timestamp: context.timestamp,
@@ -225,14 +224,15 @@ export function teamsPuuids(source: TeamsSource): string[] {
 
 /**
  * One finished game, as the result embed needs it: the scoreboard with its rating columns,
- * the season and this game's place in it, the roles, and the chosen split's win probability.
+ * this game's place in the group's history, the roles, and the chosen split's win probability.
  *
  * `null` when the game is gone or has no winning side — neither is a post.
  */
 export async function loadResultSource(client: ServiceClient, gameId: string): Promise<ResultSource | null> {
   const { data: game, error } = await client
     .from('games')
-    .select('id, lobby_id, season_id, started_at, duration_s, winning_side, seasons!inner(name)')
+    // No `seasons!inner(name)`: a season's name is printed on no surface any more (M5.12).
+    .select('id, lobby_id, started_at, duration_s, winning_side')
     .eq('id', gameId)
     .maybeSingle();
   if (error) throw new Error(`discord: game lookup failed: ${error.message}`);
@@ -265,8 +265,7 @@ export async function loadResultSource(client: ServiceClient, gameId: string): P
   return {
     winningSide: game.winning_side,
     durationS: game.duration_s,
-    seasonName: game.seasons.name,
-    gameNumber: await countGamesInSeason(client, game.season_id, game.started_at),
+    gameNumber: await countGamesThrough(client, game.started_at),
     blueWinProb: splitRoles.blueWinProb,
     endedAt: new Date(Date.parse(game.started_at) + game.duration_s * 1_000).toISOString(),
     players,
@@ -298,21 +297,22 @@ async function loadSplitRoles(
 }
 
 /**
- * Which game of the season this is: `Season 1 · game 47`. Counted rather than stored, so it
- * stays right after a backfill inserts an older game (M5.1).
+ * Which game this is, counted from the group's first: `Kustom · game 47` (M5.12, product
+ * 2026-09-10). Counted rather than stored, so it stays right after a backfill inserts an older
+ * game (M5.1).
+ *
+ * **No season filter.** There is one `seasons` row and nothing can make a second (M5.14), so
+ * the filter only ever narrowed the count on a deployment that pressed the removed button —
+ * where it would have restarted the group's game numbering at 1 for no reason a friend could
+ * see. Every game up to and including this one, and that is the whole rule.
  */
-async function countGamesInSeason(
-  client: ServiceClient,
-  seasonId: string,
-  startedAt: string,
-): Promise<number | null> {
+async function countGamesThrough(client: ServiceClient, startedAt: string): Promise<number | null> {
   const { count, error } = await client
     .from('games')
     .select('id', { count: 'exact', head: true })
-    .eq('season_id', seasonId)
     .lte('started_at', startedAt);
   if (error) {
-    console.error(`discord: counting the season's games failed: ${error.message}`);
+    console.error(`discord: counting the group's games failed: ${error.message}`);
     return null;
   }
   return count ?? null;

@@ -1,8 +1,9 @@
-import { LEADERBOARD_LABEL, NO_GAMES_YET, NO_SEASON_BOARD } from '@/lib/board/copy';
+import { LEADERBOARD_LABEL, WINDOW_EMPTY, WINDOW_LABELS, windowSlotLine } from '@/lib/board/copy';
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
 import { isNameless } from '@/lib/tonight/copy';
 import { BoardCard } from '../_leaderboard/BoardCard';
 import { NamelessHint, SettlingNote } from './parts';
+import { WindowPicker } from './WindowPicker';
 
 /**
  * `/leaderboard` (M3.5, M3.8, M3.10; dressed for Floodlit in M3.19). A pure function of one
@@ -25,41 +26,62 @@ export interface BoardViewProps {
 }
 
 export function BoardView({ board, viewerPuuid }: BoardViewProps) {
-  const settling = board.rows.some((row) => row.settling);
+  // Only about rows that are on the screen: with an empty window nothing is drawn for the
+  // sentence to explain, and it is a note under a column, not a note about the product.
+  const settling = board.range !== null && board.rows.some((row) => row.settling);
   const nameless = board.rows.some((row) => isNameless(row.name));
-  const noGamesYet = board.rows.length === 0 || board.rows.every((row) => row.games === 0);
+  /**
+   * **A window with nothing in it**, counted by the loader rather than guessed from the rows:
+   * in a window membership *is* the games, and on `All time` the board still lists everybody
+   * the database knows, seeded from rank, so a row count would say "played" for a board of
+   * `0 games` rows.
+   *
+   * When it is empty the slot prints the window's sentence and **no card is drawn at all**
+   * (product, 2026-09-10) — which is how "never a blank card" and "never say it twice" are
+   * both true.
+   */
+  const empty = board.range === null;
 
   return (
     <main className="cn-page">
       <header className="cn-strip">
         {/*
-         * `Season 1 Leaderboard`, and `Leaderboard` alone when no season is active — at full
-         * weight, not as the dim sub-word (the designer's review, 2026-09-09). `cn-strip-sub`
-         * demotes the noun beside the season name it belongs to; with nothing beside it the
-         * page's only heading was a grey afterthought.
+         * `This week Leaderboard` (M5.12): the **window's** name at full weight with the
+         * page's noun beside it in `dim` — where the season's name used to be, in the shape
+         * the designer settled on 2026-09-09. A season's name is never printed to a friend
+         * again, and the heading and the picker say the same three words.
          */}
         <h1 className="cn-strip-title">
-          {board.season === null ? (
-            LEADERBOARD_LABEL
-          ) : (
-            <>
-              {board.season.name} <span className="cn-strip-sub">{LEADERBOARD_LABEL}</span>
-            </>
-          )}
+          {WINDOW_LABELS[board.window]} <span className="cn-strip-sub">{LEADERBOARD_LABEL}</span>
         </h1>
+        <WindowPicker path="/leaderboard" selected={board.window} />
+
+        {/*
+         * **The strip's one line about the window**, under the chips and above the hairline
+         * (the designer, 2026-09-10). Not an empty page and not a spinner: one sentence, in
+         * `dim`, over a board that is simply not drawn — the sentence is the whole answer.
+         *
+         * One **slot**, two strings, never both: the window's dates and its game count
+         * (`Monday 1 Sep to Sunday 7 Sep · 14 games`) when there is something to count, and
+         * the window's own empty sentence when there is not. `· 0 games` is a thing no reader
+         * needs told twice.
+         */}
+        {empty ? (
+          <p className="cn-empty">{WINDOW_EMPTY[board.window]}</p>
+        ) : (
+          <p className="cn-num cn-window-line">{windowSlotLine(board.range as string, board.games)}</p>
+        )}
       </header>
 
-      {/* Once per page, under the heading, and never once per row (M3.8). */}
-      {settling ? <SettlingNote /> : null}
-
-      {board.season === null ? <p className="cn-notice">{NO_SEASON_BOARD}</p> : null}
-
       <section className="cn-block">
-        {/* Not an empty page and not a spinner: one line, in `dim`, and the seeded rows below
-            it so a friend who has not played yet can still find themselves. */}
-        {board.season !== null && noGamesYet ? <p className="cn-empty">{NO_GAMES_YET}</p> : null}
+        {empty || board.rows.length === 0 ? null : <BoardCard rows={board.rows} viewerPuuid={viewerPuuid} />}
 
-        {board.rows.length === 0 ? null : <BoardCard rows={board.rows} viewerPuuid={viewerPuuid} />}
+        {/*
+         * Once per page, **under the board** and never once per row (M3.8, moved below the card
+         * by the designer 2026-09-10): it explains the column you have just read, and above the
+         * card it separated the heading from the thing the heading names.
+         */}
+        {settling ? <SettlingNote /> : null}
       </section>
 
       {nameless ? <NamelessHint /> : null}

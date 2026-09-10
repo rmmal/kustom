@@ -2,14 +2,20 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
   BOARD_LEGEND,
-  NO_GAMES_YET,
-  NO_SEASON_BOARD,
   PROVEN_LABEL,
   SETTLING_CHIP,
   SETTLING_SENTENCE,
+  WINDOW_EMPTY,
+  WINDOW_LABELS,
 } from '@/lib/board/copy';
 import type { BoardView as BoardViewModel } from '@/lib/board/types';
-import { workedBoard, workedBoardRows } from '@/lib/testing/boardFixtures';
+import { WINDOW_ORDER } from '@/lib/board/window';
+import {
+  emptyWindowBoard,
+  workedBoard,
+  workedBoardRows,
+  workedWindowBoard,
+} from '@/lib/testing/boardFixtures';
 import { workedPuuid } from '@/lib/testing/workedExample';
 import { NAMELESS_HINT } from '@/lib/tonight/copy';
 import { BoardView } from './BoardView';
@@ -145,7 +151,7 @@ describe('the still-settling marker (M3.8)', () => {
       losses: 15,
       settling: false,
     }));
-    draw({ season: { id: 'season-1', name: 'Season 1' }, rows: settled });
+    draw(workedBoard({ rows: settled }));
 
     expect(screen.queryByText(SETTLING_CHIP)).not.toBeInTheDocument();
     expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
@@ -155,10 +161,7 @@ describe('the still-settling marker (M3.8)', () => {
 describe('a player with no name (M3.10)', () => {
   it('is `Someone`, with one line under the list and never a puuid', () => {
     const [first, ...rest] = workedBoardRows();
-    draw({
-      season: { id: 'season-1', name: 'Season 1' },
-      rows: [{ ...(first as (typeof rest)[number]), name: null }, ...rest],
-    });
+    draw(workedBoard({ rows: [{ ...(first as (typeof rest)[number]), name: null }, ...rest] }));
 
     expect(screen.getByText('Someone')).toBeInTheDocument();
     expect(screen.getAllByText(NAMELESS_HINT)).toHaveLength(1);
@@ -173,14 +176,15 @@ describe('a player with no name (M3.10)', () => {
    */
   it('gives each `Someone` link its rank, out loud and only out loud', () => {
     const [first, second, ...rest] = workedBoardRows();
-    draw({
-      season: { id: 'season-1', name: 'Season 1' },
-      rows: [
-        { ...(first as (typeof rest)[number]), name: null },
-        { ...(second as (typeof rest)[number]), name: null },
-        ...rest,
-      ],
-    });
+    draw(
+      workedBoard({
+        rows: [
+          { ...(first as (typeof rest)[number]), name: null },
+          { ...(second as (typeof rest)[number]), name: null },
+          ...rest,
+        ],
+      }),
+    );
 
     expect(screen.getByRole('link', { name: 'Someone, rank 1' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Someone, rank 2' })).toBeInTheDocument();
@@ -199,7 +203,13 @@ describe('a player with no name (M3.10)', () => {
 });
 
 describe('the empty states', () => {
-  it('is a heading, the sentence and one line when the season has no games yet', () => {
+  /**
+   * **The sentence, and no card under it** (product, 2026-09-10). The page used to print the
+   * rank-seeded rows below the line so a friend who had not played could find themselves; with
+   * the sentence in the header's slot that board was ten names against ten `0 games`, which is
+   * the same list the nightly post refuses to send. One answer, in one place.
+   */
+  it('is a heading and one sentence when nothing has been played at all', () => {
     const seeded = workedBoardRows().map((row) => ({
       ...row,
       games: 0,
@@ -208,36 +218,166 @@ describe('the empty states', () => {
       streak: null,
       settling: true,
     }));
-    draw({ season: { id: 'season-1', name: 'Season 1' }, rows: seeded });
+    draw(workedBoard({ rows: seeded, range: null, games: 0 }));
 
-    expect(screen.getByText(NO_GAMES_YET)).toBeInTheDocument();
-    expect(screen.getByText(SETTLING_SENTENCE)).toBeInTheDocument();
-    // Not an empty page: a friend seeded last night still finds themselves, with `0 games`.
-    expect(rows()).toHaveLength(10);
-    expect(rows()[0]?.querySelector('.cn-row-meta')?.textContent).toContain('0 games');
+    expect(screen.getByText(WINDOW_EMPTY['all-time'])).toBeInTheDocument();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(document.querySelector('.cn-board-card')).not.toBeInTheDocument();
+    // And never `· 0 games` beside it: the slot holds the sentence instead of the range.
+    expect(document.body.textContent).not.toContain('· 0 games');
+    // Nothing is drawn for the settling note to explain either.
+    expect(screen.queryByText(SETTLING_SENTENCE)).not.toBeInTheDocument();
   });
 
-  it('says so when no season is active, and lists nobody', () => {
-    draw({ season: null, rows: [] });
+  /**
+   * **Each of the five prints its own sentence, and no page renders a blank card** (M5.12).
+   * In a window, membership is the games, so an empty window is no rows at all — and the line
+   * says which window is empty, because the reader may be two taps from a board with games in
+   * it.
+   */
+  it('prints its own sentence for each of the five, with no card under it', () => {
+    for (const window of WINDOW_ORDER) {
+      const { unmount } = draw(emptyWindowBoard(window));
 
-    expect(screen.getByText(NO_SEASON_BOARD)).toBeInTheDocument();
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
-    // Never the admin sentence: it names a page most of the group cannot open.
+      expect(screen.getByText(WINDOW_EMPTY[window])).toBeInTheDocument();
+      expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+      expect(document.querySelector('.cn-board-card')).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  /** The word `season` is gone from the friend-facing vocabulary with M5.12 and M5.14. */
+  it('never says season, and never sends a reader looking for an admin', () => {
+    draw(emptyWindowBoard('this-week'));
+
+    expect(document.body.textContent?.toLowerCase()).not.toContain('season');
     expect(document.body.textContent).not.toContain('Start a season on the Seasons page.');
   });
 
-  it('has a heading in every state, and the word is `Leaderboard`', () => {
-    const { unmount, container } = draw();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Season 1 Leaderboard');
-    // Beside a season name the noun is the dim sub-word.
-    expect(container.querySelector('.cn-strip-sub')?.textContent).toBe('Leaderboard');
-    unmount();
+  it('has a heading in every window, and it is the window beside `Leaderboard`', () => {
+    for (const window of WINDOW_ORDER) {
+      const { unmount, container } = draw(emptyWindowBoard(window));
 
-    const { container: bare } = draw({ season: null, rows: [] });
-    const heading = screen.getByRole('heading', { level: 1 });
-    expect(heading).toHaveTextContent('Leaderboard');
-    // With nothing beside it, it is the heading itself and not a grey afterthought.
-    expect(bare.querySelector('.cn-strip-sub')).not.toBeInTheDocument();
-    expect(heading.textContent).toBe('Leaderboard');
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        `${WINDOW_LABELS[window]} Leaderboard`,
+      );
+      // The page's noun is the dim sub-word beside the window's own name.
+      expect(container.querySelector('.cn-strip-sub')?.textContent).toBe('Leaderboard');
+      unmount();
+    }
+  });
+});
+
+/**
+ * The picker (M5.12): five options, in one order, on every window — the control that is the
+ * difference between two boards which otherwise look identical.
+ */
+describe('the window picker', () => {
+  it("is five options in product's order, in the page header", () => {
+    const { container } = draw(workedWindowBoard('this-week'));
+    const picker = container.querySelector('.cn-windows');
+
+    expect(picker?.parentElement).toHaveClass('cn-strip');
+    expect([...(picker?.children ?? [])].map((option) => option.textContent)).toEqual([
+      'This week',
+      'Last week',
+      'This month',
+      'Last month',
+      'All time',
+    ]);
+  });
+
+  /**
+   * **All five are links; the selected one is the current page** (the designer, 2026-09-10).
+   * `aria-current="page"` is what a screen reader announces as the one you are on, and the
+   * chip keeps its 44px target — a mis-tap on the window you are already reading should do
+   * nothing, not land on the one beside it.
+   */
+  it('marks the selected window as the current page and still links it', () => {
+    draw(workedWindowBoard('last-week'));
+    // Scoped to the control: `Last week` is also the page's heading, which is the point of it.
+    const picker = within(screen.getByRole('navigation', { name: 'Time window' }));
+
+    const selected = picker.getByRole('link', { name: 'Last week' });
+    expect(selected).toHaveAttribute('aria-current', 'page');
+    expect(selected).toHaveClass('cn-window-on');
+    expect(selected).toHaveAttribute('href', '/leaderboard?window=last-week');
+
+    expect(picker.getByRole('link', { name: 'This week' })).toHaveAttribute(
+      'href',
+      '/leaderboard?window=this-week',
+    );
+    expect(picker.getByRole('link', { name: 'All time' })).toHaveAttribute(
+      'href',
+      '/leaderboard?window=all-time',
+    );
+    // Exactly one of the five is marked, and the other four say nothing about being current.
+    expect(picker.getAllByRole('link')).toHaveLength(5);
+    for (const link of picker.getAllByRole('link', { name: /week|month|time/ })) {
+      if (link === selected) continue;
+      expect(link).not.toHaveAttribute('aria-current');
+      expect(link).not.toHaveClass('cn-window-on');
+    }
+  });
+
+  /**
+   * The slot under the chips (the designer, 2026-09-10): what the window covers and how many
+   * games are in it — **or** the window's empty sentence, never both and never `· 0 games`.
+   */
+  it("prints the window's dates and its game count, inside the strip", () => {
+    const { container } = draw(workedWindowBoard('last-week'));
+    const line = container.querySelector('.cn-window-line');
+
+    expect(line?.textContent).toBe('Monday 1 Sep to Sunday 7 Sep · 6 games');
+    // In the header, under the picker, and there is only one of it.
+    expect(line?.parentElement).toHaveClass('cn-strip');
+    expect(line?.previousElementSibling).toHaveClass('cn-windows');
+    expect(container.querySelectorAll('.cn-window-line')).toHaveLength(1);
+    // Sentence case in the DOM; the stylesheet upper-cases it, like the tonight page's slug.
+    expect(line?.textContent).not.toBe(line?.textContent?.toUpperCase());
+  });
+
+  it('shows the empty sentence in the same slot instead, never both', () => {
+    const { container } = draw(emptyWindowBoard('last-week'));
+
+    expect(container.querySelector('.cn-window-line')).not.toBeInTheDocument();
+    expect(screen.getByText(WINDOW_EMPTY['last-week'])).toBeInTheDocument();
+    expect(screen.getByText(WINDOW_EMPTY['last-week']).parentElement).toHaveClass('cn-strip');
+  });
+
+  it('works with no JavaScript: every option is a real href, not a button', () => {
+    draw(workedWindowBoard('this-week'));
+
+    for (const link of screen.getAllByRole('link', { name: /week|month|time/ })) {
+      expect(link.tagName).toBe('A');
+      expect(link.getAttribute('href')).toMatch(/^\/leaderboard\?window=/);
+    }
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+});
+
+/**
+ * A window's row: `6 games · 4W 2L · +58` (M5.12). The counts are the window's, the climb is
+ * computed at render from the two mu values, and the sort is untouched.
+ */
+describe('a row inside a window', () => {
+  it('reads the window line, with the climb last and no streak', () => {
+    draw(workedWindowBoard('this-week'));
+
+    const meta = rows()[0]?.querySelector('.cn-row-meta')?.textContent;
+    expect(meta).toBe('6 games · 4W 2L · +58');
+  });
+
+  it('keeps the two numbers and the order exactly as the board has them', () => {
+    draw(workedWindowBoard('this-week'));
+
+    const proven = rows().map((row) => Number(row.querySelector('.cn-proven')?.firstChild?.textContent));
+    expect(proven).toEqual([1_548, 1_137, 1_062, 990, 987, 917, 882, 831, 654, 534]);
+  });
+
+  it('is the same row it always was on `All time`: the streak, and no climb', () => {
+    draw();
+
+    expect(rows()[0]?.querySelector('.cn-row-meta')?.textContent).toBe('41 games · 21W 20L · L2');
   });
 });

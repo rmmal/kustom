@@ -1,8 +1,11 @@
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { loadPlayerBoard } from '@/lib/board/load';
+import { PLAYER_WINDOW, parseWindow } from '@/lib/board/window';
+import type { WindowKind } from '@/lib/night';
 import { createPublicClient } from '@/lib/publicClient';
 import { renderWebName } from '@/lib/tonight/copy';
+import { nightTimeZone } from '@/lib/tonight/night';
 import { PlayerView } from '../../../_board/PlayerView';
 import '../../../board.css';
 
@@ -16,28 +19,41 @@ import '../../../board.css';
  *
  * A puuid with no `players_public` row is a 404 rather than an empty page — there is nobody to
  * show, and an invented blank profile is worse than the browser's own answer.
+ *
+ * **Its default window is `All time`** (M5.12), unlike `/leaderboard`'s: the page is a person's
+ * history, and one that opened on six days of games would answer a question nobody asked it.
+ * The parameter is the same word on both pages, so a link keeps its meaning across them.
  */
 export const dynamic = 'force-dynamic';
 
 interface PlayerPageProps {
   params: Promise<{ puuid: string }>;
+  searchParams: Promise<{ window?: string | string[] }>;
 }
 
 /**
  * Wrapped in React's `cache` so the title and the page cost one load between them: Next calls
  * `generateMetadata` and the component separately, and this page's load is several queries.
  */
-const loadPlayer = cache(async (puuid: string) => loadPlayerBoard(createPublicClient(), puuid));
+const loadPlayer = cache(async (puuid: string, window: WindowKind) =>
+  loadPlayerBoard(createPublicClient(), puuid, { window, timeZone: nightTimeZone() }),
+);
 
-export async function generateMetadata({ params }: PlayerPageProps) {
-  const { puuid } = await params;
-  const player = await loadPlayer(puuid);
+export async function generateMetadata({ params, searchParams }: PlayerPageProps) {
+  const [{ puuid }, query] = await Promise.all([params, searchParams]);
+  const window = parseWindow(query.window, PLAYER_WINDOW);
+  // An unknown window is the page's 404, not the title's problem: it renders `Kustom` and the
+  // component below refuses the request.
+  const player = window === null ? null : await loadPlayer(puuid, window);
   return { title: player === null ? 'Kustom' : `${renderWebName(player.name)} · Kustom` };
 }
 
-export default async function PlayerPage({ params }: PlayerPageProps) {
-  const { puuid } = await params;
-  const player = await loadPlayer(puuid);
+export default async function PlayerPage({ params, searchParams }: PlayerPageProps) {
+  const [{ puuid }, query] = await Promise.all([params, searchParams]);
+  const window = parseWindow(query.window, PLAYER_WINDOW);
+  if (window === null) notFound();
+
+  const player = await loadPlayer(puuid, window);
   if (player === null) notFound();
 
   // **The session decides nothing here** (M3.19): a lineup marks the player whose page it is,

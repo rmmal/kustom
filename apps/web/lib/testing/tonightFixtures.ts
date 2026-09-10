@@ -233,7 +233,6 @@ export function snapshot(lobby: LobbyView | null, overrides: Partial<TonightSnap
     // the slug is formatted on the server and travels in the snapshot (M3.18).
     nightLabel: 'Tuesday 8 September',
     seasonActive: true,
-    seasonName: 'Season 1',
     ...overrides,
   };
 }
