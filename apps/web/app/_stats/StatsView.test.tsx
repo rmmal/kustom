@@ -135,7 +135,7 @@ describe('a window with nothing in it', () => {
 });
 
 describe('the group numbers', () => {
-  it('are blue s rate and the average game, each with the count they are over', () => {
+  it('are blue s rate and the average game, as three parallel stopped sentences', () => {
     const { container } = draw(view(busyMonth()));
 
     // One card, no header bar: three lines about one subject (the designer, 2026-09-10).
@@ -145,8 +145,32 @@ describe('the group numbers', () => {
     expect([...(card?.querySelectorAll('.cn-stats-line') ?? [])]).toHaveLength(3);
 
     // Five of seven, and every game 1800 seconds.
-    expect(screen.getByText('Blue wins 71% of the time · 7 games')).toBeInTheDocument();
-    expect(screen.getByText('Average game 30 min · 7 games')).toBeInTheDocument();
+    expect(screen.getByText('Blue wins 71% of the time.')).toBeInTheDocument();
+    expect(screen.getByText('Average game 30 min.')).toBeInTheDocument();
+    expect(screen.getByText('10 players played.')).toBeInTheDocument();
+  });
+
+  /**
+   * **M5.22: the window's game count prints exactly once in the header band.** All three of
+   * those numbers are one `countedGames` length passed from one field, so a count beside two of
+   * the statements was the slot retyped a few lines under itself — the same thing this product
+   * already refuses twice on `/p/[puuid]`. The slot keeps it byte for byte, because M5.10's
+   * Monday post is that same string.
+   */
+  it('prints the window s game count exactly once, in the slot', () => {
+    const { container } = draw(view(busyMonth()));
+
+    /**
+     * The band is the header strip and the card of statements under it — the three places the
+     * count used to print. (The lists below carry `over 7 games` on each row for a screen
+     * reader, which is a denominator for that row and not the window's count.)
+     */
+    const band = [container.querySelector('.cn-strip'), container.querySelector('.cn-stats-lines')]
+      .map((node) => node?.textContent ?? '')
+      .join(' ');
+
+    expect(band.match(/7 games/g) ?? []).toHaveLength(1);
+    expect(container.querySelector('.cn-window-line')?.textContent).toBe('September · 7 games');
   });
 });
 
@@ -300,7 +324,7 @@ describe('the awards block', () => {
     expect(screen.queryByText('Awards')).not.toBeInTheDocument();
     expect(screen.queryByText(/Awards are handed out/)).not.toBeInTheDocument();
     // The rest of the page is unchanged.
-    expect(screen.getByText('Blue wins 71% of the time · 7 games')).toBeInTheDocument();
+    expect(screen.getByText('Blue wins 71% of the time.')).toBeInTheDocument();
   });
 });
 

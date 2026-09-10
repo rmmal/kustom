@@ -56,19 +56,34 @@ export const ON_A_STREAK_GAMES = 3;
  * ------------------------------------------------------------------------- */
 
 /**
- * `Blue wins 53% of the time · 214 games` (product).
+ * `Blue wins 53% of the time.` (product, 2026-09-11, M5.22 — was `… · 214 games`).
+ *
+ * **The count is gone from both group statements and the full stop arrives with its
+ * departure.** The slot above them already prints it, and all three numbers are the same
+ * number by construction — the slot's, this line's and the average's are one `countedGames`
+ * length passed from one field — so `· 214 games` here was the slot retyped a few lines under
+ * itself, which this product refuses on the other page twice already. The trailing count was
+ * also what made this a legend rather than a sentence; the card's third line
+ * ({@link playersLine}) has been a stopped sentence since M5.4.
  *
  * **The group's side rate is the only group-wide rate on this page**, and it is meaningful
  * precisely because a group-wide *role* rate is not: every game has a blue top and a red top,
  * so any group-level role rate is 50.0% by construction.
  */
-export function blueWinLine(percent: number, games: number): string {
-  return `Blue wins ${percent}% of the time · ${gamesLabel(games)}`;
+export function blueWinLine(percent: number): string {
+  return `Blue wins ${percent}% of the time.`;
 }
 
-/** `Average game 32 min · 214 games` (product). Never `0 min` — zero games prints no line. */
-export function averageGameLine(minutes: number, games: number): string {
-  return `Average game ${minutes} min · ${gamesLabel(games)}`;
+/**
+ * `Average game 32 min.` (product, 2026-09-11, M5.22 — was `… · 214 games`).
+ *
+ * The same ruling and the same stop as {@link blueWinLine}, and it makes this **byte for byte
+ * the per-player line on `/p/[puuid]`** — one function on two pages, so the answer to "why does
+ * the group's average carry a count and mine does not" is that neither does. Never `0 min`:
+ * zero counted games prints no line on either page.
+ */
+export function averageGameLine(minutes: number): string {
+  return `Average game ${minutes} min.`;
 }
 
 /**
@@ -207,9 +222,13 @@ export const SIDE_RECORD_HEADING = 'By side';
  * `Blue · 7695`, the result's `Blue was favored 54%.`, the team card's header, and `/stats`'s
  * own `Blue wins 69% of the time.` one tab away. Roles are lower case in every surface — `top`
  * is the word's form, not a list convention — so the mono lower-case exception stays theirs
- * alone, and a side is **a name read as language and set in Archivo** like the names in every
- * other list. The colour is still not the mark: a row tinted blue would be the tonight page's
- * team card meaning something else.
+ * alone, and a side is **a name read as language and set in Archivo** like the partner names in
+ * the card below it.
+ *
+ * **The dress is the designer's, 2026-09-11**: the two words print in `--cn-blue` and
+ * `--cn-red` rather than `dim`, because this is the one card in the product where a side is the
+ * subject of a row rather than a team, so the colour is the content. It is **on the word**: no
+ * tint, no border, no chip — the team card's marks mean "which team" and this card is a record.
  */
 export const SIDE_LABELS: Readonly<Record<100 | 200, string>> = { 100: 'Blue', 200: 'Red' };
 
@@ -243,18 +262,13 @@ export const NO_PARTNERS = `Nobody has ${MIN_DUO_GAMES} games with them yet.` as
  */
 export const CURRENT_STREAK = 'Current streak';
 
-/**
- * `Average game 32 min.` (product, 2026-09-11) — the mean over **their** counted games.
+/*
+ * `playerAverageGameLine` stood here until M5.22 (2026-09-11).
  *
- * The group's line carries the count it is over (`· 214 games`) because nothing else on
- * `/stats` says it. On this page M5.15's seed line already ends `, 37 games since.`, and no
- * page says one number twice — so this is the same sentence with that half dropped and a stop
- * in its place. **Never `0 min` and never `NaN`**: a player with no counted game in the window
- * has no line at all, because the whole band is undrawn there.
+ * Product dropped the count from the group's two statements in the same pass, which makes
+ * `Average game 32 min.` the same sentence on both pages — so `/p/[puuid]` calls
+ * {@link averageGameLine} and there is no second constant to drift from it.
  */
-export function playerAverageGameLine(minutes: number): string {
-  return `Average game ${minutes} min.`;
-}
 
 /**
  * `Most improved, September.` / `Most improved, week of 1 Sep.` — one line for a player who won
