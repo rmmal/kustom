@@ -1,4 +1,4 @@
-import { type Role, type RoleGame, inferRoles, resolveRoles } from '@customs/core';
+import { inferRoles, type Role, type RoleGame, resolveRoles } from '@customs/core';
 import { readAssignments } from '../discord/assemble';
 import type { ServiceClient } from '../supabase';
 
@@ -79,8 +79,7 @@ export async function roleInferenceFlags(
       secondaryRole: player.secondaryRole,
       roleOverride: overrides.get(player.playerId) ?? null,
     });
-    const counts =
-      tonight.main === null || assigned === tonight.main || assigned === tonight.secondary;
+    const counts = tonight.main === null || assigned === tonight.main || assigned === tonight.secondary;
     if (!counts) flags.set(player.playerId, false);
   }
 

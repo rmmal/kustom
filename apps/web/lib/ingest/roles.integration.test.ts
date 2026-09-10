@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type Database, SEASON_ONE_ID } from '@customs/db';
+import type { Database } from '@customs/db';
 import { companionLobbyPayloadSchema } from '@customs/db/schemas';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -21,12 +21,13 @@ import { resolveLocalStack } from '@/lib/testing/localStack';
  *    real split from `balance()`, a real end-of-game block whose positions are the ones the
  *    split handed out. The filled players' `counts_for_role_inference` is false and their
  *    counted total does not move; the players the split put on their own role gain one.
- * 3. **`rebuild-ratings` reproduces the same pairs from scratch and is idempotent** — a second
- *    run moves no role column and does not touch `roles_inferred_at`.
+ * The third claim — that `rebuild-ratings` reaches the same pairs from scratch and is
+ * idempotent — lives in `rebuild.integration.test.ts`, because it is the file that already owns
+ * a season of its own. **This one deliberately starts no season**: the active season is a
+ * singleton in a shared database, and two files moving it is a class of flake rather than a
+ * test. Every row here is namespaced by a run id and deleted at the bottom.
  *
- * The file runs in a **season of its own**, started at the top and handed back at the bottom,
- * for the same reason `rebuild.integration.test.ts` does: a rebuild is season-wide and cannot
- * be namespaced by row. Skipped, not failed, without the stack (`pnpm db:start`).
+ * Skipped, not failed, without the stack (`pnpm db:start`).
  */
 
 const stack = await resolveLocalStack();
@@ -46,7 +47,6 @@ if (stack === null) {
 
   const { POST: postGame } = await import('@/app/api/companion/game/route');
   const { ingestLobby } = await import('./lobby');
-  const { rebuildRatings } = await import('./rebuild');
 
   const db = createClient<Database>(stack.url, stack.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -63,7 +63,6 @@ if (stack === null) {
   const allGameIds = [...looseGameIds, filledGameId];
 
   let token = '';
-  let seasonId = '';
   let ownerPlayerId = '';
   let playerIds: string[] = [];
 
@@ -155,19 +154,13 @@ if (stack === null) {
       .from('companion_tokens')
       .insert({ player_id: ownerPlayerId, token_hash: tokenHash, label: `it-${runId}-roles` });
     token = raw;
-
-    const { data: season, error } = await db.rpc('start_season', { p_name: `it-${runId} roles` });
-    if (error) throw new Error(`start_season: ${error.message}`);
-    seasonId = (season as unknown as { id: string }[])[0]?.id ?? (season as unknown as { id: string }).id;
-    expect(seasonId).toBeTruthy();
   });
 
   afterAll(async () => {
-    // Season 1 back in one statement (0002), so there is never a window with no active season.
-    await db.rpc('set_active_season', { p_id: SEASON_ONE_ID });
+    // The database is shared with every other integration file, so leaving it as we found it is
+    // part of the test. `ratings` first: it references the players.
     await db.from('games').delete().in('lcu_game_id', allGameIds);
-    await db.from('ratings').delete().eq('season_id', seasonId);
-    await db.from('seasons').delete().eq('id', seasonId);
+    await db.from('ratings').delete().in('player_id', playerIds);
     await db.from('lobbies').delete().eq('lcu_party_id', partyId);
     await db.from('players').delete().in('puuid', puuids);
   });
@@ -222,16 +215,11 @@ if (stack === null) {
       // other eight are filled — which is the situation the guard exists for, and it also sets
       // up the other half of the claim: these hand-set roles are overwritten by the recompute
       // at the end of this game, exactly as M1's roles are.
-      await db
-        .from('players')
-        .update({ main_role: 'mid', secondary_role: null })
-        .in('id', playerIds);
+      await db.from('players').update({ main_role: 'mid', secondary_role: null }).in('id', playerIds);
 
       const opened = await lobbyPost(new Date());
       expect(opened.status).toBe('open');
-      const settled = new Date(
-        (await lobbyUpdatedAt(opened.lobbyId)).getTime() + ROSTER_STABLE_MS,
-      );
+      const settled = new Date((await lobbyUpdatedAt(opened.lobbyId)).getTime() + ROSTER_STABLE_MS);
       const balanced = await lobbyPost(settled);
       expect(balanced.status).toBe('balanced');
       const split = balanced.balanced?.split;
@@ -274,55 +262,8 @@ if (stack === null) {
         expect([row.puuid, row.main_role]).toEqual([row.puuid, ROLES_IN_ORDER[index % 5]]);
         // Four counted games for the two the split put on their own role, three for the eight
         // it filled — the fourth game happened to them and did not change who they are.
-        expect([row.puuid, row.roles_counted]).toEqual([
-          row.puuid,
-          onRole.includes(row.puuid) ? 4 : 3,
-        ]);
+        expect([row.puuid, row.roles_counted]).toEqual([row.puuid, onRole.includes(row.puuid) ? 4 : 3]);
       }
-    });
-  });
-
-  describe('rebuild-ratings recomputes and is idempotent', () => {
-    function rebuild() {
-      return rebuildRatings(db, { seasonId, force: true });
-    }
-
-    it('agrees with the incremental recompute, rebuilds a wiped pair, and then changes nothing', async () => {
-      const live = await roleRows();
-
-      // 1. The rebuild reads the same games in the same order and reaches the same pairs, so
-      //    it writes no role column at all.
-      const first = await rebuild();
-      expect(first.ok).toBe(true);
-      if (!first.ok) return;
-      expect(first.report.rolesChanged).toBe(0);
-      expect(await roleRows()).toEqual(live);
-
-      // 2. From scratch: wipe every pair and the rebuild puts them back, guard included — the
-      //    eight filled seats are still worth three games, not four, because the column that
-      //    says so was written at fold time and the rebuild never second-guesses it.
-      await db
-        .from('players')
-        .update({ main_role: null, secondary_role: null, roles_counted: 0, roles_inferred_at: null })
-        .in('id', playerIds);
-
-      const second = await rebuild();
-      expect(second.ok).toBe(true);
-      if (!second.ok) return;
-      expect(second.report.rolesChanged).toBe(10);
-
-      const rebuilt = await roleRows();
-      expect(rebuilt.map((row) => [row.main_role, row.secondary_role, row.roles_counted])).toEqual(
-        live.map((row) => [row.main_role, row.secondary_role, row.roles_counted]),
-      );
-
-      // 3. Idempotent: a second run over an unchanged season writes nothing, so the stamp does
-      //    not creep forward either.
-      const third = await rebuild();
-      expect(third.ok).toBe(true);
-      if (!third.ok) return;
-      expect(third.report.rolesChanged).toBe(0);
-      expect(await roleRows()).toEqual(rebuilt);
     });
   });
 }

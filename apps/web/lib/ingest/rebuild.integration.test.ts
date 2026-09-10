@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mintCompanionToken } from '@/lib/companionAuth';
 import { ensurePlayers } from '@/lib/ingest/players';
-import { eogBody, testGameId, testPuuids } from '@/lib/testing/fixtures';
+import { eogBody, ROLES_IN_ORDER, testGameId, testPuuids } from '@/lib/testing/fixtures';
 import { resolveLocalStack } from '@/lib/testing/localStack';
 
 /**
@@ -501,6 +501,64 @@ if (stack === null) {
       expect(gone).toBe(0);
 
       await db.from('players').delete().eq('id', strayId);
+    });
+  });
+
+  describe('inferred roles (M5.17)', () => {
+    /** The pair the fold and the rebuild both have to agree on, by puuid. */
+    async function roleRows() {
+      const { data, error } = await db
+        .from('players')
+        .select('puuid, main_role, secondary_role, roles_counted, roles_inferred_at')
+        .in('puuid', puuids)
+        .order('puuid');
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    }
+
+    it('reaches the pairs the live fold reached, rebuilds them from a wipe, and then moves nothing', async () => {
+      // Every game in this file was posted with no party id, so nothing was ever a fill and
+      // every rated game counts. The fixture gives each player the same position in all of
+      // them, which is what makes the expected answer sayable in one line.
+      const live = await roleRows();
+      expect(live).toHaveLength(10);
+      for (const row of live) {
+        const index = puuids.indexOf(row.puuid);
+        expect([row.puuid, row.main_role]).toEqual([row.puuid, ROLES_IN_ORDER[index % 5]]);
+        expect(row.roles_inferred_at).not.toBeNull();
+      }
+
+      // 1. The rebuild reads the same games and reaches the same pairs, so it writes no role
+      //    column at all — the same claim the rating columns make two describes up.
+      const first = await rebuild();
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      expect(first.report.rolesChanged).toBe(0);
+      expect(await roleRows()).toEqual(live);
+
+      // 2. From scratch. Wiped pairs, and the rebuild puts them back out of the games alone.
+      await db
+        .from('players')
+        .update({ main_role: null, secondary_role: null, roles_counted: 0, roles_inferred_at: null })
+        .in('id', playerIds);
+
+      const second = await rebuild();
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.report.rolesChanged).toBe(10);
+
+      const rebuilt = await roleRows();
+      expect(rebuilt.map((row) => [row.puuid, row.main_role, row.secondary_role, row.roles_counted])).toEqual(
+        live.map((row) => [row.puuid, row.main_role, row.secondary_role, row.roles_counted]),
+      );
+
+      // 3. Idempotent: a second run over an unchanged season writes nothing, so the stamp does
+      //    not creep forward either.
+      const third = await rebuild();
+      expect(third.ok).toBe(true);
+      if (!third.ok) return;
+      expect(third.report.rolesChanged).toBe(0);
+      expect(await roleRows()).toEqual(rebuilt);
     });
   });
 

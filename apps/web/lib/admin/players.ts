@@ -28,8 +28,16 @@ export interface AdminPlayerRow {
   tagLine: string | null;
   discordId: string | null;
   isAdmin: boolean;
+  /**
+   * Inferred from play (M5.17), never set here: the most and second-most frequent role over
+   * this player's last `config.roles.inferenceWindow` counted games. Null main is flexible.
+   */
   mainRole: Role | null;
   secondaryRole: Role | null;
+  /** How many counted games the pair rests on. Under `config.roles.minGames` it is flexible. */
+  rolesCounted: number;
+  /** When the pair was last worked out. Null means never — no rated game has landed yet. */
+  rolesInferredAt: string | null;
   rankTier: string | null;
   rankDivision: string | null;
   rankLp: number | null;
@@ -56,7 +64,7 @@ export async function listAdminPlayers(
   const query = client
     .from('players')
     .select(
-      'id, puuid, display_name, game_name, tag_line, discord_id, is_admin, main_role, secondary_role, rank_tier, rank_division, rank_lp, backfill_requested_at, backfill_approved_at, ratings(season_id, mu, sigma, games, wins)',
+      'id, puuid, display_name, game_name, tag_line, discord_id, is_admin, main_role, secondary_role, roles_counted, roles_inferred_at, rank_tier, rank_division, rank_lp, backfill_requested_at, backfill_approved_at, ratings(season_id, mu, sigma, games, wins)',
     )
     .order('display_name', { ascending: true, nullsFirst: false })
     .order('puuid', { ascending: true });
@@ -76,6 +84,8 @@ export async function listAdminPlayers(
       isAdmin: row.is_admin,
       mainRole: row.main_role,
       secondaryRole: row.secondary_role,
+      rolesCounted: row.roles_counted,
+      rolesInferredAt: row.roles_inferred_at,
       rankTier: row.rank_tier,
       rankDivision: row.rank_division,
       rankLp: row.rank_lp,
@@ -89,35 +99,33 @@ export async function listAdminPlayers(
   });
 }
 
-export interface SetPlayerRolesInput {
-  playerId: string;
-  /** `null` is "flexible" (M1.4). Clearing a role back to null is the point of this call. */
-  mainRole: Role | null;
-  secondaryRole: Role | null;
-}
-
 /**
- * Sets both roles at once, `null` included. Both columns are always written, so the form's
- * "none" option genuinely clears a role rather than being ignored as "no change".
+ * What `/admin/players` prints in the Roles column (M5.17). Four shapes and no fifth — the
+ * brief's three, plus the player who has only ever played one position:
+ *
+ *   `support · jungle · from 17 games`   a pair
+ *   `support · from 4 games`             one role only; a second is never invented
+ *   `flexible · from 2 games`            under the M5.16 threshold, and it says why
+ *   `flexible · no games yet`            nothing rated has landed for this player
+ *
+ * There is no control beside it. Roles are read off the games people play, recomputed after
+ * every rated game and after every rebuild, and the M1-era hand-set pair was overwritten by
+ * the first recompute (`04-decisions.md`, 2026-09-10).
  */
-export async function setPlayerRoles(
-  client: ServiceClient,
-  input: SetPlayerRolesInput,
-): Promise<AdminWriteResult<AdminPlayerRow['id']>> {
-  if (input.mainRole !== null && input.mainRole === input.secondaryRole) {
-    return writeFailed(400, 'main and secondary role must differ');
-  }
-
-  const { data, error } = await client
-    .from('players')
-    .update({ main_role: input.mainRole, secondary_role: input.secondaryRole })
-    .eq('id', input.playerId)
-    .select('id')
-    .maybeSingle();
-
-  if (error) throw new Error(`setPlayerRoles failed: ${error.message}`);
-  if (data === null) return writeFailed(404, 'no such player');
-  return writeOk(data.id);
+export function formatInferredRoles(
+  player: Pick<AdminPlayerRow, 'mainRole' | 'secondaryRole' | 'rolesCounted'>,
+): string {
+  const from =
+    player.rolesCounted === 0
+      ? 'no games yet'
+      : `from ${player.rolesCounted} game${player.rolesCounted === 1 ? '' : 's'}`;
+  const pair =
+    player.mainRole === null
+      ? ['flexible']
+      : player.secondaryRole === null
+        ? [player.mainRole]
+        : [player.mainRole, player.secondaryRole];
+  return [...pair, from].join(' · ');
 }
 
 export interface SetPlayerDisplayNameInput {

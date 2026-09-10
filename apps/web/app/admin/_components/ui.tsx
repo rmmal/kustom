@@ -1,4 +1,3 @@
-import { ROLES } from '@customs/core';
 import type { ReactNode } from 'react';
 
 /**
@@ -36,32 +35,22 @@ export function Notices({ params }: { params: SearchParams }): ReactNode {
 }
 
 /**
- * A role picker whose first option is "none", which posts `""` and is stored as null.
+ * A player's inferred roles, read-only (M5.17).
  *
- * A null main role means flexible (M1.4). Being able to get back to it is the reason M1.6
- * lists a role editor at all, so the empty option is not decoration.
+ * This cell used to be two role pickers and a Save button. Roles are now read off the games
+ * people play — recomputed after every rated game and after every rebuild — so the cell states
+ * the answer and the number of games behind it, and there is nothing to press. The sentence
+ * itself is `formatInferredRoles` in `lib/admin/players.ts`, which the page and this component
+ * share so the markup can never disagree with the string.
  */
-export function RoleSelect({
-  name,
-  value,
-  label,
-}: {
-  name: string;
-  value: string | null;
-  label: string;
-}): ReactNode {
+export function InferredRoles({ pair, inferredAt }: { pair: string; inferredAt: string | null }): ReactNode {
   return (
-    <label>
-      <span className="admin-muted">{label} </span>
-      <select name={name} defaultValue={value ?? ''} aria-label={label}>
-        <option value="">none</option>
-        {ROLES.map((role) => (
-          <option key={role} value={role}>
-            {role}
-          </option>
-        ))}
-      </select>
-    </label>
+    <span
+      className="admin-muted"
+      title={inferredAt === null ? undefined : `inferred ${formatDay(inferredAt)}`}
+    >
+      {pair}
+    </span>
   );
 }
 

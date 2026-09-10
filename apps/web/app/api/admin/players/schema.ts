@@ -2,20 +2,28 @@ import { z } from 'zod';
 import { booleanFieldSchema, idSchema, nullableRoleSchema, nullableTextSchema } from '@/lib/admin/formValues';
 
 /**
- * `POST /api/admin/players`. One route, five actions, discriminated on `action` — the repo's
- * convention (`CLAUDE.md`) and what lets a plain HTML form say which button was pressed with a
- * hidden field.
+ * `POST /api/admin/players`. One route, four live actions and one retired one, discriminated on
+ * `action` — the repo's convention (`CLAUDE.md`) and what lets a plain HTML form say which
+ * button was pressed with a hidden field.
  *
  * Every field that can be cleared accepts `""` (what a browser sends for the empty option) as
- * well as `null`: clearing a main role back to null is the reason M1.6 exists.
+ * well as `null`.
  */
 
-/** Both roles are always written, so "none" clears rather than being read as "unchanged". */
+/**
+ * **Retired by M5.17.** Roles are inferred from the games people play and recomputed after
+ * every rated game and every rebuild, so there is nothing here to set: the handler answers 410
+ * with a sentence.
+ *
+ * The variant is kept, and its two role fields are optional, for exactly one reader — an admin
+ * with `/admin/players` open in a tab from before the deploy. A removed variant would give them
+ * `that form was not valid`, which says nothing true. `ROLES_ARE_INFERRED` says what happened.
+ */
 export const setRolesRequestSchema = z.object({
   action: z.literal('set-roles'),
   playerId: idSchema,
-  mainRole: nullableRoleSchema,
-  secondaryRole: nullableRoleSchema,
+  mainRole: nullableRoleSchema.optional(),
+  secondaryRole: nullableRoleSchema.optional(),
 });
 
 /**
@@ -66,9 +74,10 @@ export const adminPlayersRequestSchema = z.discriminatedUnion('action', [
 
 export type AdminPlayersRequest = z.infer<typeof adminPlayersRequestSchema>;
 
+/** No `set-roles`: that action never answers `ok`, it answers 410 (M5.17). */
 export const adminPlayersResponseSchema = z.object({
   ok: z.literal(true),
-  action: z.enum(['set-roles', 'set-name', 'set-discord', 'set-admin', 'set-backfill']),
+  action: z.enum(['set-name', 'set-discord', 'set-admin', 'set-backfill']),
   playerId: z.uuid(),
 });
 
