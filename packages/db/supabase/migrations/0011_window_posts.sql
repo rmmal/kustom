@@ -36,6 +36,14 @@
 -- `where claimed_at = <the value it read>` so two retriers cannot both win.
 -- (`apps/web/lib/discord/windowPosts.ts`.)
 --
+-- **So this table is at-least-once, not exactly-once, and that is the deliberate half.** If
+-- Discord answers 2xx and the `posted_at` stamp then fails -- the process dies, the database is
+-- unreachable for those few milliseconds -- the row stays unposted and a call after the lease
+-- posts the week a second time. Exactly-once across two systems is not available without a
+-- distributed transaction; given the choice, a week that arrives twice in a year is a shrug and
+-- a week that never arrives is the feature not working. Everything else here is aimed at making
+-- that window as small as it can be: one stamp, immediately after the webhook returns.
+--
 -- RLS: enabled with **no policy at all** and the grants revoked, like `companion_tokens` and
 -- `discord_config`. Only the service role behind `CRON_SECRET` ever touches it, and "which
 -- weeks have been posted" is not a public fact.
