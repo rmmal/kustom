@@ -14,9 +14,13 @@ import type { WindowKind } from '@/lib/night';
  * reloads under you" rule the tonight page's controls follow, without inventing a fetch or a
  * client component to get it.
  *
- * **The selected one is marked and is not a link**: a link to the page you are already on is
- * not a destination, and on two boards that otherwise look identical the marked option is the
- * only thing saying which one you are reading.
+ * **All five are links and the selected one carries `aria-current="page"`** (the designer,
+ * 2026-09-10). Product's brief said the selected option should not be a link at all; a marked
+ * link is the same promise kept better — `aria-current` is what a screen reader announces as
+ * "current page", the chip keeps its 44px target so a mis-tap on the option you are already on
+ * does nothing instead of hitting the one beside it, and the five stay one row of one shape
+ * rather than four controls and a label. On two boards that otherwise look identical, the
+ * marked chip is the only thing saying which one you are reading.
  *
  * The label of an option, the heading of the board and the title of the Discord post are the
  * same five words from `lib/board/copy.ts` — one map, so a picker cannot say `Week` over a
@@ -37,17 +41,16 @@ export interface WindowPickerProps {
 export function WindowPicker({ path, selected }: WindowPickerProps) {
   return (
     <nav className="cn-windows" aria-label={WINDOW_PICKER_LABEL}>
-      {WINDOW_ORDER.map((kind) =>
-        kind === selected ? (
-          <span key={kind} className="cn-window cn-window-on" aria-current="true">
-            {WINDOW_LABELS[kind]}
-          </span>
-        ) : (
-          <Link key={kind} className="cn-window" href={windowHref(path, kind)}>
-            {WINDOW_LABELS[kind]}
-          </Link>
-        ),
-      )}
+      {WINDOW_ORDER.map((kind) => (
+        <Link
+          key={kind}
+          className={kind === selected ? 'cn-window cn-window-on' : 'cn-window'}
+          href={windowHref(path, kind)}
+          {...(kind === selected ? { 'aria-current': 'page' as const } : {})}
+        >
+          {WINDOW_LABELS[kind]}
+        </Link>
+      ))}
     </nav>
   );
 }

@@ -49,17 +49,29 @@ export function BoardView({ board, viewerPuuid }: BoardViewProps) {
           {WINDOW_LABELS[board.window]} <span className="cn-strip-sub">{LEADERBOARD_LABEL}</span>
         </h1>
         <WindowPicker path="/leaderboard" selected={board.window} />
+
+        {/*
+         * **The strip's one line about the window**, under the chips and above the hairline
+         * (the designer, 2026-09-10). Not an empty page and not a spinner: one sentence, in
+         * `dim`, and — on `All time` — the seeded rows below it, so a friend who has not played
+         * yet can still find themselves.
+         *
+         * This is a **slot**, not a place for one string: the window's date range
+         * (`Monday 1 Sep to Sunday 7 Sep`) lands here too when product writes it, and the two
+         * never print together — a window with no games has no range worth naming.
+         */}
+        {noGamesYet ? <p className="cn-empty">{WINDOW_EMPTY[board.window]}</p> : null}
       </header>
 
-      {/* Once per page, under the heading, and never once per row (M3.8). */}
-      {settling ? <SettlingNote /> : null}
-
       <section className="cn-block">
-        {/* Not an empty page and not a spinner: one line, in `dim`, and — on `All time` — the
-            seeded rows below it, so a friend who has not played yet can still find themselves. */}
-        {noGamesYet ? <p className="cn-empty">{WINDOW_EMPTY[board.window]}</p> : null}
-
         {board.rows.length === 0 ? null : <BoardCard rows={board.rows} viewerPuuid={viewerPuuid} />}
+
+        {/*
+         * Once per page, **under the board** and never once per row (M3.8, moved below the card
+         * by the designer 2026-09-10): it explains the column you have just read, and above the
+         * card it separated the heading from the thing the heading names.
+         */}
+        {settling ? <SettlingNote /> : null}
       </section>
 
       {nameless ? <NamelessHint /> : null}

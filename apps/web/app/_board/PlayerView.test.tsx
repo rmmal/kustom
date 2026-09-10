@@ -290,7 +290,7 @@ describe('a window on the player page', () => {
     draw(week);
     const picker = within(screen.getByRole('navigation', { name: 'Time window' }));
 
-    expect(picker.getByText('This week')).toHaveAttribute('aria-current', 'true');
+    expect(picker.getByRole('link', { name: 'This week' })).toHaveAttribute('aria-current', 'page');
     expect(picker.getByRole('link', { name: 'All time' })).toHaveAttribute(
       'href',
       `/p/${workedPuuid('Hana')}?window=all-time`,

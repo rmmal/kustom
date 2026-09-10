@@ -101,9 +101,9 @@
    */
   display: flex;
   flex-wrap: wrap;
-  max-width: 47rem;
   gap: var(--cn-sp-2);
-  margin-top: var(--cn-sp-3);
+  /* One step off the heading, not two: the picker belongs to it (the designer, 2026-09-10). */
+  margin-top: var(--cn-sp-4);
 }
 
 .cn-window {
@@ -114,9 +114,16 @@
   min-height: 44px;
   padding: 0 var(--cn-sp-3);
   white-space: nowrap;
-  font-family: var(--cn-font-mono);
-  font-size: var(--cn-t-xs);
-  letter-spacing: 0.06em;
+  /*
+   * **Archivo, not the mono cut** (the designer, 2026-09-10). `This week` is language and a
+   * destination, like the shell's nav tabs it sits under; mono `t-xs` with tracking is for
+   * legends and states (`SEATS`, `rating`, `live`), and set here it made five sentences read as
+   * five code comments.
+   */
+  font-family: var(--cn-font-sans);
+  font-size: var(--cn-t-sm);
+  font-weight: 500;
+  letter-spacing: normal;
   /* At rest the word is `text`: a row of grey words reads as five disabled controls. */
   color: var(--cn-text);
   text-decoration: none;
@@ -126,8 +133,15 @@
   transition: background-color 120ms ease;
 }
 
+/* A pointer that has one: the same fill the press uses, so hover and press are one idea. */
+.cn-window:hover {
+  background: var(--cn-pressed);
+}
+
+/* The press itself is the size change; the fill is already there from the hover. */
 .cn-window:active {
   background: var(--cn-pressed);
+  transform: scale(0.985);
 }
 
 /*

@@ -273,15 +273,21 @@ describe('the window picker', () => {
     ]);
   });
 
-  /** The selected one is marked and is **not** a link: it is not a destination. */
-  it('marks the selected window and links the other four', () => {
+  /**
+   * **All five are links; the selected one is the current page** (the designer, 2026-09-10).
+   * `aria-current="page"` is what a screen reader announces as the one you are on, and the
+   * chip keeps its 44px target — a mis-tap on the window you are already reading should do
+   * nothing, not land on the one beside it.
+   */
+  it('marks the selected window as the current page and still links it', () => {
     draw(workedWindowBoard('last-week'));
     // Scoped to the control: `Last week` is also the page's heading, which is the point of it.
     const picker = within(screen.getByRole('navigation', { name: 'Time window' }));
 
-    const selected = picker.getByText('Last week');
-    expect(selected.tagName).toBe('SPAN');
-    expect(selected).toHaveAttribute('aria-current', 'true');
+    const selected = picker.getByRole('link', { name: 'Last week' });
+    expect(selected).toHaveAttribute('aria-current', 'page');
+    expect(selected).toHaveClass('cn-window-on');
+    expect(selected).toHaveAttribute('href', '/leaderboard?window=last-week');
 
     expect(picker.getByRole('link', { name: 'This week' })).toHaveAttribute(
       'href',
@@ -291,7 +297,13 @@ describe('the window picker', () => {
       'href',
       '/leaderboard?window=all-time',
     );
-    expect(picker.queryByRole('link', { name: 'Last week' })).not.toBeInTheDocument();
+    // Exactly one of the five is marked, and the other four say nothing about being current.
+    expect(picker.getAllByRole('link')).toHaveLength(5);
+    for (const link of picker.getAllByRole('link', { name: /week|month|time/ })) {
+      if (link === selected) continue;
+      expect(link).not.toHaveAttribute('aria-current');
+      expect(link).not.toHaveClass('cn-window-on');
+    }
   });
 
   it('works with no JavaScript: every option is a real href, not a button', () => {

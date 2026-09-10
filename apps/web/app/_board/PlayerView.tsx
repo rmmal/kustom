@@ -68,6 +68,14 @@ export function PlayerView({ player }: PlayerViewProps) {
          * same word. This page's default is `All time`, because it is a person's history.
          */}
         <WindowPicker path={`/p/${player.puuid}`} selected={player.window} />
+
+        {/*
+         * The same slot the board's header carries (the designer, 2026-09-10): the window's one
+         * line, under the chips and above the hairline. A player with no counted game in the
+         * window says so here rather than inside the card, where it used to sit between the two
+         * numbers and the chart.
+         */}
+        {player.games === 0 ? <p className="cn-empty">{WINDOW_EMPTY[player.window]}</p> : null}
       </header>
 
       <PlayerWindow player={player} />
@@ -131,7 +139,6 @@ function PlayerWindow({ player }: { player: PlayerBoardView }) {
            * somebody with forty games that they had none. A player with games and nothing
            * to draw gets no chart and no sentence rather than a false one.
            */}
-          {player.games === 0 ? <p className="cn-empty">{WINDOW_EMPTY[player.window]}</p> : null}
           {player.history.length === 0 ? null : (
             // The hairline is the seed on `All time` and the rating carried **into** the
             // window on the other four, labelled `start` — it is not a seed and does not
