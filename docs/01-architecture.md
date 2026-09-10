@@ -99,7 +99,7 @@ Rules:
   end-of-game block stays on the lobby it was played from. Closed rows are never rewritten or reused.
 - A player row is created lazily the first time a PUUID appears in a lobby or a game. Discord linking is optional
   and done by an admin (`/admin/players`) or self-service via Discord OAuth.
-- `ratings` is per season. A new season copies `mu` and resets `sigma` to the starting value. `ordinal` is a
+- `ratings` is per season. Ratings never reset: there is one season row, and the board is viewed through automatic time windows (week, month, all time; M5.9, M5.12). `ordinal` is a
   stored generated column so the leaderboard sorts in one index scan and SQL cannot disagree with
   `packages/core` about the formula; `packages/core` stays the only place that computes a rating.
 - `games.raw` keeps the full end-of-game block, with `mucJwtDto` and `multiUserChatPassword` replaced by
@@ -240,7 +240,7 @@ watching: on lobby event -> POST /api/companion/lobby
 - `/` Tonight: live lobby, teams, result. Public read. Realtime subscription on `lobbies`, `splits`, `games`.
 - `/leaderboard` Season table by ordinal, wins, games, streak.
 - `/p/[puuid]` Player page: rating history chart, role record, recent games.
-- `/admin` Discord OAuth gated, `players.is_admin`. Link Discord IDs, set roles, mint companion tokens, set Discord config, start a season.
+- `/admin` Discord OAuth gated, `players.is_admin`. Link Discord IDs, see the inferred roles (M5.17), mint companion tokens, set Discord config, approve backfill.
 - `/api/companion/*` bearer token, zod-validated. The command queue is three of them (M4.1):
   `GET /commands?clientConnected=`, `POST /commands/{id}/ack`, `POST /commands/{id}/nack`. The contract is one
   doc comment on `companionCommandsResponseSchema` in `packages/db/src/schemas/companionResponses.ts`; the

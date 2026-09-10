@@ -25,17 +25,20 @@ accused of stacking. New or rotating players make it worse because nobody agrees
    who won; the companion reads it. Any manual step will be skipped by someone, and skipped steps corrupt ratings.
 3. **Fair by numbers, but explained.** Every split posts its predicted win chance, the rating gap, whether anyone
    is off-role, and the next-best alternative. "The bot is rigged" needs a number to argue with.
-4. **Discord is a display, not a form.** Teams, results, and leaderboards appear where people already look. Voice
-   gets split automatically. Nothing requires typing a command.
+4. **Discord is a display, not a form.** Teams, results, and leaderboards appear where people already look, and
+   so does the week when it ends. Nothing requires typing a command. (Splitting voice was dropped at the user's
+   request on 2026-09-10; the group talks in one channel.)
 
 ## The nightly loop
 
-1. People gather in Discord voice as usual. The bot posts "7 around" so the WhatsApp thread has an answer.
+1. People gather in Discord voice as usual. (A "7 around" post was planned; it needed a bot process and the
+   bot was dropped with the voice split on 2026-09-10, so the WhatsApp thread still answers that one itself.)
 2. Someone opens a custom lobby. Everyone joins. The lobby owner (or anyone in the lobby) runs the companion.
 3. When ten are in and stable, the companion sends the roster. The server balances and posts Blue and Red with
-   roles, win chance, and a one-line why. Voice channels split.
+   roles, win chance, and a one-line why.
 4. Players switch to their side (companion can do it for them, see M4). Game starts.
-5. At end of game the companion captures the full stats block. Ratings move. Leaderboard updates.
+5. At end of game the companion captures the full stats block. Ratings move. Leaderboard updates. What each
+   person plays is counted too, so their main and backup follow the games they actually play.
 6. If more than ten showed up, the server posts who sits: whoever has played most tonight, and between
    equals whoever has gone longest without sitting. On the first game of a night nobody has done either, so
    the post says as much — somebody has to be first — and from the second game on the rotation has real
@@ -52,7 +55,10 @@ and both are one tap:
   old one, never changes who is playing, and never picks at random. When the list runs out, the way to get
   different teams is to change who is in the lobby, which rebalances by itself.
 - **Role for tonight** (M3.6). A friend taps a role on the tonight page and the balancer treats it as their
-  main for the rest of the night, with their usual main as the backup. It is a preference, not a lock: the
+  main for the rest of the night, with their usual main as the backup. Nobody sets their roles anywhere else:
+  their main and backup are read from what they actually play (M5.16, M5.17), so this tap is also how a person
+  steers that — play a role on purpose for a week and it becomes your main. Being *filled* into a role never
+  changes it. It is a preference, not a lock: the
   teams can still put them somewhere else and the explanation line says so when they do. A tap after teams
   are already posted is kept for the next game rather than redoing the teams people have already moved for —
   the referee does not reopen a decision because one player changed their mind.
@@ -125,16 +131,16 @@ See `02-milestones.md` for the build order. In product terms:
 
 | Feature | Milestone |
 |---|---|
-| Player roster with roles, ranks read from the client | M1, M2 |
+| Player roster; ranks read from the client, roles learned from the games you play | M1, M2, M5 |
 | Auto-detect the ten from the lobby | M2 |
 | Balanced teams posted to Discord with explanation | M3 |
 | Results and ratings captured from end-of-game, no reporting | M2, M3 |
 | Tonight page and leaderboard on the web, phone-friendly | M3 |
 | Companion creates the lobby and invites the ten | M4 |
 | Auto side switch | M4 |
-| Discord voice split and "N around" presence | M4 |
+| Discord voice split and "N around" presence | ~~M4~~ dropped 2026-09-10 |
 | Backfill every past custom from the client's match history | M5 |
-| Seasons that carry ratings over, awards, role and duo stats | M5 |
+| This week / this month / all time on the board, awards, role and duo stats | M5 |
 | Tray app wrapper with auto-start | M6 |
 
 Backfill (M5) reads the client's own match history, and M0 confirmed it can: customs are in there
@@ -143,21 +149,29 @@ client it is, so backfill fetches each game's detail page to learn the other nin
 how far back the window reaches (M5.6), so "every past custom" honestly means "every custom still in the
 history of someone who runs the companion".
 
-One admin-only piece landed earlier than that table suggests: `/admin` (M1) can already start a new
-season. **A new season keeps what the bot learned about you and forgets how sure it was of it.** Your
-`mu` is copied straight across and your `sigma` goes back to the starting value, so on night one of the
-new season your Rating is the number you finished the old one with — nobody is re-seeded from their rank
-for having had a bad month — and your Proven has dropped, because Proven is Rating minus how unsure the
-board is and the board is newly unsure about everybody. Everyone lands the same distance below their own
-Rating, which means the first board of a season is in Rating order and the drop is largest for exactly
-the people the board had watched longest. It climbs back over about a month of nightly games, the same
-month a new player's does. The one player who does not carry is one who played no games at all in the
-season that is ending: there is nothing of theirs to carry, so they are seeded from the rank the client
-reads, like a newcomer. Starting a season is still a thing the group decides together and not a button
-someone presses to tidy up — the games, the records and the awards of the old season stay behind it, and
-every name on the new board wears the `settling` marker until it has played its way out. The carry-over
-ships with M5.3; until it does the button carries nothing, and everyone is seeded from their rank again
-at their first game of the new season.
+## The week, the month, and all time
+
+Ratings never reset. There is one number per player, folded game by game from the first custom this group ever
+captured to the one they played last night, and nothing a person or an admin can press starts it over.
+
+What used to be a season is now a **window the same board is read through**. The leaderboard opens on **This
+week** — Monday 06:00 to Monday 06:00, the same 06:00 boundary that decides which night a game belongs to,
+because the group plays past midnight — and offers **Last week**, **This month**, **Last month** and **All
+time** beside it. A window changes who is on the board and what their record and their climb over those days
+were. It does not change anybody's rating, because **a window is a filter over games, not a rating event**.
+That is precisely why it can happen every single week without costing the number its meaning: a weekly reset
+would leave everyone permanently "settling", and a board where nobody has settled is a board nobody believes.
+
+Every Monday and every first of the month, the window that just closed posts itself to Discord — its final
+board and its three awards (most improved, best off-role, cursed duo) — with nobody pressing anything. That is
+the whole of what people wanted from seasons: something that ends, and something to win by Friday.
+
+Daily was asked about and turned down. One to three games is not a board, and three awards computed on two
+games is noise with a trophy on it.
+
+Under all of that the database keeps one `season` row as the container every game points at. It was created
+once, by the first migration; its name is never printed on a page or in a post; and there is no button anywhere
+that makes a second one.
 
 ## Explicitly out of scope
 

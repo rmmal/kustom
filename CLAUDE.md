@@ -2,7 +2,7 @@
 
 Team balancer and stats tracker for a friends group that plays League of Legends custom 5v5s every night.
 Zero-input by design: a desktop companion reads the League client, the server balances teams and keeps ratings,
-Discord shows the result and splits voice. Nobody checks in, nobody reports scores.
+Discord shows the result. Nobody checks in, nobody reports scores.
 
 Read `docs/00-product.md` once. Then read the doc for the layer you are touching. `docs/02-milestones.md` is the
 work queue and its status table is the source of truth for what is done.
@@ -41,7 +41,7 @@ pnpm --filter web build      # next build (also typechecks the app)
 pnpm --filter web mint-token <puuid> [label]
                              # mints a companion token for a PUUID and prints it once.
                              # Reads apps/web/.env.local. Replaced by /admin in M1.6.
-pnpm --filter web rebuild-ratings [--dry-run] [--force] [--prune] [--season <id>]
+pnpm --filter web rebuild-ratings [--dry-run] [--force] [--prune] 
                              # folds every rated-eligible game of a season in started_at order,
                              # from seeds, and writes once at the end (M5.2). Run it after a
                              # backfill batch: backfilled games are stored unrated until it does.

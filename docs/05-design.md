@@ -976,21 +976,29 @@ task, not a reason to stop:
 Every word `/leaderboard` and `/p/[puuid]` say, in one table, the same way the tonight page's strings are
 settled above. They live as one constant each in `apps/web/lib/board/copy.ts` — that file is the code half of
 this table and the two may not drift. `(shipped)` marks a string that already existed and is quoted unchanged;
-the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc, reviewed by product and kept.
+the three marked **new** in the 2026-09-09 pass are the ones M3.5, M3.8 and M3.10 wrote against no doc,
+reviewed by product and kept.
+
+**Amended 2026-09-10 (product), for windows, the closed-window post and "how you got here."** Seasons are gone
+(`04-decisions.md`): the board is read through five time windows, so the heading, the nightly title and both
+empty states move, two strings are deleted outright, and the rows for the weekly and monthly post (M5.10), the
+seed and per-game explanation lines (M5.15) and the inferred roles on `/admin/players` (M5.17) are new here.
+The word *season* no longer appears in anything a friend can read. Layout for all of it is **M5.8**'s; the
+words below are fixed.
 
 | Where | String | Status |
 |---|---|---|
 | primary number, label | `Proven` — `round(ordinal * 60)`, the sort key | *(shipped, M3.5)* kept |
 | secondary number, label | `Rating` — `round(mu * 60)`, the number the embeds print | *(shipped, M3.5)* kept |
 | legend over the one unlabelled number | `Proven` | **amended, designer 2026-09-09** — was `Proven · Rating`; see "Leaderboard row". The code change lands with M3.18 |
-| board heading | the season's name, with `Leaderboard` beside it in `dim` | **amended, designer 2026-09-09** — was `standings`; one name for one destination, `04-decisions.md` |
-| nightly embed title | `Season 1 · leaderboard` | **amended, designer 2026-09-09** — same row |
+| board heading | the **window's** name (`This week`), with `Leaderboard` beside it in `dim` | **amended, product 2026-09-10 (M5.12)** — was the season's name; seasons are gone (`04-decisions.md`) and the season row's name is never printed to a friend again. `standings` → `Leaderboard` (designer 2026-09-09) is unchanged |
+| nightly embed title | `This week · leaderboard` | **amended, product 2026-09-10 (M5.12)** — the nightly post prints the week's board and links to `?window=this-week` |
 | back link on `/p/[puuid]` | `← Leaderboard`, and deleted when the shell lands | **amended, designer 2026-09-09** — same row |
 | still-settling chip | `settling` | *(shipped, M3.8)* kept |
 | still-settling sentence, once per page | `The board sorts on Proven: your rating, minus how unsure the board still is about you. That gap shrinks as you play and settles after about 30 games.` | **amended, product 2026-09-10 (M3.19)** — the 2026-09-08 pair told a new player they begin at the bottom and rise, which is false on a season's first board, where every row is a rank seed and Proven orders exactly as rank does. The ruling is in `04-decisions.md`; "Still-settling marker (M3.8)" below quotes the same words |
 | still-settling sentence, embed footer | `Proven is your rating minus how unsure the board still is about you, and it settles after about 30 games.` | **amended, product 2026-09-10 (M3.19)** — `until … has seen about 30 games` said the gap closes then; it never closes. Same ruling row |
-| season active, no games yet — and a player with none, where the chart would be | `No games this season yet.` | **new**, product 2026-09-09 — kept as written |
-| no season is active, on both pages | `No season is active, so there is no board yet. An admin can start one.` | **new**, product 2026-09-09 — kept as written |
+| ~~season active, no games yet~~ | ~~`No games this season yet.`~~ | **deleted, product 2026-09-10 (M5.12)** — replaced by the five window lines below; the word *season* leaves the friend-facing vocabulary |
+| ~~no season is active, on both pages~~ | ~~`No season is active, so there is no board yet. An admin can start one.`~~ | **deleted, product 2026-09-10 (M5.14)** — there is no button behind it any more, and a deployment with no season row has no games either, so the empty-window line is true and enough |
 | a recent game's result, on `/p/[puuid]` | `Won` / `Lost` | **new**, product 2026-09-09 — kept as written |
 | game count | `1 game` · `28 games` | *(shipped)* kept |
 | win–loss record | `13W 15L` | *(shipped)* kept |
@@ -1002,6 +1010,22 @@ the three marked **new** are the ones M3.5, M3.8 and M3.10 wrote against no doc,
 | rating column, unrated game | `not rated` | **new**, product 2026-09-10 (M3.23) |
 | hint under Recent games, when any row is unrated | `Some games don't move ratings: too short, short a player, or added from match history and not counted yet.` | **new**, product 2026-09-10 (M3.23) |
 | nightly embed, field name | `Top ten` when ten lines print, `The board` when fewer | **amended, product 2026-09-10 (M3.22)** — was `Top ten` always; see "Nightly leaderboard embed" |
+| window picker, the five options | `This week` · `Last week` · `This month` · `Last month` · `All time` | **new**, product 2026-09-10 (M5.12) — the same five words are the option, the board heading and the post title |
+| empty window, one per kind | `No games this week yet.` · `No games last week.` · `No games this month yet.` · `No games last month.` · `No games yet.` | **new**, product 2026-09-10 (M5.12) — a running window says *yet*, a closed one does not, because nothing more is coming |
+| a row's window line | `6 games · 4W 2L · +58` | **new**, product 2026-09-10 (M5.12) — the window's games, record and climb; absent on `All time`, where the row is today's row |
+| player chart reference line, in a window | `start` (`seed` stays on `All time`) | **new**, product 2026-09-10 (M5.12) — the rating carried into the window is not a seed |
+| weekly / monthly post, title and dates | `Last week · leaderboard` / `Last month · leaderboard`, description `Monday 1 Sep to Sunday 7 Sep · 14 games` | **new**, product 2026-09-10 (M5.10) — the last day named is the last *night* of the window |
+| weekly / monthly post, awards field | `Awards`, then `**Most improved**`, `**Best off-role**`, `**Cursed duo**` with M5.4's winner lines verbatim | **new**, product 2026-09-10 (M5.10) — including the "nobody qualifies" sentence when nobody did |
+| awards, still running | `Awards are handed out when the week ends.` / `… when the month ends.` | **new**, product 2026-09-10 (M5.4) |
+| awards, section intro | `Three awards for the week. Nobody votes; the numbers pick.` / `… for the month. …` | **amended, product 2026-09-10 (M5.4)** — was `Three end-of-season awards.` |
+| an award on `/p/[puuid]` | `Most improved, week of 1 Sep.` / `Most improved, September.` | **amended, product 2026-09-10 (M5.4)** — was `Most improved, Season 1.` |
+| `/stats` cap line | `Showing the most recent 2000 games.` | **amended, product 2026-09-10 (M5.4)** — was `… of this season.` |
+| seed line on `/p/[puuid]` | `Seeded from Gold II at 1469, 37 games since.` — in a window, `Started the week at 1469, 6 games since.` | **new**, product 2026-09-10 (M5.15) |
+| a recent game, why the change is that size | `Won as the 42% side, +43` · `Lost as the 58% side, -31` · without a stored chance, `Won, +43` | **new**, product 2026-09-10 (M5.15) — the chance is their own side's, the change is `displayDelta` |
+| the one explanation line under `Recent games` | `Beating the favoured side moves you more than beating the underdog, and the board moves you more while it is still unsure about you.` | **new**, product 2026-09-10 (M5.15) — once per page, not per row |
+| games cannot be saved, admin and API | `Games cannot be saved: the database is missing its one season row.` | **amended, product 2026-09-10 (M5.14)** — was `… Start a season on the Seasons page.`; there is no such page action now |
+| games are not being saved, tonight page | `Tonight's games are not being saved. Play on — they can be added back from match history later.` | **amended, product 2026-09-10 (M5.14)** — was `An admin can start one.`; backfill is true, and it is the only thing the twenty people holding the link can act on |
+| inferred roles on `/admin/players` (plain page, no dress) | `support · jungle · from 17 games` · `flexible · from 2 games` · `flexible · no games yet` | **new**, product 2026-09-10 (M5.17) — read-only text where two selects used to be |
 
 **Why the three new ones stand.**
 
@@ -1900,8 +1924,8 @@ across a row.
 
 ```
 color        accent
-title        Season 1 · leaderboard
-url          https://<leaderboard>
+title        This week · leaderboard      <- M5.12: the window, never a season name
+url          https://<leaderboard>?window=this-week
 field 1 name   Top ten          <- only when ten lines print; otherwise `The board`
 field 1 value  `1` Lena · 1548 · 41 games
                `2` Bilal · 1137 · 44 games
@@ -1931,7 +1955,7 @@ second number in a proportional font with no column to sit in is unreadable. `Ra
 Filled in with the worked example's ten (`docs/02-milestones.md` M1.4 table — `ordinal = mu − 2σ`, then
 `× 60`, rounded once). Game counts are illustrative; the docs pin none:
 
-> **Season 1 · leaderboard**
+> **This week · leaderboard**
 >
 > **Top ten**
 > `1` Lena · 1548 · 41 games
