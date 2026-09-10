@@ -115,6 +115,12 @@ Rules:
   with the same `roster_key` — one indexed lookup instead of a jsonb set comparison.
 - A companion token is revoked by setting `companion_tokens.revoked_at`, never by deleting the row: the auth path
   filters on it and `last_seen_at` stays as the audit trail of a token that may have leaked.
+- **At most one `create_lobby` command is live at a time, in the whole table** (M4.9,
+  `0008_one_create_lobby_at_a_time.sql`): a partial unique index over `kind` where
+  `kind = 'create_lobby' and status in ('pending', 'sent')`. That is the Start-a-lobby double-tap lock, global
+  rather than per host so two admins pressing at once cannot open two lobbies and fan out two sets of invites.
+  The API still reads the pending row first for the friendly refusal and maps a `23505` on this index to the same
+  409. An ack, a non-retryable nack or the expiry sweep takes the row out of the two live statuses and releases the lock.
 
 ## Rating model (`packages/core/rating`)
 

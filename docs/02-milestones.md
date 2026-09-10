@@ -11,7 +11,7 @@ Acceptance criteria are what an implementing agent must demonstrate before marki
 | M1 Foundation | done | M1.1 to M1.10 done; M1.1 to M1.11 done (M1.11 landed 2026-09-09; the wildcard allow-list entry can be removed). Hosted Supabase project linked and migrated (0001, 0002); Discord OAuth app not yet created. Can run in parallel with M0. |
 | M2 Companion v1: roster and results | in progress | M2.1 to M2.5, M2.7 to M2.10, M2.13 to M2.15, M2.18 to M2.20 done; M2.6 built as Kustom.exe 0.1.3 (apps/companion/dist, sha256 ffe6345e…), publish (v0.1.3, plus the kustom-releases README rename) and the Windows run pending on the user; M2 ticks after Session 2 of docs/06-test-night.md. |
 | M3 Teams in Discord and on the web | in progress | M3.0 to M3.5, M3.7, M3.8, M3.10 to M3.24 done; the whole web is Floodlit as of 2026-09-10 (shell, tonight page, leaderboard, player page, rail). Open: M3.6 role override and self-link, M3.25 admin players paging, M3.26 third-person settling sentence. Nothing calls `/api/cron/leaderboard` yet. |
-| M4 Lobby automation, voice split, presence | in progress | M4.1 companion and server halves landed (migration 0006 on kustom); first live verify-commands (16.17, 2026-09-09) got 500 INVALID_LOBBY with the community body, so 0.1.4 carries a corrected probe built from the client's own lobby UI code; all three writes stay gated until the user's rerun. M4.2 server side landed 2026-09-10 (route, host pick, fan-out; page control pending on the web engineer). Next: M4.3, M4.9 lock index before the gate flips. Needs M3. |
+| M4 Lobby automation, voice split, presence | in progress | M4.1 companion and server halves landed (migration 0006 on kustom); first live verify-commands (16.17, 2026-09-09) got 500 INVALID_LOBBY with the community body, so 0.1.4 carries a corrected probe built from the client's own lobby UI code; all three writes stay gated until the user's rerun. M4.2 server side and M4.9 lock index landed 2026-09-10 (migrations 0006 and 0008 on kustom; page control pending on the web engineer). Next: M4.3. Needs M3. |
 | M5 Backfill, seasons, stats | in progress | M5.1, M5.2, M5.11 landed (backfill walker, scan route, approval toggle, rebuild-ratings, dropped lobby status); migrations 0004 and 0005 pushed to kustom. M5.3 to M5.7 need M3. Independent of M4. |
 | M6 Tray app and polish | not started | Needs M2 stable for a month. |
 
@@ -2167,12 +2167,12 @@ Goal: first real night. Ten join the lobby, teams appear in Discord with an expl
     >    eyeballing the teams.
     > 2. Tap `jungle` again: the override is `null` and the row shows the profile's roles again.
     > 3. Tap a role while the lobby is `balanced`: 200, the override is stored, **no new Discord message and
-    >    no change to `splits`**, and the control shows `Saved for the next game. Teams are already set.`
+    >    no change to `splits`**, and the control shows `Teams are already set. A role you pick now is what the bot tries for in the next game.` (product's 2026-09-10 rewording; the copy table in `05-design.md` is the source)
     > 4. Finish that game and let the companion open the night's next cycle: the new `lobby_members` row for
     >    that player carries the same `role_override`, with no second tap, and the next balance uses it.
     > 5. The first lobby of the next night (past 06:00 local) carries no override for anybody.
     > 6. A non-admin posting a body that names another player's PUUID: 403, and neither row changes.
-    > 7. An admin taps a role on somebody else's row: it lands on that player's row, with the same rules.
+    > 7. An admin taps a role on somebody else's row: it lands on that player's row, with the same rules. **Struck from M3.6 on 2026-09-10 (lead):** the route honours an admin naming another PUUID, but a 44px rack row has no per-row control pattern; the admin control ships on `/admin/players` with M3.25.
     > 8. Signed out, and signed in without a link: the two sentences above, and no control that writes
     >    anything.
     >
@@ -2777,7 +2777,7 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > seasons, anything in M5. Changing who sits (M2.5 owns that and it has not moved).
 
 - [ ] **M4.3** Auto side switch: after balancing, for each lobby member who runs a companion, queue `switch_side` if they are on the wrong side. Verify the endpoint in M0 first; if it does not exist, this task is dropped and the embed says "switch to your side".
-- [ ] **M4.9** The Start-a-lobby lock is a database constraint. Reviewer, 2026-09-10: the pending-create lock in `lib/admin/lobbyStart.ts` is read-then-insert; two presses in the same instant can both insert (same host: the companion nacks the second with `already_in_lobby` and the page prints a misleading sentence; two admins with two companions: two lobbies and two fan-outs). Add a partial unique index on `companion_commands` for `kind = 'create_lobby' and status in ('pending', 'sent')` (migration, applied to kustom by the lead) and map the unique violation to the existing `A lobby is already being opened.` refusal. Owner: `platform-engineer`, before the gate flips. **Acceptance:** two concurrent presses in an integration test yield one row and one 409.
+- [x] **M4.9** (landed 2026-09-10: migration 0008 partial unique index, `enqueueCommands` conflict mapping, sweep before the read; on kustom. Note: the M3.6 role-override migration is numbered 0009 because 0008 shipped first) The Start-a-lobby lock is a database constraint. Reviewer, 2026-09-10: the pending-create lock in `lib/admin/lobbyStart.ts` is read-then-insert; two presses in the same instant can both insert (same host: the companion nacks the second with `already_in_lobby` and the page prints a misleading sentence; two admins with two companions: two lobbies and two fan-outs). Add a partial unique index on `companion_commands` for `kind = 'create_lobby' and status in ('pending', 'sent')` (migration, applied to kustom by the lead) and map the unique violation to the existing `A lobby is already being opened.` refusal. Owner: `platform-engineer`, before the gate flips. **Acceptance:** two concurrent presses in an integration test yield one row and one 409.
 
     > **Correction (product, 2026-09-08, after M0.3).** "Verify the endpoint in M0 first" did not happen and
     > cannot: M0's tooling is read-only and a switch-side path can only be confirmed by POSTing to a live
@@ -2909,9 +2909,9 @@ Goal: the companion opens the lobby and invites the ten; Discord splits voice; t
     > Everything about the lobby existing (M4.2). Voice (M4.4, M4.5). Any attempt to move a spectator onto a team,
     > or to swap two players by orchestrating two commands. Champion select, in any form, for any reason.
 
-- [ ] **M4.4** `apps/discord` bot: Realtime subscription; on `balanced` move linked members into blue and red voice; on `finished` move everyone back. Handles missing permissions gracefully with a log line, never a crash.
-- [ ] **M4.5** Presence: when lobby voice membership changes and no lobby is open, post or edit a single "N around: names" message. Count feeds the sit-out logic as "around".
-- [ ] **M4.6** Deploy the bot to Fly.io or Railway with a health check and auto-restart.
+- [-] **M4.4** **Dropped by the user, 2026-09-10** ("not interested in auto separating players into channels"). Nothing built; the bot app stays a placeholder. `apps/discord` bot: Realtime subscription; on `balanced` move linked members into blue and red voice; on `finished` move everyone back. Handles missing permissions gracefully with a log line, never a crash.
+- [ ] **M4.5** (**deferred 2026-09-10**: with M4.4 dropped, the bot would exist for this alone; queued only if the user asks for the "N around" post) Presence: when lobby voice membership changes and no lobby is open, post or edit a single "N around: names" message. Count feeds the sit-out logic as "around".
+- [-] **M4.6** **Dropped with M4.4, 2026-09-10**: no bot to deploy. Deploy the bot to Fly.io or Railway with a health check and auto-restart.
 
 - [ ] **M4.7** Designer: the two M4 surfaces that have copy and no layout. (a) The `Start a lobby` control on the tonight page — where it sits in the **idle** and **filling** states of `05-design.md`'s state table, and how the four refusal sentences and the pending line (`Opening a lobby on <Name>'s PC…`) are shown without a toast. (b) The side line — `Move to your side in the lobby.` / `You'll be moved to your side — if not, move yourself.` — in the teams embed's `Seats` block (field order fixed by M3.13) and under the team cards on the page. The words are product's and are fixed in the M4.2 and M4.3 briefs; the placement is the designer's.
 
