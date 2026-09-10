@@ -878,7 +878,7 @@ place. Every control is a real form with a real action, intercepted when JavaScr
 **Keyboard.** M3.6 is the first screen in the product with a cluster of targets — five chips and up to eleven
 buttons — so it is where the focus ring lands, and the ring is product-wide: see `tokens.css`, v2.
 
-#### Copy — final (product 2026-09-09)
+#### Copy — final (product 2026-09-09; two side-line rows added 2026-09-11)
 
 Product has passed every string. `(shipped)` marks a sentence that already exists and is quoted unchanged;
 everything else is final text the engineer types into `apps/web/lib/tonight/copy.ts`, `lib/nav.ts` and the
@@ -903,6 +903,8 @@ placement are the designer's and are untouched.
 | sentence, in game | `Ratings move when it ends.` | product 2026-09-09 — **changed** |
 | sentence, finished rated | `Ratings are updated. The leaderboard has the rest.` | product 2026-09-09 — **changed** |
 | sentence, finished unrated | *(none — the slot keeps its height and stays empty; no apology, per v1)* | product 2026-09-09 |
+| side line under the team cards, `balanced` — auto side switch **off** (today, and if the path is never verified) | `Move to your side in the lobby.` | **new**, product 2026-09-11 (words M4.3, placement M4.7 (b)) — kept byte for byte from the M4.3 brief and the decision row of 2026-09-09. **One line under both cards, not one per card**, and never per person: naming who is on the wrong side is stale the second somebody moves. Not drawn in `in_game` — see below |
+| the same line, auto side switch **on** | `You'll be moved to your side — if not, move yourself.` | **new**, product 2026-09-11 (words M4.3, placement M4.7 (b)) — kept byte for byte. Em dash (U+2014) and a straight apostrophe, both as written in the brief. Which of the two prints is the gate's, not the writer's: while `switch_side` is unverified the page may not promise anybody is moved |
 | rack header | `SEATS` · `<n> of 10` · `rating` | product 2026-09-09 |
 | empty seat | `open` | product 2026-09-09 |
 | all-flexible hint | `Nobody has set a role tonight, so the bot can put anyone anywhere.` | product 2026-09-09 — **changed** |
@@ -968,6 +970,32 @@ placement are the designer's and are untouched.
 
 Nothing in the four lines mentions "ten games" for Rating: the page has room for one number, and the number
 worth printing is the one that governs the board people argue about.
+
+**The side line, ruled 2026-09-11 (M4.7 (b)).** Both sentences are **kept, byte for byte**. They were
+settled in the M4.2 and M4.3 briefs and quoted again in the decision row of 2026-09-09, and the same two
+sentences go in the teams embed's `Seats` block, so a rewrite here would be a rewrite in three places to buy a
+reader nothing. Two things that look like exceptions are not:
+
+- **The em dash is house style for this shape.** Every other string in this table avoids one, but the shape
+  *fact, then what you do about it* already carries a dash on every surface where it appears —
+  `Your role is unchanged — tap it again.`, `Nothing changed — tap it again.`,
+  `No lobby was opened — tap it again.`. `You'll be moved to your side — if not, move yourself.` is that
+  shape: the promise, then the fallback when the promise cannot be kept, because a companion that is closed
+  or finds the side already holding five moves nobody and the page cannot know which of the ten that is.
+- **The apostrophe is straight (`'`), not typographic**, matching `isn't`, `Nobody's` and `someone's`
+  everywhere else in these tables and in `copy.ts`.
+
+**It is not drawn in `in_game`, and that is not the designer's call to reverse.** Once the game launches there
+is no lobby to move in, so `Move to your side in the lobby.` names a thing that does not exist for the half
+hour it would sit on the screen. The line belongs to `balanced` only. **M4.11** removes it from `in_game`.
+
+**Inside `balanced` the line does not yet disappear when all ten match, and that deferral is confirmed.**
+M4.3's acceptance check 7 wants it gone the moment every seat matches its side, and it stays open, not
+softened: the tonight snapshot does not carry each member's side, so meeting it is a data change, not a copy
+change. Today the gate is off and nobody is moved by us, so the ten who move themselves keep reading an
+instruction they have already followed — for the seconds between the last person moving and the game
+starting, on a page whose next line is the explanation strip. That is the smallest version of this cost, and
+it is paid only until the gate flips, which is when the check earns its data. **M4.11** carries both halves.
 
 The sit-out strip, the explanation line, the no-season sentence, the `No more splits.` note and every embed
 string are **unchanged**. v2 is a visual redesign; it does not get to rewrite settled sentences.
