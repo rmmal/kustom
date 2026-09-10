@@ -35,6 +35,7 @@ import { CompanionCard, HowThisWorksCard } from '../_shell/HowThisWorks';
 import { RerollControl } from './RerollControl';
 import { RoleTonight } from './RoleTonight';
 import { SeatRack } from './SeatRack';
+import { SideLine } from './SideLine';
 import { StartLobby } from './StartLobby';
 
 /**
@@ -314,6 +315,14 @@ function TeamsBlock({
         <TeamCard side="blue" seats={teams.blue} viewerPuuid={viewer.puuid} />
         <TeamCard side="red" seats={teams.red} viewerPuuid={viewer.puuid} />
       </div>
+      {/*
+       * The side line (M4.7 (b)): one line under both cards, while there is a lobby to move in.
+       * `teams` also draws a **finished** game the fold did not rate — the teams stay up under
+       * `GAME OVER` — and telling somebody to move to their side after the game is over is the
+       * one place this sentence would be wrong, so it is gated on the status like M4.10's line
+       * two elements down.
+       */}
+      {lobby.status === 'balanced' || lobby.status === 'in_game' ? <SideLine /> : null}
       <Explanation
         lobby={lobby}
         teams={teams}

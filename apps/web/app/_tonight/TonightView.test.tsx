@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { invitedLine, openingOnPcLine, START_LOBBY_BUTTON } from '@/lib/admin/lobbyStart';
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
 import type { BoardRow } from '@/lib/board/types';
+import { SWITCH_SIDE_ENABLED } from '@/lib/commands/gate';
 import { NO_ACTIVE_SEASON_MESSAGE, NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
   extraMember,
@@ -22,6 +23,7 @@ import {
   NAMELESS_HINT,
   OFF_ROLE_LEGEND,
   OFF_ROLE_LEGEND_SUFFIX,
+  sideLine,
 } from '@/lib/tonight/copy';
 import type { LobbyStartView } from '@/lib/tonight/lobbyStart';
 import type { SeatView, TonightSnapshot } from '@/lib/tonight/types';
@@ -423,6 +425,56 @@ describe('teams: balanced and in_game are the same block', () => {
     expect(container.querySelectorAll('.cn-off-legend')).toHaveLength(2);
     // The clause is the stored string's, rendered verbatim: `N off-role: Name at role, ...`.
     expect(container.querySelector('.cn-explain-text')?.textContent).toContain(`${marked.length} off-role:`);
+  });
+
+  /**
+   * The side line (M4.7 (b)): **one line under both cards**, not one per card, and the sentence
+   * the verification gate chooses. Both of the gate's states are tested in `SideLine.test.tsx`;
+   * what is asserted here is where it sits and which states draw it at all.
+   */
+  describe('the side line under the cards', () => {
+    it('is one line under both cards, in balanced and in game', () => {
+      for (const status of ['balanced', 'in_game'] as const) {
+        const { container, unmount } = draw(snapshot(lobbyView({ status, teams: workedTeams() })));
+        const lines = container.querySelectorAll('.cn-side-line');
+
+        expect(lines).toHaveLength(1);
+        expect(lines[0]?.textContent).toBe(sideLine(SWITCH_SIDE_ENABLED));
+        // Under the cards and above the explanation: an instruction about the seats you have
+        // just read, before the sentence about why they are those seats.
+        const block = [...(container.querySelector('.cn-block')?.children ?? [])];
+        expect(block.findIndex((node) => node.classList.contains('cn-side-line'))).toBe(
+          block.findIndex((node) => node.classList.contains('cn-cards')) + 1,
+        );
+        expect(block.findIndex((node) => node.classList.contains('cn-explain'))).toBeGreaterThan(
+          block.findIndex((node) => node.classList.contains('cn-side-line')),
+        );
+        unmount();
+      }
+    });
+
+    it('is gone once the game is over, including on a finish the fold did not rate', () => {
+      // The same block draws an unrated finish with the teams still up (M3.4), and telling
+      // somebody to move to their side after `GAME OVER` is the one place it would be wrong.
+      const unrated = snapshot(
+        lobbyView({ status: 'finished', teams: workedTeams(), result: workedResult({ rated: false }) }),
+      );
+      const { container: over } = draw(unrated);
+      expect(over.querySelector('.cn-side-line')).toBeNull();
+
+      const { container: result } = draw(
+        snapshot(lobbyView({ status: 'finished', teams: workedTeams(), result: workedResult() })),
+      );
+      expect(result.querySelector('.cn-side-line')).toBeNull();
+    });
+
+    it('is absent before there are sides to move to', () => {
+      const { container: idle } = draw(snapshot(null));
+      expect(idle.querySelector('.cn-side-line')).toBeNull();
+
+      const { container: filling } = draw(snapshot(lobbyView({ status: 'open' })));
+      expect(filling.querySelector('.cn-side-line')).toBeNull();
+    });
   });
 });
 
