@@ -96,7 +96,11 @@ export interface AdminPlayersPage {
  * bracket in the value would be read as filter syntax rather than as text, and `%`/`*` would
  * be a wildcard the admin did not ask for. Those characters are dropped instead of escaped:
  * this is a name-and-PUUID box, none of them appears in either, and dropping them cannot
- * produce a query that means something else.
+ * produce a query that means something else. The backslash goes with them, which is what makes
+ * `escapeIlike` below the only thing that can put one into a pattern.
+ *
+ * `_` is **not** dropped: it is a real character in a Riot ID, and it is escaped at the filter
+ * instead so the box still echoes what was typed.
  */
 export function normalizeSearch(raw: string | null | undefined): string | null {
   if (raw == null) return null;
@@ -108,6 +112,21 @@ export function normalizeSearch(raw: string | null | undefined): string | null {
 }
 
 /**
+ * `_` is a one-character wildcard in SQL `LIKE`, and PostgREST passes it through untouched —
+ * so a search for `it_` matched every `it-` row on the stack (reviewer, 2026-09-10). Backslash
+ * is `LIKE`'s default escape character, so `\_` is a literal underscore, and the sequence
+ * survives the `or=` list because nothing between the commas re-reads it.
+ *
+ * The escape happens here rather than in {@link normalizeSearch} so the string the page echoes
+ * back into the box and into its own links stays what the admin typed. Names with an underscore
+ * in them are real — `cool_guy` is a Riot ID — so stripping the character would trade a false
+ * positive for a search that cannot find a real player.
+ */
+function escapeIlike(search: string): string {
+  return search.replace(/_/g, '\\_');
+}
+
+/**
  * The PostgREST `or` filter for a cleaned search: **contains** on either name a reader might
  * be looking at, and **prefix** on the PUUID.
  *
@@ -116,7 +135,8 @@ export function normalizeSearch(raw: string | null | undefined): string | null {
  * random string is a sequential scan for nothing.
  */
 export function playerSearchFilter(search: string): string {
-  return [`display_name.ilike.*${search}*`, `game_name.ilike.*${search}*`, `puuid.ilike.${search}*`].join(
+  const pattern = escapeIlike(search);
+  return [`display_name.ilike.*${pattern}*`, `game_name.ilike.*${pattern}*`, `puuid.ilike.${pattern}*`].join(
     ',',
   );
 }
@@ -126,10 +146,17 @@ export function pageCountFor(total: number, pageSize: number): number {
   return Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
 }
 
-/** A `?page=` from the query string, or 1. Anything that is not a positive integer is 1. */
+/**
+ * A `?page=` from the query string, or 1.
+ *
+ * `Number.isSafeInteger`, not `isInteger`: `?page=1e21` parses as an integer, survives
+ * `Math.trunc`, and reaches `.range(5e22, 5e22)` — a query PostgREST answers with nonsense
+ * rather than with a page (reviewer, 2026-09-10). Anything that is not a page number this app
+ * could have produced is page one.
+ */
 export function parsePageParam(raw: string | null | undefined): number {
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) return 1;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return 1;
   return parsed;
 }
 
@@ -189,7 +216,9 @@ export async function listAdminPlayers(
     return count ?? 0;
   };
 
-  const wanted = Math.max(1, Math.trunc(page));
+  // The same rule `parsePageParam` applies to the query string, applied again to whatever a
+  // caller passes: an offset of 5e22 is not a page of anything.
+  const wanted = Number.isSafeInteger(page) ? Math.max(1, page) : 1;
   let resolvedPage = wanted;
   let result = await read(wanted);
   if (result === null) {

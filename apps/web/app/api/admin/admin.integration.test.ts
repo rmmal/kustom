@@ -776,6 +776,14 @@ if (stack === null) {
     // Sorts after every seeded name, so it is well past row 1000 in the page's own order.
     const needlePuuid = `it-${runId}-needle`;
     const needleName = `zzz ${runId} needle`;
+    /**
+     * Two rows that differ by one character, where that character is `_`. In SQL `LIKE` an
+     * unescaped `_` matches any single character, so a search for the first of these used to
+     * return both — which on the real stack meant `it_` matched every `it-` player there is.
+     */
+    const underscorePrefix = `it-${runId}-us`;
+    const underscorePuuid = `${underscorePrefix}_score`;
+    const otherPuuid = `${underscorePrefix}Xscore`;
 
     beforeAll(async () => {
       const rows = Array.from({ length: BULK }, (_, index) => ({
@@ -783,6 +791,8 @@ if (stack === null) {
         display_name: `Bulk ${runId} ${String(index).padStart(4, '0')}`,
       }));
       rows.push({ puuid: needlePuuid, display_name: needleName });
+      rows.push({ puuid: underscorePuuid, display_name: `Under_score ${runId}` });
+      rows.push({ puuid: otherPuuid, display_name: `UnderXscore ${runId}` });
 
       for (let start = 0; start < rows.length; start += 400) {
         const { error } = await db.from('players').insert(rows.slice(start, start + 400));
@@ -795,6 +805,13 @@ if (stack === null) {
       if (error) throw new Error(`cleanup: deleting the bulk players failed: ${error.message}`);
       const { error: needleError } = await db.from('players').delete().eq('puuid', needlePuuid);
       if (needleError) throw new Error(`cleanup: deleting the needle failed: ${needleError.message}`);
+      const { error: underscoreError } = await db
+        .from('players')
+        .delete()
+        .in('puuid', [underscorePuuid, otherPuuid]);
+      if (underscoreError) {
+        throw new Error(`cleanup: deleting the underscore pair failed: ${underscoreError.message}`);
+      }
     }, 60_000);
 
     it('reads fifty rows, and says how many there are in total', async () => {
@@ -837,6 +854,20 @@ if (stack === null) {
       expect(batch.total).toBe(BULK);
       expect(batch.rows).toHaveLength(ADMIN_PLAYERS_PAGE_SIZE);
       expect(batch.rows.every((row) => row.puuid.startsWith(bulkPrefix))).toBe(true);
+    });
+
+    it('reads an underscore as a character, not as a wildcard', async () => {
+      // The PUUID prefix and the display name, because both go through the same escape.
+      const byPuuid = await listAdminPlayers(db, null, { search: underscorePuuid });
+      expect(byPuuid.rows.map((row) => row.puuid)).toEqual([underscorePuuid]);
+      expect(byPuuid.total).toBe(1);
+
+      const byName = await listAdminPlayers(db, null, { search: `Under_score ${runId}` });
+      expect(byName.rows.map((row) => row.puuid)).toEqual([underscorePuuid]);
+
+      // And the row it would have swept up with it is still findable on its own.
+      const other = await listAdminPlayers(db, null, { search: otherPuuid });
+      expect(other.rows.map((row) => row.puuid)).toEqual([otherPuuid]);
     });
 
     it('answers a search nobody matches with an empty page, not an error', async () => {

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { playerLabel } from '@/lib/admin/playerName';
 import { ADMIN_PLAYERS_MAX_PAGE_SIZE, listAdminPlayers } from '@/lib/admin/players';
 import { listAdminTokens } from '@/lib/admin/tokens';
@@ -48,6 +49,14 @@ export default async function AdminTokensPage({ searchParams }: { searchParams: 
       <Notices params={params} />
 
       <h2>Mint</h2>
+      {/* The dropdown holds one page, and the page is capped. Saying so is the difference
+          between a list that stops and a list that lies (M3.25). */}
+      {playerPage.total > players.length ? (
+        <p className="admin-muted">
+          showing the first {players.length} of {playerPage.total}; find the rest on{' '}
+          <Link href="/admin/players">/admin/players</Link>
+        </p>
+      ) : null}
       {players.length === 0 ? (
         <Empty>No players yet, so there is nobody to mint a token for.</Empty>
       ) : (

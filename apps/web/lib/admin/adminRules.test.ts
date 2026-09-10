@@ -190,12 +190,19 @@ describe('the players page query (M3.25)', () => {
     });
 
     it('drops the characters PostgREST would read as filter syntax', () => {
-      // `,` and `()` end an `or=` term; `%` and `*` are wildcards nobody typed on purpose.
+      // `,` and `()` end an `or=` term; `%` and `*` are wildcards nobody typed on purpose; and
+      // the backslash goes too, so the only one in a pattern is the escape the filter adds.
       expect(normalizeSearch('Hana,Omar')).toBe('Hana Omar');
       expect(normalizeSearch('(Hana)')).toBe('Hana');
       expect(normalizeSearch('%Hana%')).toBe('Hana');
       expect(normalizeSearch('Ha*na')).toBe('Ha na');
       expect(normalizeSearch('"Hana"')).toBe('Hana');
+      expect(normalizeSearch('Ha\\na')).toBe('Ha na');
+    });
+
+    it('keeps an underscore, because a Riot ID can have one', () => {
+      // It is a wildcard in `LIKE`, but it is escaped at the filter, not taken off the reader.
+      expect(normalizeSearch('cool_guy')).toBe('cool_guy');
     });
 
     it('stops at 64 characters, so a pasted PUUID list is not a query', () => {
@@ -209,6 +216,13 @@ describe('the players page query (M3.25)', () => {
         'display_name.ilike.*han*,game_name.ilike.*han*,puuid.ilike.han*',
       );
     });
+
+    it('escapes the underscore, which LIKE reads as any single character', () => {
+      // `it_` used to match every `it-` row on the stack (reviewer, 2026-09-10).
+      expect(playerSearchFilter('it_')).toBe(
+        'display_name.ilike.*it\\_*,game_name.ilike.*it\\_*,puuid.ilike.it\\_*',
+      );
+    });
   });
 
   describe('parsePageParam', () => {
@@ -220,6 +234,15 @@ describe('the players page query (M3.25)', () => {
       expect(parsePageParam('1.5')).toBe(1);
       expect(parsePageParam('two')).toBe(1);
       expect(parsePageParam('')).toBe(1);
+    });
+
+    it('refuses a number no page could be, however integral it looks', () => {
+      // `1e21` is an integer to `Number.isInteger` and an offset of 5e22 to `.range()`.
+      expect(parsePageParam('1e21')).toBe(1);
+      expect(parsePageParam(String(Number.MAX_SAFE_INTEGER + 2))).toBe(1);
+      expect(parsePageParam('Infinity')).toBe(1);
+      // …and the largest page this app could ever hand out is still a page.
+      expect(parsePageParam(String(Number.MAX_SAFE_INTEGER))).toBe(Number.MAX_SAFE_INTEGER);
     });
   });
 
