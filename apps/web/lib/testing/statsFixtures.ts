@@ -15,7 +15,18 @@ import type { StatsGame, StatsPlayer, StatsRow } from '../stats/types';
 /** `lena`, `lena:jungle`, or the long form when the row needs its ratings. */
 export type Seat =
   | string
-  | { key: string; role?: RoleValue | null | undefined; mu?: [number, number] | undefined };
+  | {
+      key: string;
+      role?: RoleValue | null | undefined;
+      mu?: [number, number] | undefined;
+      kills?: number | undefined;
+      deaths?: number | undefined;
+      assists?: number | undefined;
+      gold?: number | undefined;
+      damageToChamps?: number | undefined;
+      cs?: number | undefined;
+      championId?: number | null | undefined;
+    };
 
 export interface GameSpec {
   id?: string;
@@ -37,12 +48,45 @@ export interface GameSpec {
 /** The rating every seat carries unless the spec names one: the middle of the seed range. */
 const DEFAULT_MU = 25;
 
-function seatOf(seat: Seat): { key: string; role: RoleValue | null; mu: [number, number] | null } {
+function seatOf(seat: Seat): {
+  key: string;
+  role: RoleValue | null;
+  mu: [number, number] | null;
+  kills: number;
+  deaths: number;
+  assists: number;
+  gold: number;
+  damageToChamps: number;
+  cs: number;
+  championId: number | null;
+} {
   if (typeof seat !== 'string') {
-    return { key: seat.key, role: seat.role ?? null, mu: seat.mu ?? null };
+    return {
+      key: seat.key,
+      role: seat.role ?? null,
+      mu: seat.mu ?? null,
+      kills: seat.kills ?? 0,
+      deaths: seat.deaths ?? 0,
+      assists: seat.assists ?? 0,
+      gold: seat.gold ?? 0,
+      damageToChamps: seat.damageToChamps ?? 0,
+      cs: seat.cs ?? 0,
+      championId: seat.championId ?? null,
+    };
   }
   const [key, role] = seat.split(':');
-  return { key: key as string, role: (role ?? null) as RoleValue | null, mu: null };
+  return {
+    key: key as string,
+    role: (role ?? null) as RoleValue | null,
+    mu: null,
+    kills: 0,
+    deaths: 0,
+    assists: 0,
+    gold: 0,
+    damageToChamps: 0,
+    cs: 0,
+    championId: null,
+  };
 }
 
 function rowOf(seat: Seat, side: SideValue, unrated: boolean): StatsRow {
@@ -55,6 +99,13 @@ function rowOf(seat: Seat, side: SideValue, unrated: boolean): StatsRow {
     role: parsed.role,
     muBefore: unrated ? null : mu[0],
     muAfter: unrated ? null : mu[1],
+    championId: parsed.championId,
+    kills: parsed.kills,
+    deaths: parsed.deaths,
+    assists: parsed.assists,
+    gold: parsed.gold,
+    damageToChamps: parsed.damageToChamps,
+    cs: parsed.cs,
   };
 }
 
