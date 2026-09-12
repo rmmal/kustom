@@ -63,6 +63,7 @@ pnpm db:stop                 # supabase stop
 pnpm db:reset                # supabase db reset: replay every migration locally
 pnpm db:migrate              # supabase db push to the linked hosted project
 pnpm db:types                # regenerate packages/db/src/types.ts from the local stack
+# CI (.github/workflows/ci.yml) runs install --frozen-lockfile, `pnpm -r typecheck`, `pnpm lint`, `pnpm -r test` and `pnpm --filter web build` on every pull request and every push to main, on Node .nvmrc with no local stack (the *.integration.test.ts files skip) and no secrets -- run those five before you open one.
 ```
 
 If a command above does not exist yet, the milestone that creates it is in `docs/02-milestones.md`. Add it there and here when you create it.

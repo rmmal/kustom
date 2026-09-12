@@ -348,5 +348,6 @@ watching: on lobby event -> POST /api/companion/lobby
 
 - A League patch can break any LCU endpoint. `packages/lcu` has a `pnpm --filter lcu smoke` script that hits
   every endpoint we use against a running client and prints shape diffs. Run it after every patch Tuesday.
+- CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile`, `pnpm -r typecheck`, `pnpm lint`, `pnpm -r test` and `pnpm --filter web build` on ubuntu-latest for every pull request and every push to `main`, on the Node in `.nvmrc` and the pnpm in `packageManager`; it needs no secrets, and with no Supabase local stack on the runner the `*.integration.test.ts` files skip.
 - Vercel free tier and Supabase free tier are enough. The bot needs a small always-on box (Fly.io free allowance).
 - Backups: Supabase daily. `games.raw` makes everything else reproducible.
