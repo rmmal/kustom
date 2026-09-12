@@ -1,15 +1,6 @@
 import Link from 'next/link';
 import { WINDOW_LABELS, windowSlotLine } from '@/lib/board/copy';
-import {
-  COL_CS,
-  COL_DAMAGE,
-  COL_GOLD,
-  COL_KDA,
-  EVERYONE_LABEL,
-  GAMES_LABEL,
-  SCOREBOARD_LABEL,
-  showingFocus,
-} from '@/lib/games/copy';
+import { EVERYONE_LABEL, GAMES_LABEL, showingFocus } from '@/lib/games/copy';
 import { gamesHref, gamesQuery } from '@/lib/games/href';
 import type { GamesHistoryView, HistoryGame, HistorySeat, HistoryTeam } from '@/lib/games/types';
 import { capLine } from '@/lib/stats/copy';
@@ -17,6 +8,7 @@ import { isNameless, renderWebName } from '@/lib/tonight/copy';
 import { NamelessHint, RoleName } from '../_board/parts';
 import { WindowPicker } from '../_board/WindowPicker';
 import { WindowSlot } from '../_board/WindowSlot';
+import { MatchSheet, SeatName } from './MatchSheet';
 import { QueuePicker } from './QueuePicker';
 
 /**
@@ -109,7 +101,7 @@ function MatchCard({ game, focusPuuid }: { game: HistoryGame; focusPuuid: string
             <Teammates seats={game.teammates} focusPuuid={focusPuuid} />
           )}
         </summary>
-        <Scoreboard game={game} focusPuuid={focusPuuid} />
+        <MatchSheet game={game} focusPuuid={focusPuuid} />
       </details>
     </li>
   );
@@ -146,67 +138,5 @@ function Teammates({ seats, focusPuuid }: { seats: readonly HistorySeat[]; focus
         </li>
       ))}
     </ul>
-  );
-}
-
-function Scoreboard({ game, focusPuuid }: { game: HistoryGame; focusPuuid: string | null }) {
-  return (
-    <div className="cn-sheet">
-      <p className="cn-sr">{SCOREBOARD_LABEL}</p>
-      <TeamSheet team={game.blue} focusPuuid={focusPuuid} />
-      <TeamSheet team={game.red} focusPuuid={focusPuuid} />
-    </div>
-  );
-}
-
-function TeamSheet({ team, focusPuuid }: { team: HistoryTeam; focusPuuid: string | null }) {
-  const tone = team.side === 100 ? 'blue' : 'red';
-
-  return (
-    <section className={`cn-sheet-team cn-sheet-${tone}`}>
-      <header className="cn-sheet-head">
-        <h2 className="cn-sheet-title">{team.label}</h2>
-        <span className="cn-num cn-sheet-gold-total">{team.goldLabel}</span>
-      </header>
-      <div className="cn-sheet-cols" aria-hidden="true">
-        <span />
-        <span />
-        <span className="cn-num">{COL_KDA}</span>
-        <span className="cn-num cn-sheet-wide">{COL_DAMAGE}</span>
-        <span className="cn-num cn-sheet-wide">{COL_GOLD}</span>
-        <span className="cn-num">{COL_CS}</span>
-      </div>
-      <ol className="cn-sheet-rows">
-        {team.seats.map((seat) => (
-          <li key={seat.puuid} className={seat.puuid === focusPuuid ? 'cn-sheet-row cn-you' : 'cn-sheet-row'}>
-            {seat.role === null ? <span className="cn-num cn-lineup-role" /> : <RoleName role={seat.role} />}
-            <span className="cn-sheet-who">
-              <SeatName seat={seat} viewed={seat.puuid === focusPuuid} />
-              <span className="cn-num cn-sheet-sub">
-                {seat.csLabel}
-                {seat.kp === null ? '' : ` · ${seat.kp}% KP`}
-              </span>
-            </span>
-            <span className="cn-num cn-sheet-kda">{seat.kda}</span>
-            <span className="cn-sheet-bar cn-sheet-wide" aria-hidden="true">
-              <span className="cn-sheet-bar-fill" style={{ width: `${seat.damageShare}%` }} />
-              <span className="cn-num cn-sheet-bar-n">{seat.damageLabel}</span>
-            </span>
-            <span className="cn-num cn-sheet-wide">{seat.goldLabel}</span>
-            <span className="cn-num">{seat.csLabel}</span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-function SeatName({ seat, viewed }: { seat: HistorySeat; viewed: boolean }) {
-  if (viewed) return <span className="cn-lineup-name">{renderWebName(seat.name)}</span>;
-
-  return (
-    <Link className="cn-lineup-name cn-lineup-link" href={`/p/${seat.puuid}`}>
-      {renderWebName(seat.name)}
-    </Link>
   );
 }

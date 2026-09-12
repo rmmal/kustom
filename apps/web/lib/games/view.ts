@@ -1,5 +1,6 @@
 import { LOST, WON } from '../board/copy';
 import { windowRangeLabel } from '../board/window';
+import { championLabel } from '../champs/names';
 import { formatDamage, formatDuration } from '../discord/embeds';
 import { inLaneOrder } from '../laneOrder';
 import { formatDayMonth, type WindowKind, type WindowRange } from '../night';
@@ -62,11 +63,12 @@ export function gamesHistoryView(input: GamesHistoryInput): GamesHistoryView {
     cap: input.cap,
     focusPuuid,
     focusName,
-    items: listed.map((game) => toHistoryGame(game, roster, focusPuuid, input.timeZone)),
+    items: listed.map((game) => historyGameOf(game, roster, focusPuuid, input.timeZone)),
   };
 }
 
-function toHistoryGame(
+/** One custom as `/games` draws it. `/fun` attaches the same object to a one-game record. */
+export function historyGameOf(
   game: StatsGame,
   roster: ReadonlyMap<string, StatsPlayer>,
   focusPuuid: string | null,
@@ -121,7 +123,7 @@ function teamOf(
   const kills = rows.reduce((sum, row) => sum + row.kills, 0);
   const gold = rows.reduce((sum, row) => sum + row.gold, 0);
   const seats = inLaneOrder(
-    rows.map((row) => seatOf(row, roster.get(row.puuid)?.name ?? null, kills, peakDamage)),
+    rows.map((row) => seatOf(row, roster.get(row.puuid)?.name ?? null, kills, peakDamage, game)),
   );
 
   return {
@@ -135,13 +137,20 @@ function teamOf(
   };
 }
 
-function seatOf(row: StatsRow, name: PlayerName, teamKills: number, peakDamage: number): HistorySeat {
+function seatOf(
+  row: StatsRow,
+  name: PlayerName,
+  teamKills: number,
+  peakDamage: number,
+  game: StatsGame,
+): HistorySeat {
   const kp = teamKills === 0 ? null : Math.round(((row.kills + row.assists) / teamKills) * 100);
 
   return {
     puuid: row.puuid,
     name,
     role: row.role,
+    champion: championLabel(row.championId, game.rawFacts?.byPuuid[row.puuid]?.championName),
     kills: row.kills,
     deaths: row.deaths,
     assists: row.assists,

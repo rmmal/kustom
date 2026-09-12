@@ -276,3 +276,48 @@
   color: var(--cn-dim);
   white-space: nowrap;
 }
+
+.cn-fun-blood {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.cn-fun-when.cn-fun-fear {
+  white-space: normal;
+  max-width: 18rem;
+  text-align: right;
+}
+
+.cn-fun-game {
+  margin: 0;
+}
+
+.cn-fun-game > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.cn-fun-game > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cn-fun-toggle {
+  font-size: var(--cn-t-xs);
+  font-weight: 600;
+  color: var(--cn-brand);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.cn-fun-sheet-head {
+  margin: 0;
+  padding: var(--cn-sp-2) var(--cn-sp-3) 0;
+  font-size: var(--cn-t-sm);
+  font-weight: 600;
+}
+
+.cn-fun-sheet .cn-sheet {
+  border-top: 0;
+}

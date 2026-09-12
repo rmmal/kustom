@@ -9,6 +9,7 @@ import type { AwardRender } from './awards';
 import { countedGames, playerStreaks } from './fold';
 import { assembleFunFacts } from './funView';
 import { playerStatsView } from './player';
+import { type RawGameFacts, rawFactsFromUnknown } from './rawFacts';
 import type {
   FunFactsView,
   PlayerStatsView,
@@ -219,8 +220,9 @@ interface GameRow {
   lcuGameId: number | null;
   durationS: number;
   winningSide: SideValue;
-  /** Set only when `/games` asked for it. `/stats` never selects `raw`. */
+  /** Set only when `/games` or `/fun` asked for it. `/stats` never selects `raw`. */
   gameMode?: string | null;
+  rawFacts?: RawGameFacts | null;
 }
 
 /**
@@ -305,7 +307,7 @@ function toGameRows(
       lcuGameId: row.lcu_game_id,
       durationS: row.duration_s,
       winningSide: row.winning_side,
-      ...(withGameMode ? { gameMode: gameModeFromRaw(row.raw) } : {}),
+      ...(withGameMode ? { gameMode: gameModeFromRaw(row.raw), rawFacts: rawFactsFromUnknown(row.raw) } : {}),
     });
   }
   return games;

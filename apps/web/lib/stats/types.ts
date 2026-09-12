@@ -1,8 +1,10 @@
 import type { RoleValue, SideValue } from '@customs/db';
 import type { Streak } from '../board/streak';
 import type { QueueKind } from '../games/queue';
+import type { HistoryGame } from '../games/types';
 import type { WindowKind } from '../night';
 import type { PlayerName } from '../tonight/types';
+import type { RawGameFacts } from './rawFacts';
 
 /**
  * What `/stats` is made of (M5.4): the rows the loader reads, and the answer the page renders.
@@ -60,9 +62,14 @@ export interface StatsGame {
   winningSide: SideValue;
   /**
    * The client's `gameMode` (`CLASSIC`, `ARAM`, `KIWI`), or `null` when `games.raw` never
-   * named one. `/games` filters on this; `/stats` and `/fun` ignore it.
+   * named one. `/games` and `/fun` filter on this; `/stats` ignores it.
    */
   gameMode?: string | null;
+  /**
+   * First blood, steals, vision and draft bans parsed from `games.raw`. Absent when the
+   * loader did not select `raw` (`/stats`) or when the blob named none of those keys.
+   */
+  rawFacts?: RawGameFacts | null;
   rows: readonly StatsRow[];
 }
 
@@ -217,14 +224,48 @@ export interface StatsView {
 export interface FunHolder extends PlayerRef {
   valueLabel: string;
   detail: string | null;
+  /**
+   * The counted custom this number came from. Null on a habit (attendance, a
+   * window total). The page opens both scoreboards from this.
+   */
+  game: HistoryGame | null;
 }
 
-/** A ranked season table — first blood would live here once we store it. */
+/** A ranked season table — first-blood totals still use this shape. */
 export interface FunTable {
   id: string;
   title: string;
   intro: string;
   rows: FunHolder[];
+  empty: string;
+}
+
+/** One opening in the First Blood Museum: who took it, on which champion, which night. */
+export interface FunBloodRow {
+  gameId: string;
+  taker: PlayerRef;
+  champion: string;
+  /** Who died. Null — the block stores the killer, not the victim. */
+  victim: PlayerRef | null;
+  opponent: string | null;
+  when: string;
+  game: HistoryGame | null;
+}
+
+/** One fear-ban sentence: a person's champion, banned by the other side while they were in. */
+export interface FunFearBan {
+  player: PlayerRef;
+  champion: string;
+  banned: number;
+  available: number;
+  rate: number;
+  line: string;
+}
+
+export interface FunSection<T> {
+  title: string;
+  intro: string;
+  rows: T[];
   empty: string;
 }
 
@@ -255,6 +296,10 @@ export interface FunFactsView {
   capped: boolean;
   cap: number;
   tables: FunTable[];
+  museum: FunSection<FunBloodRow>;
+  deathHall: FunRecord[];
+  thieves: FunRecord[];
+  fearBans: FunSection<FunFearBan>;
   csByRole: RoleCsPair[];
   records: FunRecord[];
   notes: string[];

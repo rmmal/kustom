@@ -15,6 +15,8 @@ export interface HistorySeat {
   puuid: string;
   name: PlayerName;
   role: RoleValue | null;
+  /** `Ahri`, or `null` when the scoreboard never stored a champion. */
+  champion: string | null;
   kills: number;
   deaths: number;
   assists: number;

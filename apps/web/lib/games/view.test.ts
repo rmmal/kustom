@@ -51,6 +51,7 @@ describe('gamesHistoryView', () => {
       {
         key: 'hana',
         role: 'top',
+        championId: 122,
         kills: 9,
         deaths: 6,
         assists: 5,
@@ -64,6 +65,7 @@ describe('gamesHistoryView', () => {
       {
         key: 'lena',
         role: 'adc',
+        championId: 222,
         kills: 15,
         deaths: 5,
         assists: 6,
@@ -89,6 +91,8 @@ describe('gamesHistoryView', () => {
     const game = history([late]).items[0];
     expect(game?.blue.seats.map((seat) => seat.role)).toEqual(['top', 'jungle', null, null, null]);
     expect(game?.blue.seats[0]?.kda).toBe('9/6/5');
+    expect(game?.blue.seats[0]?.champion).toBe('Darius');
+    expect(game?.red.seats[0]?.champion).toBe('Jinx');
     expect(game?.red.seats[0]?.damageShare).toBe(100);
     expect(game?.blue.seats[0]?.damageShare).toBe(87);
     expect(game?.red.seats[0]?.kp).toBe(84);

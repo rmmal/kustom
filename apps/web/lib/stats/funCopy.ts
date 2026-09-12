@@ -12,15 +12,53 @@ export const FUN_LABEL = 'Fun';
 export const CS_HEADING = 'CS by role';
 export const RECORDS_HEADING = 'One game';
 export const HABITS_HEADING = 'The habit';
+/** Opens the scoreboard of the counted custom a one-game record came from. */
+export const THIS_GAME = 'This game';
 
-export const FIRST_BLOOD_TITLE = 'The opening bell';
-export const FIRST_BLOOD_INTRO = 'Who takes first blood. The companion sees it; we do not store it yet.';
-export const FIRST_BLOOD_EMPTY = 'First blood is not stored, so this table cannot name anyone.';
+export const FIRST_BLOOD_TITLE = 'First Blood Museum';
+export const FIRST_BLOOD_INTRO =
+  'Who opened the map, on which champion, and which night. The block names the killer, not who died.';
+export const FIRST_BLOOD_EMPTY = 'No first blood flag in this window.';
+export const FIRST_BLOOD_MOST = 'Most first bloods';
+export const FIRST_BLOOD_MOST_RULE = 'Counted games whose stored block named a killer.';
 
-export const FIRST_BLOOD_NOTE =
-  'First blood is not stored. The companion sees it on the end-of-game block; this page cannot name who opened the map.';
-export const VISION_NOTE =
-  'Vision score is not stored. Wards and river control cannot be crowned from what we keep.';
+export const DEATH_HALL_TITLE = 'Death Hall of Fame';
+export const SHORTEST_LIFE = 'Shortest life';
+export const SHORTEST_LIFE_RULE =
+  'Shortest time spent living in one counted game they died in. The in-game first-death clock is not stored.';
+export const MOST_DEATHS_WINDOW = 'Most deaths';
+export const MOST_DEATHS_WINDOW_RULE = 'Deaths summed over counted games in the window.';
+export const DEATHLESS_STREAK = 'Longest deathless streak';
+export const DEATHLESS_STREAK_RULE = 'Consecutive counted games with zero deaths.';
+export const DEATHLESS_GAMES = 'Most games without dying';
+export const DEATHLESS_GAMES_RULE = 'Counted games with zero deaths.';
+
+export const THIEF_TITLE = 'Objective Thief';
+export const MOST_STEALS = 'Most steals';
+export const MOST_STEALS_RULE = 'Objectives stolen in one counted game.';
+export const MOST_STEALS_WINDOW = 'Career thief';
+export const MOST_STEALS_WINDOW_RULE = 'Objectives stolen, summed over the window.';
+export const MOST_DRAGONS = 'Most dragons';
+export const MOST_DRAGONS_RULE = 'Dragon kills in one counted game.';
+export const MOST_BARONS = 'Most barons';
+export const MOST_BARONS_RULE = 'Baron kills in one counted game.';
+export const THIEF_EMPTY = 'Nobody stole an objective in this window.';
+
+export const FEAR_BAN_TITLE = 'Fear Ban';
+export const FEAR_BAN_INTRO =
+  "How often the other side banned someone's champion while they were in the lobby.";
+export const FEAR_BAN_EMPTY = 'No draft bans in this window. Blind customs do not ban.';
+export const FEAR_BAN_RULE = `Their most-played champion, banned by the other side, in at least ${MIN_RECORD_GAMES} counted games.`;
+
+export function fearBanLine(
+  name: string,
+  champion: string,
+  rate: number,
+  banned: number,
+  available: number,
+): string {
+  return `${name}'s ${champion} has been banned in ${rate}% of games where they were available (${banned} of ${available}).`;
+}
 
 export function noCsAtRole(role: RoleValue): string {
   return `Nobody has a counted game on ${role} yet.`;
