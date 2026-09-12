@@ -13,8 +13,10 @@ Discord voice and about to be in a game. They have three questions, in this orde
 2. **Why these teams?**
 3. **What happened?**
 
-Everything below is ordered by those three questions. Dark theme is the default, not the alternate. Phone
-widths are the design width; the desktop layout adds a second column and a rail, not a bigger phone.
+Everything below is ordered by those three questions. **Day is the default theme** (2026-09-12): a light
+gaming look. Night is the same system after dark. Current is Floodlit, isolated in `theme-current.css` so
+it can be deleted without touching Day or Night. Phone widths are the design width; the desktop layout adds
+a second column and a rail, not a bigger phone.
 
 Tone, **amended 2026-09-09 by the user's own calibration**: *"it should look like an actual gaming product,
 modern, something like Blitz and so, with its own character and style."* v1 read this as a scoreboard in a
@@ -230,15 +232,33 @@ product rather than a document that happens to be dark.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ▍KUSTOM            Tonight  Leaderboard  Games  Stats  Companion ↗  │  top bar: raise, 1px line under
+│  ▍KUSTOM     Tonight  Leaderboard  Games  Stats  Fun   Day│Night│Current │
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
-│   … page content, on the ink, under the floodlight …          │
+│   … page content, on the paper or the ink, under the floodlight … │
 │                                                               │
 ├───────────────────────────────────────────────────────────────┤
 │  How this works · Get the companion · Your games              │  footer: dim, t-sm
 └───────────────────────────────────────────────────────────────┘
 ```
+
+### Themes — Day, Night, Current (2026-09-12)
+
+Three named looks, one `data-theme` on `<html>`, persisted in `localStorage` as `cn-theme`. A
+`beforeInteractive` script writes the attribute before first paint so a stored Night does not flash Day.
+
+| Name | File | What it is |
+|---|---|---|
+| **Day** (default) | `tokens.css` plus `theme-gaming.css` | Production gaming look on cool paper: two corner lamps, a faint pitch grid, HUD top bar with a gold underline, tracked uppercase tabs, pill filters, inset side rules on teams and scoreboards, tracker-dense match cards. Same Archivo + Plex Mono as Night. |
+| **Night** | same files, `[data-theme=night]` | The same system after dark: void ink, hotter gold, electric sides. No second typeface and no second layout. |
+| **Current** | `theme-current.css` only | Floodlit as it shipped. Isolated so it can be deleted: drop that file and its import, drop `current` from `THEME_ORDER` / `THEME_LABELS`, drop the Current assertions. |
+
+Colour is still a team, a state, or nothing. Day and Night do not add a fourth colour, champion art, glass,
+or a second font. Admin is untouched. The gaming layer never edits Floodlit files; it only paints over them.
+
+The theme control is a 44px radiogroup in the top bar (`Day` · `Night` · `Current`), Archivo `t-sm`, the
+chosen chip in `brand` on `brand-tint`. Phone: wordmark and the group on the first row, tabs on the second.
+Desktop: wordmark, tabs, group. The live pill stays in the status strip.
 
 - **Wordmark.** `KUSTOM` in the display cut at `t-md`, upper case, letter-spacing `0.02em`, in `text`,
   preceded by a 3px × 18px `brand` bar (`▍`). That bar is the lamp and it is the entire logo. No image, no
@@ -251,12 +271,13 @@ product rather than a document that happens to be dark.
   `Games`, `Stats`, `Companion ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
   `Games` with M5.25, `Stats` with M5.4, `Companion` is external and always there. A nav item that 404s is worse than a missing
   one. Keep the list in one exported array (`lib/nav.ts`) so no page hand-writes it.
-- **Phone.** Two rows: wordmark row (44px), then the tab row (44px, tabs left aligned, horizontally scrollable
-  with no scrollbar if a fifth destination ever exists). Not sticky — a sticky bar costs 88px of a 700px
-  screen on the one page people read in full.
-- **Desktop (≥720px).** One row: wordmark left, tabs right.
+- **Phone.** Two rows: wordmark and the theme group (44px), then the tab row (44px, tabs left aligned,
+  horizontally scrollable with no scrollbar). Not sticky — a sticky bar costs 88px of a 700px screen on the
+  one page people read in full.
+- **Desktop (≥720px).** One row: wordmark left, tabs, theme group right.
 - **The live pill is not in the top bar.** It belongs to the status strip, next to the state it describes, and
-  a product has one place for a piece of information. The top bar carries identity and destinations only.
+  a product has one place for a piece of information. The top bar carries identity, destinations, and the
+  theme group (`Day` · `Night` · `Current`).
 - **Footer.** One line of links, `t-sm` `dim`, top border `line`, `sp-6` above it. The date and season are the
   status strip's slug line and are not repeated here. `Your games` appears only for a signed-in viewer and points at
   `/p/<their puuid>`. `Get the companion` points at the **releases page**, not the `.exe` — the tonight page
@@ -278,9 +299,7 @@ Shell CSS, in outline:
 .cn-shell {                      /* wraps top bar, main, footer */
   min-height: 100svh;            /* svh, not vh: the phone URL bar must not move the footer */
   display: flex; flex-direction: column;
-  background:
-    radial-gradient(120% 70% at 50% -15%, color-mix(in srgb, var(--cn-brand) 5%, transparent), transparent 65%),
-    var(--cn-bg);
+  background: var(--cn-floodlight), var(--cn-bg);
 }
 .cn-topbar { background: var(--cn-raise); border-bottom: 1px solid var(--cn-line); }
 .cn-topbar-inner, .cn-main, .cn-footer-inner {
@@ -2154,20 +2173,21 @@ group list it is the winner's, on a focused list it is that player's. No green, 
 `/fun` wears the same Rift / ARAM chips, same `?queue=`, same default. CS by role and Objective Thief
 are hidden on ARAM.
 
-Order under the strip: First Blood Museum (killer, champion, night), First Blood Donated (who
-died — only when the block named `firstBloodDeath`), Pentakill / Quadrakill / Triple / Double
-museums, First Turret, Death Hall of Fame, Objective Thief (Rift), Fear Ban, Most banned (Rift),
-Most picked, then CS by role, one-game records, habits. First blood and vision are no longer
-printed as missing notes; the killer museum is empty only when the stored block named no killer.
-Donated stays empty when the death flag is missing — deaths and `longestTimeSpentLiving` are not
-a corpse. Multi-kill halls sum the stored count fields; a game with two triples is one opening
-labelled `2 triples`. First Turret is the `firstTowerKill` flag, never inferred from gold. Fear
-Ban is one sentence per person: `Omar's Shaco has been banned in 64% of games where they were
-available (16 of 25).` Most banned and Most picked are the lobby's champions, not a person's:
-`Shaco · 16 bans`, `Ahri · 12 picks`. One-game records include Longest killing spree from
-`largestKillingSpree` (at least three). Every English card title and record name carries an
-Egyptian 3ameya roast under it in brand (`مين فتحها`, `كنسهم كنس`, `كسب وهو زبالة`) — not فصحى
-and not a translation. The English heading stays the name of the fact.
+Order under the strip: First Blood Museum (killer, champion, night), First Blood Donated only
+when the block named `firstBloodDeath` (hidden when empty — the live blob does not name who
+died), Pentakill / Quadrakill / Triple / Double museums, First Turret, Death Hall of Fame,
+Objective Thief (Rift), Fear Ban, Most banned (Rift), Most picked, then CS by role, one-game
+records, habits. First blood and vision are no longer printed as missing notes; the killer
+museum is empty only when the stored block named no killer. Deaths and
+`longestTimeSpentLiving` are not a corpse. Multi-kill halls sum the stored count fields; a
+game with two triples is one opening labelled `2 triples`. First Turret is the
+`firstTowerKill` flag, never inferred from gold. Fear Ban is one sentence per person:
+`Omar's Shaco has been banned in 64% of games where they were available (16 of 25).` Most
+banned and Most picked are the lobby's champions, not a person's: `Shaco · 16 bans`,
+`Ahri · 12 picks`. One-game records include Longest killing spree from `largestKillingSpree`
+(at least three). Every English card title and record name carries an Egyptian 3ameya roast
+facing it on the right in brand (`مين فتحها`, `كنسهم كنس`, `كسب وهو زبالة`) — not فصحى and
+not a translation. Odd rows sit on `raise` so a long museum is a zebra.
 
 The museum is **grouped by the killer**, a hairline between people. One first blood is the row
 itself (champion, night, **This game**). Two or more open **See games** and list each opening.

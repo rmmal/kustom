@@ -343,31 +343,44 @@
 }
 
 /*
- * Egyptian 3ameya roast under the English title. Brand is the one lamp; the
- * page stays `lang=en` and the roast is marked `lang=ar`. No extra webfont —
- * Archivo has no Arabic, so the line falls through to the system face.
+ * Egyptian 3ameya roast faces the English title (left / right), not under it.
+ * Brand is the one lamp. The page stays `lang=en`; the roast is `lang=ar`.
+ * No extra webfont — Archivo has no Arabic, so the line uses the system face.
+ *
+ * Odd rows sit on `raise` so a long museum is a zebra, not one undivided list.
+ * Even rows keep the card's `surface`. Scoped to `.cn-fun` so `/stats` is untouched.
  */
-.cn-fun-head {
-  align-items: flex-start;
-}
-
 .cn-fun-named {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.125rem;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cn-sp-3);
+  width: 100%;
   min-width: 0;
+}
+
+.cn-fun-head .cn-fun-named {
+  flex: 1;
 }
 
 .cn-fun-roast {
   margin: 0;
+  flex-shrink: 0;
   font-family: "Segoe UI", Tahoma, sans-serif;
   font-size: var(--cn-t-sm);
   font-weight: 600;
   color: var(--cn-brand);
   line-height: 1.35;
+  text-align: right;
 }
 
 .cn-fun-named .cn-stats-subtitle + .cn-fun-roast {
   font-size: var(--cn-t-xs);
+}
+
+.cn-fun .cn-fun-groups > li:nth-child(odd),
+.cn-fun .cn-fun-openings > li:nth-child(odd),
+.cn-fun .cn-records > li:nth-child(odd) {
+  background: var(--cn-raise);
 }

@@ -4,7 +4,6 @@ import type { QueueKind } from '@/lib/games/queue';
 import type { WindowKind } from '@/lib/night';
 import {
   FIRST_BLOOD_EMPTY,
-  FIRST_BLOOD_TAKEN_EMPTY,
   FIRST_BLOOD_TAKEN_TITLE,
   FIRST_BLOOD_TITLE,
   FUN_LABEL,
@@ -64,10 +63,9 @@ describe('FunView', () => {
     render(<FunView facts={view()} />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(`This month ${FUN_LABEL}`);
     expect(screen.getByText(FIRST_BLOOD_TITLE)).toBeInTheDocument();
-    expect(screen.getByText(FIRST_BLOOD_TAKEN_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(FIRST_BLOOD_TAKEN_TITLE)).not.toBeInTheDocument();
     expect(screen.getByText(MOST_PICKED_TITLE)).toBeInTheDocument();
     expect(screen.getByText(FIRST_BLOOD_EMPTY)).toBeInTheDocument();
-    expect(screen.getByText(FIRST_BLOOD_TAKEN_EMPTY)).toBeInTheDocument();
     expect(screen.getByText(PENTA_TITLE)).toBeInTheDocument();
     expect(screen.getByText(TRIPLE_TITLE)).toBeInTheDocument();
     expect(screen.getByText(PENTA_EMPTY)).toBeInTheDocument();
@@ -141,6 +139,36 @@ describe('FunView', () => {
     expect(
       within(screen.getByText(FIRST_BLOOD_TITLE).closest('.cn-card') as HTMLElement).getByText(THIS_GAME),
     ).toBeInTheDocument();
+    expect(screen.queryByText(FIRST_BLOOD_TAKEN_TITLE)).not.toBeInTheDocument();
+  });
+
+  it('shows First Blood Donated only when the block named the death', () => {
+    const game = tenPlayerGame({
+      at: '2026-09-02T20:00:00Z',
+      durationS: 1_800,
+      winner: 100,
+      blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 4, deaths: 0, assists: 2 }],
+      red: [{ key: 'yuki', role: 'adc', championId: 22, kills: 1, deaths: 4, assists: 1 }],
+      rawFacts: {
+        byPuuid: {
+          'u-lena': playerFacts({ firstBloodKill: true, championName: 'Ahri' }),
+          'u-yuki': playerFacts({ firstBloodDeath: true, championName: 'Ashe' }),
+        },
+        bans: [],
+      },
+    });
+    const facts = assembleFunFacts({
+      window: 'this-month',
+      games: [game],
+      players: rosterFor([game]),
+      range: MONTH,
+      capped: false,
+      cap: 2_000,
+      timeZone: 'Africa/Cairo',
+    });
+    render(<FunView facts={facts} />);
+    expect(screen.getByText(FIRST_BLOOD_TAKEN_TITLE)).toBeInTheDocument();
+    expect(screen.getByText('اتفتح عليه أول واحد')).toBeInTheDocument();
   });
 
   it('opens each first blood under a player who took more than one', () => {
