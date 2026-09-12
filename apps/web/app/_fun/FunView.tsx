@@ -46,7 +46,7 @@ import '../board-parts.css';
  * `/fun` (M5.24, M5.27): the window's records, in the same shell `/stats` already wears.
  *
  * A pure function of one snapshot. The numbers live in `lib/stats/fun.ts`; this file decides
- * nothing except order: first blood, donated, multi-kill halls, first turret, deaths, steals,
+ * nothing except order: first blood, multi-kill halls, first turret, deaths, steals,
  * fear bans, most banned / picked, then CS by role, then one-game records, then habits. The
  * Rift / ARAM picker is the same chips `/games` wears. CS-by-role, objective steals and most
  * banned are Rift only. Rows are labelled (name left, number right) so a long Riot ID cannot
@@ -58,7 +58,7 @@ export function FunView({ facts }: { facts: FunFactsView }) {
   const queueQuery = facts.queue === 'sr' ? {} : { queue: facts.queue };
 
   return (
-    <main className="cn-page">
+    <main className="cn-page cn-fun">
       <header className="cn-strip">
         <h1 className="cn-strip-title">
           {WINDOW_LABELS[facts.window]} <span className="cn-strip-sub">{FUN_LABEL}</span>
@@ -84,7 +84,7 @@ export function FunView({ facts }: { facts: FunFactsView }) {
             </section>
           </section>
           <Museum museum={facts.museum} />
-          <Museum museum={facts.donated} />
+          {facts.donated.rows.length === 0 ? null : <Museum museum={facts.donated} />}
           {facts.halls.map((hall) => (
             <Museum key={hall.title} museum={hall} />
           ))}
@@ -301,7 +301,7 @@ function HolderRow({ holder, label }: { holder: FunHolder; label?: string }) {
       <li className="cn-fun-group">
         <details className="cn-fun-game">
           <summary className={`cn-record ${className}`}>
-            {label === undefined ? null : <FunLabel label={label} />}
+            {label === undefined ? null : <span className="cn-stats-subtitle">{label}</span>}
             <PlayerName player={holder} />
             <span className="cn-fun-stat">
               <span className="cn-num cn-record-wl">{holder.valueLabel}</span>
@@ -320,7 +320,7 @@ function HolderRow({ holder, label }: { holder: FunHolder; label?: string }) {
 
   const row = (
     <>
-      {label === undefined ? null : <FunLabel label={label} />}
+      {label === undefined ? null : <span className="cn-stats-subtitle">{label}</span>}
       <PlayerName player={holder} />
       <span className="cn-fun-stat">
         <span className="cn-num cn-record-wl">{holder.valueLabel}</span>
@@ -340,20 +340,6 @@ function HolderRow({ holder, label }: { holder: FunHolder; label?: string }) {
         {row}
       </GameReveal>
     </li>
-  );
-}
-
-function FunLabel({ label }: { label: string }) {
-  const roast = funRoast(label);
-  return (
-    <span className="cn-fun-named">
-      <span className="cn-stats-subtitle">{label}</span>
-      {roast === null ? null : (
-        <span className="cn-fun-roast" lang="ar" dir="rtl">
-          {roast}
-        </span>
-      )}
-    </span>
   );
 }
 
