@@ -1,0 +1,74 @@
+# Every pull request and every push to main, checked before anybody merges it.
+#
+# The job is the four commands CLAUDE.md already tells a human to run, in the same spelling,
+# plus the production build of apps/web. Nothing here is a CI-only script: if it is green on
+# this runner it is green on a laptop, and the reverse.
+#
+# No secrets. The workflow reads nothing from the repository or organisation secret store, so a
+# collaborator's pull request gets exactly the same run the main branch does.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One run per branch. A second push supersedes the first instead of queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    # The whole job is a few minutes cold. Ten is a stuck-process ceiling, not a target.
+    timeout-minutes: 10
+    env:
+      # There is no Supabase local stack on the runner: it needs Docker and `supabase start`,
+      # which is a minute of startup for a database this job would then throw away.
+      #
+      # The `*.integration.test.ts` files ask `resolveLocalStack()` for one and `describe.skip`
+      # when it answers null. Pointing the three variables at a dead port is how we say "there
+      # is no stack" *deterministically*: unset, the helper would shell out to a `supabase` CLI
+      # and we would be relying on that binary being absent from the image. 22 files skip, the
+      # rest of the suite runs. Schema and RLS coverage is a local `pnpm db:start` run.
+      SUPABASE_LOCAL_URL: http://127.0.0.1:1
+      SUPABASE_LOCAL_ANON_KEY: ci-has-no-local-stack
+      SUPABASE_LOCAL_SERVICE_ROLE_KEY: ci-has-no-local-stack
+    steps:
+      - uses: actions/checkout@v5
+
+      # No `version:` input on purpose: the action reads package.json's `packageManager`, so the
+      # pinned pnpm is pinned in exactly one place.
+      - uses: pnpm/action-setup@v4
+
+      # After pnpm, because `cache: pnpm` asks the pnpm binary where its store is.
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -r typecheck
+
+      - run: pnpm lint
+
+      # Serial across packages (`workspaceConcurrency: 1` in pnpm-workspace.yaml). About a
+      # minute here, and the setting is what keeps a local run against a real stack honest.
+      - run: pnpm -r test
+
+      # The step that catches a route which does not compile on Vercel.
+      #
+      # Dummy values, never real keys: every route in the app is dynamic (`ƒ`), so today the
+      # build reads neither variable and passes with both unset. They are set anyway so that the
+      # day somebody adds a prerendered page the fix is a dummy string here and not a secret --
+      # the app must compile without a real project.
+      - run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-ci-does-not-call-supabase
