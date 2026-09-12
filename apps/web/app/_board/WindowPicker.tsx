@@ -36,7 +36,7 @@ export interface WindowPickerProps {
   /** The page the options link to: `/leaderboard`, `/p/<puuid>`. Never carries a query. */
   path: string;
   selected: WindowKind;
-  /** Extra query kept across window taps — `/games?p=` so a person's list stays theirs. */
+  /** Extra query kept across window taps — `/games?p=` and `/games?queue=` so a list stays theirs. */
   query?: Record<string, string>;
 }
 

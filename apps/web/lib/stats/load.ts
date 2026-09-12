@@ -1,5 +1,6 @@
 import type { RoleValue, SideValue } from '@customs/db';
 import { inChunks } from '../chunks';
+import { GAMES_QUEUE, gameModeFromRaw, matchesQueue, type QueueKind } from '../games/queue';
 import type { GamesHistoryView } from '../games/types';
 import { gamesHistoryView } from '../games/view';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
@@ -67,19 +68,27 @@ export interface StatsOptions {
   awardRender?: AwardRender;
   /** `/games?p=`: filter the list to this person's customs. */
   focusPuuid?: string | null | undefined;
+  /** `/games` and `/fun`: which map. Absent is Summoner's Rift. */
+  queue?: QueueKind | undefined;
 }
 
 export async function loadFunFacts(client: PublicClient, options: StatsOptions): Promise<FunFactsView> {
-  const read = await readWindow(client, options);
-  return assembleFunFacts(read);
+  const queue = options.queue ?? GAMES_QUEUE;
+  const read = await readWindow(client, options, { withGameMode: true });
+  const games = read.games.filter((game) => matchesQueue(game.gameMode, queue));
+  return assembleFunFacts({ ...read, games }, queue);
 }
 
 export async function loadGamesHistory(
   client: PublicClient,
   options: StatsOptions,
 ): Promise<GamesHistoryView> {
-  const read = await readWindow(client, options);
-  return gamesHistoryView({ ...read, focusPuuid: options.focusPuuid });
+  const read = await readWindow(client, options, { withGameMode: true });
+  return gamesHistoryView({
+    ...read,
+    focusPuuid: options.focusPuuid,
+    queue: options.queue ?? GAMES_QUEUE,
+  });
 }
 
 export async function loadStats(client: PublicClient, options: StatsOptions): Promise<StatsView> {
@@ -142,7 +151,11 @@ export async function loadStreaks(client: PublicClient, options: StatsOptions): 
  * and the cap, the paging and the window filter cannot drift between a group page and a
  * person's.
  */
-async function readWindow(client: PublicClient, options: StatsOptions): Promise<WindowRead> {
+async function readWindow(
+  client: PublicClient,
+  options: StatsOptions,
+  extras: { withGameMode?: boolean } = {},
+): Promise<WindowRead> {
   const window = options.window;
   const cap = options.maxGames ?? STATS_MAX_GAMES;
   const range = windowRange(window, options.now ?? new Date(), options.timeZone);
@@ -152,7 +165,7 @@ async function readWindow(client: PublicClient, options: StatsOptions): Promise<
    * cap" without a second `count` query, and the extra one is dropped before anything counts it
    * — so the page uses exactly the most recent `cap` games and says so.
    */
-  const read = await loadGames(client, range, cap + 1);
+  const read = await loadGames(client, range, cap + 1, extras);
   const capped = read.length > cap;
   const newest = capped ? read.slice(0, cap) : read;
   const rows = await loadGameRows(
@@ -206,6 +219,8 @@ interface GameRow {
   lcuGameId: number | null;
   durationS: number;
   winningSide: SideValue;
+  /** Set only when `/games` asked for it. `/stats` never selects `raw`. */
+  gameMode?: string | null;
 }
 
 /**
@@ -214,41 +229,85 @@ interface GameRow {
  * **The window is a filter in the query, not in memory** (M5.12): `Last month` on a year of
  * history read through the cap would otherwise come back empty.
  */
-async function loadGames(client: PublicClient, range: WindowRange, limit: number): Promise<GameRow[]> {
+async function loadGames(
+  client: PublicClient,
+  range: WindowRange,
+  limit: number,
+  extras: { withGameMode?: boolean } = {},
+): Promise<GameRow[]> {
   const games: GameRow[] = [];
 
   for (let from = 0; from < limit; from += PAGE_SIZE) {
     const to = Math.min(from + PAGE_SIZE, limit) - 1;
-    let query = client
-      .from('games')
-      .select('id, started_at, duration_s, winning_side, lcu_game_id')
-      .order('started_at', { ascending: false })
-      // **The rebuild's tie-break, in the query** (`lib/ingest/rebuild.ts`): two games that
-      // share an instant have no order without it, and an unordered pair straddling a page
-      // boundary is a game read twice and a game not read at all.
-      .order('lcu_game_id', { ascending: false })
-      .range(from, to);
-    query = withRange(query, 'started_at', range);
-
-    const { data, error } = await query;
-    if (error) throw new Error(`stats: game lookup failed: ${error.message}`);
-
-    const page = data ?? [];
-    for (const row of page) {
-      // `winning_side` is not null in the schema; a row that is neither side is a row this page
-      // cannot read a win off, so it is not a game here either.
-      if (row.winning_side !== 100 && row.winning_side !== 200) continue;
-      games.push({
-        id: row.id,
-        startedAt: row.started_at,
-        lcuGameId: row.lcu_game_id,
-        durationS: row.duration_s,
-        winningSide: row.winning_side as SideValue,
-      });
-    }
+    const page = extras.withGameMode
+      ? await loadGamePage(client, range, from, to, true)
+      : await loadGamePage(client, range, from, to, false);
+    games.push(...page);
     if (page.length < to - from + 1) break;
   }
 
+  return games;
+}
+
+/**
+ * Two literal `select` strings so PostgREST's client can type the row. A concatenated
+ * column list is a `ParserError` and `/stats` must not pull `raw`.
+ */
+async function loadGamePage(
+  client: PublicClient,
+  range: WindowRange,
+  from: number,
+  to: number,
+  withGameMode: boolean,
+): Promise<GameRow[]> {
+  if (withGameMode) {
+    let query = client
+      .from('games')
+      .select('id, started_at, duration_s, winning_side, lcu_game_id, raw')
+      .order('started_at', { ascending: false })
+      .order('lcu_game_id', { ascending: false })
+      .range(from, to);
+    query = withRange(query, 'started_at', range);
+    const { data, error } = await query;
+    if (error) throw new Error(`stats: game lookup failed: ${error.message}`);
+    return toGameRows(data ?? [], true);
+  }
+
+  let query = client
+    .from('games')
+    .select('id, started_at, duration_s, winning_side, lcu_game_id')
+    .order('started_at', { ascending: false })
+    .order('lcu_game_id', { ascending: false })
+    .range(from, to);
+  query = withRange(query, 'started_at', range);
+  const { data, error } = await query;
+  if (error) throw new Error(`stats: game lookup failed: ${error.message}`);
+  return toGameRows(data ?? [], false);
+}
+
+function toGameRows(
+  page: readonly {
+    id: string;
+    started_at: string;
+    lcu_game_id: number | null;
+    duration_s: number;
+    winning_side: number | null;
+    raw?: unknown;
+  }[],
+  withGameMode: boolean,
+): GameRow[] {
+  const games: GameRow[] = [];
+  for (const row of page) {
+    if (row.winning_side !== 100 && row.winning_side !== 200) continue;
+    games.push({
+      id: row.id,
+      startedAt: row.started_at,
+      lcuGameId: row.lcu_game_id,
+      durationS: row.duration_s,
+      winningSide: row.winning_side,
+      ...(withGameMode ? { gameMode: gameModeFromRaw(row.raw) } : {}),
+    });
+  }
   return games;
 }
 

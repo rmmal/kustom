@@ -15,6 +15,14 @@ export const ALL_GAMES_LABEL = 'All games';
 /** The group list, when `?p=` is naming one person. */
 export const EVERYONE_LABEL = 'Everyone';
 
+/** The two maps this page lists. The picker's accessible name is the noun, not a label on screen. */
+export const QUEUE_PICKER_LABEL = 'Queue';
+
+export const QUEUE_LABELS: Readonly<Record<'sr' | 'aram', string>> = {
+  sr: "Summoner's Rift",
+  aram: 'ARAM',
+};
+
 export const SCOREBOARD_LABEL = 'Scoreboard';
 
 export const COL_KDA = 'KDA';

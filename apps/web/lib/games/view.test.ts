@@ -111,6 +111,55 @@ describe('gamesHistoryView', () => {
     expect(view.items).toEqual([]);
     expect(view.games).toBe(0);
   });
+
+  it("defaults to Summoner's Rift and leaves ARAM off that list", () => {
+    const rift = tenPlayerGame({
+      id: 'rift',
+      at: '2026-09-09T20:00:00Z',
+      winner: 100,
+      blue: [{ key: 'hana', role: 'top' }],
+      red: [{ key: 'lena', role: 'adc' }],
+    });
+    const aram = tenPlayerGame({
+      id: 'aram',
+      at: '2026-09-09T21:00:00Z',
+      winner: 200,
+      gameMode: 'ARAM',
+      blue: [{ key: 'hana', role: 'top' }],
+      red: [{ key: 'lena', role: 'adc' }],
+    });
+    const kiwi = tenPlayerGame({
+      id: 'kiwi',
+      at: '2026-09-09T22:00:00Z',
+      winner: 100,
+      gameMode: 'KIWI',
+      blue: [{ key: 'hana', role: 'top' }],
+      red: [{ key: 'lena', role: 'adc' }],
+    });
+
+    const sr = gamesHistoryView({
+      window: 'this-week',
+      games: [rift, aram, kiwi],
+      players: rosterFor([rift, aram, kiwi]),
+      range: WEEK,
+      capped: false,
+      cap: 2_000,
+    });
+    expect(sr.queue).toBe('sr');
+    expect(sr.items.map((game) => game.id)).toEqual(['rift']);
+
+    const abyss = gamesHistoryView({
+      window: 'this-week',
+      games: [rift, aram, kiwi],
+      players: rosterFor([rift, aram, kiwi]),
+      range: WEEK,
+      capped: false,
+      cap: 2_000,
+      queue: 'aram',
+    });
+    expect(abyss.queue).toBe('aram');
+    expect(abyss.items.map((game) => game.id)).toEqual(['aram']);
+  });
 });
 
 describe('parseFocusPuuid', () => {

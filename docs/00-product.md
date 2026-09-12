@@ -141,7 +141,7 @@ See `02-milestones.md` for the build order. In product terms:
 | Discord voice split and "N around" presence | ~~M4~~ dropped 2026-09-10 |
 | Backfill every past custom from the client's match history | M5 |
 | This week / this month / all time on the board, awards, role and duo stats | M5 |
-| Game history with per-player KDA, damage, gold and CS | M5 |
+| Game history with per-player KDA, damage, gold and CS (Summoner's Rift by default, ARAM toggle) | M5 |
 | Tray app wrapper with auto-start | M6 |
 
 Backfill (M5) reads the client's own match history, and M0 confirmed it can: customs are in there

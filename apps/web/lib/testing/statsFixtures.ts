@@ -43,6 +43,8 @@ export interface GameSpec {
    * still counts everywhere `gateGame` counts it; it just carries no climb.
    */
   unrated?: boolean;
+  /** The client's `gameMode`. Absent is Rift (`/games` treats a missing mode as CLASSIC). */
+  gameMode?: string | null;
 }
 
 /** The rating every seat carries unless the spec names one: the middle of the seed range. */
@@ -129,6 +131,7 @@ export function statsGame(spec: GameSpec): StatsGame {
     lcuGameId: spec.lcuGameId === undefined ? `lcu-${counter}` : spec.lcuGameId,
     durationS: spec.durationS ?? 1_800,
     winningSide: spec.winner ?? 100,
+    gameMode: spec.gameMode ?? null,
     rows: [
       ...spec.blue.map((seat) => rowOf(seat, 100, unrated)),
       ...spec.red.map((seat) => rowOf(seat, 200, unrated)),
