@@ -19,6 +19,7 @@ function history(options: { focusPuuid?: string | null } = {}): GamesHistoryView
       {
         key: 'hana',
         role: 'top',
+        championId: 122,
         kills: 9,
         deaths: 6,
         assists: 5,
@@ -31,6 +32,7 @@ function history(options: { focusPuuid?: string | null } = {}): GamesHistoryView
       {
         key: 'lena',
         role: 'adc',
+        championId: 222,
         kills: 15,
         deaths: 5,
         assists: 6,
@@ -66,6 +68,8 @@ describe('GamesView', () => {
     expect(card).not.toBeNull();
     expect(card).not.toHaveAttribute('open');
     expect(within(card as HTMLElement).getByText('Blue · 9')).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText('Darius')).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText('Jinx')).toBeInTheDocument();
   });
 
   it('links a name to that player and keeps the focused row as plain text', () => {

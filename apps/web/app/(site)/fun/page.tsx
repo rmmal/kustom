@@ -10,6 +10,7 @@ import { nightTimeZone } from '@/lib/tonight/night';
 import { FunView } from '../../_fun/FunView';
 import '../../board.css';
 import '../../stats.css';
+import '../../games.css';
 
 /**
  * `/fun` (M5.24): single-game records from the scoreboard columns `/stats` does not fold.

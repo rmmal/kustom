@@ -1,4 +1,5 @@
 import type { RoleValue, SideValue } from '@customs/db';
+import type { RawGameFacts } from '../stats/rawFacts';
 import type { StatsGame, StatsPlayer, StatsRow } from '../stats/types';
 
 /**
@@ -45,6 +46,8 @@ export interface GameSpec {
   unrated?: boolean;
   /** The client's `gameMode`. Absent is Rift (`/games` treats a missing mode as CLASSIC). */
   gameMode?: string | null;
+  /** Parsed `games.raw` extras. Absent is a game whose blob named none of them. */
+  rawFacts?: RawGameFacts | null;
 }
 
 /** The rating every seat carries unless the spec names one: the middle of the seed range. */
@@ -132,6 +135,7 @@ export function statsGame(spec: GameSpec): StatsGame {
     durationS: spec.durationS ?? 1_800,
     winningSide: spec.winner ?? 100,
     gameMode: spec.gameMode ?? null,
+    rawFacts: spec.rawFacts ?? null,
     rows: [
       ...spec.blue.map((seat) => rowOf(seat, 100, unrated)),
       ...spec.red.map((seat) => rowOf(seat, 200, unrated)),

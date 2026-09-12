@@ -2144,13 +2144,26 @@ KDA · KP · CS on the collapsed card — the match-history shape, without champ
 (Floodlit forbids both, and items are not stored as columns). Expand is a `<details>`, so the scoreboard
 is in the first paint. The toggle stays up on an empty list so a quiet Rift week can still open ARAM.
 
-Columns the companion already stores: role, name, KDA, damage (bar + compact `k`), gold, CS. Kill
+Columns the companion already stores: role, name, **champion name** (from `champion_id`, no art),
+KDA, damage (bar + compact `k`), gold, CS. Kill
 participation is `(kills + assists) / that side's kills`. A side rule on the card's leading edge; on the
 group list it is the winner's, on a focused list it is that player's. No green, no fill behind `Won`.
 
 `Recent games` on `/p/[puuid]` keeps the last five and links `All games` at this page in the same window.
 
-`/fun` wears the same Rift / ARAM chips, same `?queue=`, same default. CS by role is hidden on ARAM.
+`/fun` wears the same Rift / ARAM chips, same `?queue=`, same default. CS by role and Objective Thief
+are hidden on ARAM.
+
+Order under the strip: First Blood Museum (killer, champion, night — not the victim), Death Hall of
+Fame, Objective Thief (Rift), Fear Ban, then CS by role, one-game records, habits. First blood and
+vision are no longer printed as missing notes; the museum is empty only when the stored block named
+no killer. Fear Ban is one sentence per person: `Omar's Shaco has been banned in 64% of games where
+they were available (16 of 25).`
+
+A one-game record (Most kills, a CS high, a museum opening) carries **This game**. The control is
+the summary of a `<details>` — same expand `/games` uses, no JavaScript — and opens both
+scoreboards of that custom, with the record holder's row marked. Habits and window totals stay
+flat: there is no one night to reopen.
 
 ### The player page (`/p/[puuid]`) — settled 2026-09-09
 
