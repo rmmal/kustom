@@ -1,14 +1,15 @@
 import type { Route } from 'next';
+import { GAMES_LABEL } from './games/copy';
 import { STATS_LABEL } from './stats/copy';
 import { FUN_LABEL } from './stats/funCopy';
 
 /**
  * Where the shell can send you, in one list (05-design.md, "The app shell").
  *
- * **A tab is rendered only if its route exists.** `Tonight`, `Leaderboard`, `Stats` and — since
- * M5.24 — `Fun` are routes in this app; `Companion ↗` is external and is always there. A nav item
- * that 404s is worse than a missing one, and keeping the list here is what stops a second page
- * hand-writing a fifth answer.
+ * **A tab is rendered only if its route exists.** `Tonight`, `Leaderboard`, `Games`, `Stats` and
+ * — since M5.24 — `Fun` are routes in this app; `Companion ↗` is external and is always there.
+ * A nav item that 404s is worse than a missing one, and keeping the list here is what stops a
+ * second page hand-writing a fifth answer.
  *
  * The wordmark and every label are product's, from the final copy table (2026-09-09). The
  * product is called **Kustom**; the repo's codename appears on no
@@ -51,6 +52,12 @@ export type NavItem =
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Tonight', href: '/' },
   { label: 'Leaderboard', href: '/leaderboard' },
+  /**
+   * `Games` (M5.25), beside `Leaderboard`: the captured customs, expandable into both
+   * scoreboards. Its label is `lib/games/copy.ts`'s own word — the tab, the page heading
+   * and the `<title>` are one string.
+   */
+  { label: GAMES_LABEL, href: '/games' },
   /**
    * `Stats` (M5.4), beside `Leaderboard` and before the external one: it is the same numbers
    * read a different way, and its label is `lib/stats/copy.ts`'s own word — the tab, the page

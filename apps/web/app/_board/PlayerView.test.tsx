@@ -528,6 +528,14 @@ describe('the Floodlit rank order down the page (M3.19)', () => {
     expect(recent?.querySelector('.cn-legend')?.textContent).toBe(RECENT_RATING_LEGEND);
   });
 
+  it('sends All games at this person on /games, in the window the page is on', () => {
+    draw();
+    expect(screen.getByRole('link', { name: 'All games' })).toHaveAttribute(
+      'href',
+      '/games?window=all-time&p=puuid-hana',
+    );
+  });
+
   it('names a role with its icon and its word, never the icon alone', () => {
     const { container } = draw();
 

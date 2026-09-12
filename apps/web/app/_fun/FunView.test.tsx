@@ -40,6 +40,14 @@ describe('FunView', () => {
     expect(screen.getAllByRole('link', { name: 'Lena' })[0]).toHaveAttribute('href', '/p/u-lena');
   });
 
+  it('keeps a record name, number and date as separate cells', () => {
+    render(<FunView facts={view()} />);
+    expect(screen.getAllByRole('link', { name: 'Lena' })[0]).toHaveTextContent(/^Lena$/);
+    expect(screen.getByText('Highest CS')).toBeInTheDocument();
+    expect(screen.getByText('Most kills')).toBeInTheDocument();
+    expect(screen.getAllByText('12/2/8').length).toBeGreaterThan(0);
+  });
+
   it('draws nothing under the strip on an empty window', () => {
     const empty = assembleFunFacts({
       window: 'last-week',

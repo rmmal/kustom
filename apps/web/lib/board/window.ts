@@ -12,9 +12,9 @@ import { sinceLabel } from './copy';
  * The window a page is being read through (M5.12): the parameter, its order, and each page's
  * own default.
  *
- * **The parameter is the same word on all three pages** — `?window=this-week` on
- * `/leaderboard`, on `/p/[puuid]` and on `/stats` (M5.4) — so a link pasted from one lands on
- * the same window in another. The boundaries themselves are `lib/night.ts` (M5.9); this file
+ * **The parameter is the same word on every windowed page** — `?window=this-week` on
+ * `/leaderboard`, on `/p/[puuid]`, on `/stats` (M5.4) and on `/games` (M5.25) — so a link
+ * pasted from one lands on the same window in another. The boundaries themselves are `lib/night.ts` (M5.9); this file
  * is the reading of a URL and nothing else, which is why it is pure and has no client.
  */
 
@@ -85,8 +85,9 @@ export function parseWindow(value: string | string[] | undefined, fallback: Wind
  * copies out of the address bar after tapping `This week` has to say which board they are
  * looking at, because that is the link they paste into the group chat.
  */
-export function windowHref(path: string, kind: WindowKind): string {
-  return `${path}?window=${kind}`;
+export function windowHref(path: string, kind: WindowKind, query: Record<string, string> = {}): string {
+  const params = new URLSearchParams({ window: kind, ...query });
+  return `${path}?${params.toString()}`;
 }
 
 /**

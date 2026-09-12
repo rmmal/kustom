@@ -36,16 +36,18 @@ export interface WindowPickerProps {
   /** The page the options link to: `/leaderboard`, `/p/<puuid>`. Never carries a query. */
   path: string;
   selected: WindowKind;
+  /** Extra query kept across window taps — `/games?p=` so a person's list stays theirs. */
+  query?: Record<string, string>;
 }
 
-export function WindowPicker({ path, selected }: WindowPickerProps) {
+export function WindowPicker({ path, selected, query }: WindowPickerProps) {
   return (
     <nav className="cn-windows" aria-label={WINDOW_PICKER_LABEL}>
       {WINDOW_ORDER.map((kind) => (
         <Link
           key={kind}
           className={kind === selected ? 'cn-window cn-window-on' : 'cn-window'}
-          href={windowHref(path, kind)}
+          href={windowHref(path, kind, query)}
           {...(kind === selected ? { 'aria-current': 'page' as const } : {})}
         >
           {WINDOW_LABELS[kind]}

@@ -12,6 +12,7 @@ describe('the nav list', () => {
     expect(NAV_ITEMS.map((item) => item.label)).toEqual([
       'Tonight',
       'Leaderboard',
+      'Games',
       'Stats',
       'Fun',
       'Companion ↗',
@@ -50,6 +51,13 @@ describe('which tab is current', () => {
     expect(isCurrentTab(tab('Leaderboard'), '/leaderboard')).toBe(true);
     expect(isCurrentTab(tab('Leaderboard'), '/p/abc')).toBe(true);
     expect(isCurrentTab(tab('Leaderboard'), '/')).toBe(false);
+  });
+
+  it('underlines Games on its own page and never on the board', () => {
+    expect(isCurrentTab(tab('Games'), '/games')).toBe(true);
+    expect(isCurrentTab(tab('Games'), '/leaderboard')).toBe(false);
+    expect(isCurrentTab(tab('Leaderboard'), '/games')).toBe(false);
+    expect(isCurrentTab(tab('Games'), '/p/abc')).toBe(false);
   });
 
   it('underlines Stats on its own page and never on the board', () => {
