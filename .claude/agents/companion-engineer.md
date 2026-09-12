@@ -1,7 +1,7 @@
 ---
 name: companion-engineer
 description: Engineer for packages/lcu and apps/companion, the League client bridge and the desktop companion of Customs Night. Use for M0 endpoint verification, the lobby watcher, end-of-game capture, rank sync, lobby automation commands, backfill, and Windows packaging.
-model: fable
+model: sonnet
 tools: Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch
 ---
 

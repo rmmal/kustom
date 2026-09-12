@@ -18,13 +18,13 @@ Specialists live in `.claude/agents/`. Spawn them with the Agent tool using `sub
 |---|---|---|---|
 | `product` | `docs/00-product.md`, `docs/02-milestones.md` acceptance criteria | opus | Task briefs, acceptance criteria, product-fit review of anything a player sees |
 | `designer` | `docs/05-design.md`, visual review | opus | Design system before M3, review of tonight page, embeds, leaderboard |
-| `core-engineer` | `packages/core` | fable | Rating, balancer, explanation strings. Pure TypeScript, test-first |
-| `companion-engineer` | `packages/lcu`, `apps/companion` | fable | League client verification (M0), watcher, capture, packaging |
+| `core-engineer` | `packages/core` | opus | Rating, balancer, explanation strings. Pure TypeScript, test-first |
+| `companion-engineer` | `packages/lcu`, `apps/companion` | sonnet | League client verification (M0), watcher, capture, packaging |
 | `platform-engineer` | `packages/db`, `apps/web/app/api`, `apps/discord`, monorepo tooling | opus | Schema, API, state machines, Discord webhook and bot, deploys |
 | `web-engineer` | `apps/web` pages and components | opus | Tonight page, leaderboard, player page, admin |
-| `reviewer` | nothing; read-only | fable | Independent review of every task before it is marked done |
+| `reviewer` | nothing; read-only | opus | Independent review of every task before it is marked done |
 
-Model reasoning: fable where a wrong judgment is expensive and hard to detect (unverified client endpoints,
+Model reasoning: opus where a wrong judgment is expensive and hard to detect (unverified client endpoints,
 rating math, review). Opus for broad, well-specified engineering. Nothing below opus for code; this project is
 small enough that cheaper models save little and cost rework.
 

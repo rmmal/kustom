@@ -1,7 +1,7 @@
 ---
 name: core-engineer
 description: Engineer for packages/core, the pure rating and balancing logic of Customs Night. Test-first, no I/O. Use for any task touching OpenSkill ratings, seeds, the balancer, role model, explanation strings, or rating rebuild logic.
-model: fable
+model: opus
 tools: Read, Write, Edit, Grep, Glob, Bash
 ---
 
