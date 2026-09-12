@@ -15,7 +15,9 @@ import {
 } from '@/lib/board/copy';
 import { explainGame, explainRatingStart } from '@/lib/board/explain';
 import type { PlayerBoardView, RecentGame, RecentTeammate } from '@/lib/board/types';
+import { windowHref } from '@/lib/board/window';
 import { formatDuration } from '@/lib/discord/embeds';
+import { ALL_GAMES_LABEL } from '@/lib/games/copy';
 import { formatDayMonth } from '@/lib/night';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import type { PlayerStatsView } from '@/lib/stats/types';
@@ -223,6 +225,11 @@ function PlayerWindow({ player, stats }: PlayerViewProps) {
             </ul>
           </section>
           {/* Once, under the list, and only while a row on it reads `not rated` (M3.23). */}
+          <p className="cn-hint">
+            <Link className="cn-lineup-link" href={windowHref('/games', player.window, { p: player.puuid })}>
+              {ALL_GAMES_LABEL}
+            </Link>
+          </p>
           {unrated ? <p className="cn-hint">{NOT_RATED_HINT}</p> : null}
           {/*
            * And once under that, the whole point of M5.15: why one win is worth more than

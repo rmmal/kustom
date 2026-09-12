@@ -39,12 +39,21 @@ describe('the top bar', () => {
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toContain('Tonight');
     // `Stats` is a route since M5.4, so it is a tab; the rule is unchanged and the list is
     // still the routes that exist.
+    expect(screen.getByRole('link', { name: 'Games' })).toHaveAttribute('href', '/games');
     expect(screen.getByRole('link', { name: 'Stats' })).toHaveAttribute('href', '/stats');
     expect(screen.getByRole('link', { name: 'Tonight' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Leaderboard' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Games' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Stats' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Fun' })).toHaveAttribute('href', '/fun');
     expect(screen.getByRole('link', { name: 'Fun' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('underlines Games on the games page', () => {
+    draw('/games');
+
+    expect(screen.getByRole('link', { name: 'Games' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Leaderboard' })).not.toHaveAttribute('aria-current');
   });
 
   it('underlines Stats on the stats page', () => {

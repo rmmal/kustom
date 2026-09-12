@@ -230,7 +230,7 @@ product rather than a document that happens to be dark.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ▍KUSTOM            Tonight  Leaderboard  Stats  Companion ↗  │  top bar: raise, 1px line under
+│  ▍KUSTOM            Tonight  Leaderboard  Games  Stats  Companion ↗  │  top bar: raise, 1px line under
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
 │   … page content, on the ink, under the floodlight …          │
@@ -248,8 +248,8 @@ product rather than a document that happens to be dark.
   Kustom. Six letters at 800 weight is also a better wordmark than thirteen.
 - **Nav.** Tabs, mono `t-xs`, `0.08em`, lower case is wrong here — these are destinations, so Archivo `t-sm`
   500 in `dim`, the current one in `text` with a 2px `brand` underline. Order: `Tonight`, `Leaderboard`,
-  `Stats`, `Companion ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
-  `Stats` with M5.4, `Companion` is external and always there. A nav item that 404s is worse than a missing
+  `Games`, `Stats`, `Companion ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
+  `Games` with M5.25, `Stats` with M5.4, `Companion` is external and always there. A nav item that 404s is worse than a missing
   one. Keep the list in one exported array (`lib/nav.ts`) so no page hand-writes it.
 - **Phone.** Two rows: wordmark row (44px), then the tab row (44px, tabs left aligned, horizontally scrollable
   with no scrollbar if a fifth destination ever exists). Not sticky — a sticky bar costs 88px of a 700px
@@ -927,7 +927,7 @@ placement are the designer's and are untouched.
 | past the ten | *(shipped)* `Around` | shipped, kept |
 | nameless hint | *(shipped)* `Names fill in after someone's first game.` | shipped, kept |
 | no season | *(shipped, M3.17)* `No season is active, so tonight's games are not being saved. An admin can start one.` | shipped, kept |
-| nav | `Tonight` · `Leaderboard` · `Stats` · `Companion ↗` | product 2026-09-09 — **changed** from `Get the app` |
+| nav | `Tonight` · `Leaderboard` · `Games` · `Stats` · `Companion ↗` | product 2026-09-09 — **changed** from `Get the app`; `Games` added 2026-09-12 (M5.25) |
 | footer | `How this works` · `Get the companion` · `Your games` | product 2026-09-09 |
 | how this works, line 1 | `Nobody checks in. The companion app on somebody's PC reads the League lobby and sends who is in it.` | product 2026-09-09 |
 | how this works, line 2 | `The bot makes three splits and posts the fairest, with the win chance and the rating gap. An admin can step to the next one. Nothing is picked at random.` | product 2026-09-09 — **changed** |
@@ -2133,6 +2133,20 @@ and the group say them in lower case).
   near 4.5, which is 540 display points on a settled player (Lena, 41 games: Rating `2088`, Proven `1548`).
   What changes with games is how far below, and most of that movement is in the first 30.
 - Disappears at 30 games with no ceremony.
+
+### Game history (`/games`) — 2026-09-12
+
+The captured customs, newest first, each a collapsed match card that opens into both scoreboards. Same
+window picker as the board, default `This week`. Optional `?p=<puuid>` filters to one person and switches
+the headline from `Blue won` / `Red won` to their own `Won` / `Lost`, with their KDA · KP · CS on the
+collapsed card — the match-history shape, without champion art or item icons (Floodlit forbids both, and
+items are not stored as columns). Expand is a `<details>`, so the scoreboard is in the first paint.
+
+Columns the companion already stores: role, name, KDA, damage (bar + compact `k`), gold, CS. Kill
+participation is `(kills + assists) / that side's kills`. A side rule on the card's leading edge; on the
+group list it is the winner's, on a focused list it is that player's. No green, no fill behind `Won`.
+
+`Recent games` on `/p/[puuid]` keeps the last five and links `All games` at this page in the same window.
 
 ### The player page (`/p/[puuid]`) — settled 2026-09-09
 

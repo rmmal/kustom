@@ -1,5 +1,7 @@
 import type { RoleValue, SideValue } from '@customs/db';
 import { inChunks } from '../chunks';
+import type { GamesHistoryView } from '../games/types';
+import { gamesHistoryView } from '../games/view';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import type { AwardRender } from './awards';
@@ -63,11 +65,21 @@ export interface StatsOptions {
    * **The lines themselves are the same lines** — one renderer of an award, two glyph sets.
    */
   awardRender?: AwardRender;
+  /** `/games?p=`: filter the list to this person's customs. */
+  focusPuuid?: string | null | undefined;
 }
 
 export async function loadFunFacts(client: PublicClient, options: StatsOptions): Promise<FunFactsView> {
   const read = await readWindow(client, options);
   return assembleFunFacts(read);
+}
+
+export async function loadGamesHistory(
+  client: PublicClient,
+  options: StatsOptions,
+): Promise<GamesHistoryView> {
+  const read = await readWindow(client, options);
+  return gamesHistoryView({ ...read, focusPuuid: options.focusPuuid });
 }
 
 export async function loadStats(client: PublicClient, options: StatsOptions): Promise<StatsView> {

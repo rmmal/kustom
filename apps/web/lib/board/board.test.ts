@@ -507,6 +507,7 @@ describe('the window a page is read through', () => {
     expect(windowHref('/leaderboard', 'last-week')).toBe('/leaderboard?window=last-week');
     expect(windowHref('/leaderboard', 'this-week')).toBe('/leaderboard?window=this-week');
     expect(windowHref('/p/puuid-a', 'all-time')).toBe('/p/puuid-a?window=all-time');
+    expect(windowHref('/games', 'this-week', { p: 'u-lena' })).toBe('/games?window=this-week&p=u-lena');
   });
 });
 
