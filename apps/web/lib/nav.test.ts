@@ -7,9 +7,15 @@ import { isCurrentTab, NAV_ITEMS, RELEASE_EXE_URL, RELEASES_URL, WORDMARK } from
  */
 
 describe('the nav list', () => {
-  it('is the four product settled, now that every route exists', () => {
+  it('is the routes that exist, now that Fun joined', () => {
     // `Stats` joined with M5.4, which is the rule working: a tab appears the day its route does.
-    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Tonight', 'Leaderboard', 'Stats', 'Companion ↗']);
+    expect(NAV_ITEMS.map((item) => item.label)).toEqual([
+      'Tonight',
+      'Leaderboard',
+      'Stats',
+      'Fun',
+      'Companion ↗',
+    ]);
   });
 
   it('sends the companion tab at the releases page, never at the exe', () => {
@@ -52,6 +58,12 @@ describe('which tab is current', () => {
     expect(isCurrentTab(tab('Leaderboard'), '/stats')).toBe(false);
     // A player page is still the leaderboard's, which is where those links come from.
     expect(isCurrentTab(tab('Stats'), '/p/abc')).toBe(false);
+  });
+
+  it('underlines Fun on its own page and never on Stats', () => {
+    expect(isCurrentTab(tab('Fun'), '/fun')).toBe(true);
+    expect(isCurrentTab(tab('Fun'), '/stats')).toBe(false);
+    expect(isCurrentTab(tab('Stats'), '/fun')).toBe(false);
   });
 
   it('never underlines an external destination', () => {

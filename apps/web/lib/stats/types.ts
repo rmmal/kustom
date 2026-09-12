@@ -27,6 +27,17 @@ export interface StatsRow {
   /** `null` on a game the fold has not rated: it still counts, but it carries no climb. */
   muBefore: number | null;
   muAfter: number | null;
+  /**
+   * Scoreboard columns the companion already stores (`0001_init`). `/stats` does not fold them
+   * — M5.4 left KDA, gold, damage and CS out of that page on purpose. `/fun` reads them.
+   */
+  championId: number | null;
+  kills: number;
+  deaths: number;
+  assists: number;
+  gold: number;
+  damageToChamps: number;
+  cs: number;
 }
 
 /** One `games` row and its scoreboard. */
@@ -189,6 +200,56 @@ export interface StatsView {
   /** Anyone whose current streak is three or longer, longest first. */
   onAStreak: PlayerStreaks[];
   awards: AwardsView | null;
+}
+
+/* ---------------------------------------------------------------------------
+ * `/fun` (M5.24): single-game records and shame tables from the scoreboard
+ * columns `/stats` deliberately does not fold.
+ * ------------------------------------------------------------------------- */
+
+/** One named line on `/fun`: a person, a number, and optional match context. */
+export interface FunHolder extends PlayerRef {
+  valueLabel: string;
+  detail: string | null;
+}
+
+/** A ranked season table — first blood would live here once we store it. */
+export interface FunTable {
+  id: string;
+  title: string;
+  intro: string;
+  rows: FunHolder[];
+  empty: string;
+}
+
+/** Highest and lowest CS in one counted game at a role. */
+export interface RoleCsPair {
+  role: RoleValue;
+  highest: FunHolder | null;
+  lowest: FunHolder | null;
+}
+
+/** One single-game (or season-habit) record. Empty holders print {@link empty}. */
+export interface FunRecord {
+  id: string;
+  title: string;
+  rule: string;
+  holders: FunHolder[];
+  empty: string;
+}
+
+/** Everything `/fun` prints, computed on the server from the same window `/stats` reads. */
+export interface FunFactsView {
+  window: WindowKind;
+  range: string | null;
+  games: number;
+  players: number;
+  capped: boolean;
+  cap: number;
+  tables: FunTable[];
+  csByRole: RoleCsPair[];
+  records: FunRecord[];
+  notes: string[];
 }
 
 /* ---------------------------------------------------------------------------

@@ -4,8 +4,17 @@ import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import type { AwardRender } from './awards';
 import { countedGames, playerStreaks } from './fold';
+import { assembleFunFacts } from './funView';
 import { playerStatsView } from './player';
-import type { PlayerStatsView, PlayerStreaks, StatsGame, StatsPlayer, StatsRow, StatsView } from './types';
+import type {
+  FunFactsView,
+  PlayerStatsView,
+  PlayerStreaks,
+  StatsGame,
+  StatsPlayer,
+  StatsRow,
+  StatsView,
+} from './types';
 import { type StatsInput, statsView } from './view';
 
 /**
@@ -54,6 +63,11 @@ export interface StatsOptions {
    * **The lines themselves are the same lines** — one renderer of an award, two glyph sets.
    */
   awardRender?: AwardRender;
+}
+
+export async function loadFunFacts(client: PublicClient, options: StatsOptions): Promise<FunFactsView> {
+  const read = await readWindow(client, options);
+  return assembleFunFacts(read);
 }
 
 export async function loadStats(client: PublicClient, options: StatsOptions): Promise<StatsView> {
@@ -151,6 +165,13 @@ async function readWindow(client: PublicClient, options: StatsOptions): Promise<
       role: row.role,
       muBefore: row.muBefore,
       muAfter: row.muAfter,
+      championId: row.championId,
+      kills: row.kills,
+      deaths: row.deaths,
+      assists: row.assists,
+      gold: row.gold,
+      damageToChamps: row.damageToChamps,
+      cs: row.cs,
     });
     byGame.set(row.gameId, played);
   }
@@ -226,6 +247,13 @@ interface ScoreboardRow {
   role: RoleValue | null;
   muBefore: number | null;
   muAfter: number | null;
+  championId: number | null;
+  kills: number;
+  deaths: number;
+  assists: number;
+  gold: number;
+  damageToChamps: number;
+  cs: number;
 }
 
 /** `game_players` for a set of games, in chunks, so no response is silently truncated. */
@@ -235,7 +263,9 @@ async function loadGameRows(client: PublicClient, gameIds: readonly string[]): P
   for (const chunk of inChunks(gameIds)) {
     const { data, error } = await client
       .from('game_players')
-      .select('game_id, player_id, side, role, mu_before, mu_after')
+      .select(
+        'game_id, player_id, side, role, mu_before, mu_after, champion_id, kills, deaths, assists, gold, damage_to_champs, cs',
+      )
       .in('game_id', chunk);
     if (error) throw new Error(`stats: game player lookup failed: ${error.message}`);
 
@@ -247,6 +277,13 @@ async function loadGameRows(client: PublicClient, gameIds: readonly string[]): P
         role: row.role,
         muBefore: row.mu_before,
         muAfter: row.mu_after,
+        championId: row.champion_id,
+        kills: row.kills,
+        deaths: row.deaths,
+        assists: row.assists,
+        gold: row.gold,
+        damageToChamps: row.damage_to_champs,
+        cs: row.cs,
       });
     }
   }
