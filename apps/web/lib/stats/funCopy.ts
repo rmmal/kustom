@@ -14,13 +14,53 @@ export const RECORDS_HEADING = 'One game';
 export const HABITS_HEADING = 'The habit';
 /** Opens the scoreboard of the counted custom a one-game record came from. */
 export const THIS_GAME = 'This game';
+/** Opens the list of counted customs behind a window total or a multi-kill museum row. */
+export const SEE_GAMES = 'See games';
 
 export const FIRST_BLOOD_TITLE = 'First Blood Museum';
 export const FIRST_BLOOD_INTRO =
-  'Who opened the map, on which champion, and which night. The block names the killer, not who died.';
+  'Who opened the map, on which champion, and which night. The block names the killer.';
 export const FIRST_BLOOD_EMPTY = 'No first blood flag in this window.';
 export const FIRST_BLOOD_MOST = 'Most first bloods';
 export const FIRST_BLOOD_MOST_RULE = 'Counted games whose stored block named a killer.';
+
+export const FIRST_BLOOD_TAKEN_TITLE = 'First Blood Donated';
+export const FIRST_BLOOD_TAKEN_INTRO =
+  'Who fed the opening kill, on which champion, and which night. Only when the stored block named the death.';
+export const FIRST_BLOOD_TAKEN_EMPTY =
+  'No first-blood death flag in this window. The block names the killer; it does not name who died.';
+export const FIRST_BLOOD_TAKEN_ONE = '1 first blood taken';
+export const FIRST_BLOOD_TAKEN_MANY = 'first bloods taken';
+
+export const PENTA_TITLE = 'Pentakill Museum';
+export const PENTA_INTRO = 'Who closed five. Counted from the stored pentaKills field.';
+export const PENTA_EMPTY = 'No pentakill in this window.';
+export const PENTA_ONE = '1 penta';
+export const PENTA_MANY = 'pentas';
+
+export const QUADRA_TITLE = 'Quadrakill Museum';
+export const QUADRA_INTRO = 'Who got four. Counted from the stored quadraKills field.';
+export const QUADRA_EMPTY = 'No quadrakill in this window.';
+export const QUADRA_ONE = '1 quadra';
+export const QUADRA_MANY = 'quadras';
+
+export const TRIPLE_TITLE = 'Triple Museum';
+export const TRIPLE_INTRO = 'Who got three. Counted from the stored tripleKills field.';
+export const TRIPLE_EMPTY = 'No triple in this window.';
+export const TRIPLE_ONE = '1 triple';
+export const TRIPLE_MANY = 'triples';
+
+export const DOUBLE_TITLE = 'Double Museum';
+export const DOUBLE_INTRO = 'Who got two. Counted from the stored doubleKills field.';
+export const DOUBLE_EMPTY = 'No double in this window.';
+export const DOUBLE_ONE = '1 double';
+export const DOUBLE_MANY = 'doubles';
+
+export const TURRET_TITLE = 'First Turret';
+export const TURRET_INTRO = 'Who took the first tower. The block names firstTowerKill.';
+export const TURRET_EMPTY = 'No first-tower flag in this window.';
+export const TURRET_ONE = '1 first turret';
+export const TURRET_MANY = 'first turrets';
 
 export const DEATH_HALL_TITLE = 'Death Hall of Fame';
 export const SHORTEST_LIFE = 'Shortest life';
@@ -50,6 +90,16 @@ export const FEAR_BAN_INTRO =
 export const FEAR_BAN_EMPTY = 'No draft bans in this window. Blind customs do not ban.';
 export const FEAR_BAN_RULE = `Their most-played champion, banned by the other side, in at least ${MIN_RECORD_GAMES} counted games.`;
 
+export const MOST_BANNED_TITLE = 'Most banned';
+export const MOST_BANNED_INTRO = 'Champions the lobby banned, regardless of who was playing them.';
+export const MOST_BANNED_EMPTY = 'No draft bans in this window. Blind customs do not ban.';
+export const MOST_BANNED_RULE = 'Each ban in a counted game, once.';
+
+export const MOST_PICKED_TITLE = 'Most picked';
+export const MOST_PICKED_INTRO = 'Champions taken in counted games, regardless of who locked them.';
+export const MOST_PICKED_EMPTY = 'No champion id in this window.';
+export const MOST_PICKED_RULE = 'Each seat in a counted game, once.';
+
 export function fearBanLine(
   name: string,
   champion: string,
@@ -73,6 +123,9 @@ export function csValue(cs: number, perMin: number): string {
 
 export const MOST_KILLS = 'Most kills';
 export const MOST_KILLS_RULE = 'One counted game.';
+export const LONGEST_SPREE = 'Longest killing spree';
+export const LONGEST_SPREE_RULE =
+  'Largest killing spree in one counted game. The stored largestKillingSpree field. At least three.';
 export const MOST_DEATHS = 'Most deaths';
 export const MOST_DEATHS_RULE = 'One counted game.';
 export const MOST_ASSISTS = 'Most assists';
@@ -112,6 +165,63 @@ export const COMFORT_RULE = `Same champion in at least 35% of ${MIN_RECORD_GAMES
 
 export const NOBODY_THIS = 'Nobody qualifies.';
 
+/**
+ * Egyptian 3ameya roast under each English `/fun` title. Not فصحى and not a
+ * translation — the line a friend would shout after the custom. The English
+ * heading stays so a test and a pasted link still name the same fact.
+ * Missing keys print nothing.
+ */
+export const FUN_ROAST: Readonly<Record<string, string>> = {
+  [FIRST_BLOOD_TITLE]: 'مين فتحها',
+  [FIRST_BLOOD_TAKEN_TITLE]: 'اتفتح عليه أول واحد',
+  [PENTA_TITLE]: 'كنسهم كنس',
+  [QUADRA_TITLE]: 'لسه واحد ويبقا بنتا',
+  [TRIPLE_TITLE]: 'التريبل يا معلم',
+  [DOUBLE_TITLE]: 'دبل وخلاص',
+  [TURRET_TITLE]: 'خد أول تاور',
+  [DEATH_HALL_TITLE]: 'اللي بيموتوا أكتر',
+  [THIEF_TITLE]: 'الحرامي',
+  [FEAR_BAN_TITLE]: 'خايفين منه',
+  [MOST_BANNED_TITLE]: 'البطل اللي بيتبن',
+  [MOST_PICKED_TITLE]: 'اللي بيتلعب أوفر',
+  [CS_HEADING]: 'مين فارم ومين جعان',
+  [RECORDS_HEADING]: 'في جيم واحد',
+  [HABITS_HEADING]: 'كده طول عمرهم',
+  [MOST_KILLS]: 'صاحب الكيلات',
+  [MOST_ASSISTS]: 'مع كل كيل',
+  [LONGEST_SPREE]: 'فضل يقتل وموقفش',
+  [CLEAN_KDA]: 'جيم نضيف',
+  [ZERO_X]: 'صفر كيل وميت',
+  [MOST_DAMAGE]: 'صاحب الدامج',
+  [PAPER]: 'مبيضربش',
+  [WON_UGLY]: 'كسب وهو زبالة',
+  [LOST_PRETTY]: 'لعب حلو وخسر',
+  [RICH_WRONG]: 'فلوس وخسر',
+  [LOST_JUNGLE]: 'الجانجل نام',
+  [GREEDY_SUP]: 'سبورت بيفرم',
+  [FOUNTAIN]: 'قعد في البيس',
+  [GHOST]: 'كان فين؟',
+  [GLUE]: 'في كل فايت',
+  [LONGEST]: 'جيم ما بيخلصش',
+  [SHORTEST]: 'خلصت بدري',
+  [NEVER_MISSES]: 'عمره ما غاب',
+  [COMFORT]: 'نفس البطل كل ليلة',
+  [MOST_DEATHS]: 'أكتر واحد بيموت',
+  [SHORTEST_LIFE]: 'نزل ومات',
+  [DEATHLESS_STREAK]: 'ما بيموتش',
+  [DEATHLESS_GAMES]: 'جيمات من غير موتة',
+  [MOST_STEALS]: 'سرقها من تحت إيدهم',
+  [MOST_STEALS_WINDOW]: 'بيسرق طول الوقت',
+  [MOST_DRAGONS]: 'بياكل الدراجون',
+  [MOST_BARONS]: 'بياكل البارون',
+  [CS_HIGH_LABEL]: 'مكينه فارم',
+  [CS_LOW_LABEL]: 'جعان',
+};
+
+export function funRoast(title: string): string | null {
+  return FUN_ROAST[title] ?? null;
+}
+
 export function kdaLine(kills: number, deaths: number, assists: number): string {
   return `${kills}/${deaths}/${assists}`;
 }
@@ -134,6 +244,10 @@ export function csCountLine(cs: number): string {
 
 export function kpLine(percent: number): string {
   return `${percent}% KP`;
+}
+
+export function spreeLine(n: number): string {
+  return n === 1 ? '1 kill streak' : `${n} kill streak`;
 }
 
 export function minutesLine(seconds: number): string {

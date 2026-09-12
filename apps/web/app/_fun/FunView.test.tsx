@@ -2,8 +2,22 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { QueueKind } from '@/lib/games/queue';
 import type { WindowKind } from '@/lib/night';
-import { FIRST_BLOOD_EMPTY, FIRST_BLOOD_TITLE, FUN_LABEL, THIS_GAME } from '@/lib/stats/funCopy';
+import {
+  FIRST_BLOOD_EMPTY,
+  FIRST_BLOOD_TAKEN_EMPTY,
+  FIRST_BLOOD_TAKEN_TITLE,
+  FIRST_BLOOD_TITLE,
+  FUN_LABEL,
+  MOST_BANNED_TITLE,
+  MOST_PICKED_TITLE,
+  PENTA_EMPTY,
+  PENTA_TITLE,
+  SEE_GAMES,
+  THIS_GAME,
+  TRIPLE_TITLE,
+} from '@/lib/stats/funCopy';
 import { assembleFunFacts } from '@/lib/stats/funView';
+import { playerFacts } from '@/lib/stats/rawFacts';
 import type { FunFactsView } from '@/lib/stats/types';
 import { rosterFor, tenPlayerGame } from '@/lib/testing/statsFixtures';
 import { FunView } from './FunView';
@@ -50,7 +64,16 @@ describe('FunView', () => {
     render(<FunView facts={view()} />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(`This month ${FUN_LABEL}`);
     expect(screen.getByText(FIRST_BLOOD_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(FIRST_BLOOD_TAKEN_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(MOST_PICKED_TITLE)).toBeInTheDocument();
     expect(screen.getByText(FIRST_BLOOD_EMPTY)).toBeInTheDocument();
+    expect(screen.getByText(FIRST_BLOOD_TAKEN_EMPTY)).toBeInTheDocument();
+    expect(screen.getByText(PENTA_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(TRIPLE_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(PENTA_EMPTY)).toBeInTheDocument();
+    expect(screen.getByText('مين فتحها')).toBeInTheDocument();
+    expect(screen.getByText('كنسهم كنس')).toBeInTheDocument();
+    expect(screen.getByText('كسب وهو زبالة')).toBeInTheDocument();
     expect(screen.queryByText(/we do not store it/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Vision score is not stored/i)).not.toBeInTheDocument();
   });
@@ -98,17 +121,7 @@ describe('FunView', () => {
       blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 4, deaths: 1, assists: 2 }],
       rawFacts: {
         byPuuid: {
-          'u-lena': {
-            firstBloodKill: true,
-            firstBloodAssist: false,
-            visionScore: null,
-            objectivesStolen: 0,
-            objectivesStolenAssists: 0,
-            baronKills: 0,
-            dragonKills: 0,
-            longestLivedS: null,
-            championName: 'Ahri',
-          },
+          'u-lena': playerFacts({ firstBloodKill: true, championName: 'Ahri' }),
         },
         bans: [],
       },
@@ -125,6 +138,75 @@ describe('FunView', () => {
     render(<FunView facts={facts} />);
     expect(screen.getAllByText('Ahri').length).toBeGreaterThan(0);
     expect(screen.queryByText(FIRST_BLOOD_EMPTY)).not.toBeInTheDocument();
+    expect(
+      within(screen.getByText(FIRST_BLOOD_TITLE).closest('.cn-card') as HTMLElement).getByText(THIS_GAME),
+    ).toBeInTheDocument();
+  });
+
+  it('opens each first blood under a player who took more than one', () => {
+    const games = ['2026-09-02T20:00:00Z', '2026-09-03T20:00:00Z'].map((at, index) =>
+      tenPlayerGame({
+        id: `fb-${index}`,
+        at,
+        durationS: 1_800,
+        winner: 100,
+        blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 4, deaths: 1, assists: 2 }],
+        rawFacts: {
+          byPuuid: { 'u-lena': playerFacts({ firstBloodKill: true, championName: 'Ahri' }) },
+          bans: [],
+        },
+      }),
+    );
+    const facts = assembleFunFacts({
+      window: 'this-month',
+      games,
+      players: rosterFor(games),
+      range: MONTH,
+      capped: false,
+      cap: 2_000,
+      timeZone: 'Africa/Cairo',
+    });
+    render(<FunView facts={facts} />);
+    const museum = screen.getByText(FIRST_BLOOD_TITLE).closest('.cn-card') as HTMLElement;
+    expect(within(museum).getByText('2 first bloods')).toBeInTheDocument();
+    expect(within(museum).getByText(SEE_GAMES)).toBeInTheDocument();
+    expect(within(museum).getAllByText(THIS_GAME).length).toBe(2);
+  });
+
+  it('opens each triple under a player who hit more than once', () => {
+    const games = ['2026-09-02T20:00:00Z', '2026-09-03T20:00:00Z'].map((at, index) =>
+      tenPlayerGame({
+        id: `tr-${index}`,
+        at,
+        durationS: 1_800,
+        winner: 100,
+        blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 8, deaths: 1, assists: 2 }],
+        rawFacts: {
+          byPuuid: {
+            'u-lena': playerFacts({
+              tripleKills: index === 0 ? 2 : 1,
+              championName: 'Ahri',
+            }),
+          },
+          bans: [],
+        },
+      }),
+    );
+    const facts = assembleFunFacts({
+      window: 'this-month',
+      games,
+      players: rosterFor(games),
+      range: MONTH,
+      capped: false,
+      cap: 2_000,
+      timeZone: 'Africa/Cairo',
+    });
+    render(<FunView facts={facts} />);
+    const museum = screen.getByText(TRIPLE_TITLE).closest('.cn-card') as HTMLElement;
+    expect(within(museum).getByText('3 triples')).toBeInTheDocument();
+    expect(within(museum).getByText(SEE_GAMES)).toBeInTheDocument();
+    expect(within(museum).getByText('Ahri · 2 triples')).toBeInTheDocument();
+    expect(within(museum).getAllByText(THIS_GAME).length).toBe(2);
   });
 
   it('hides CS by role on ARAM', () => {
@@ -140,6 +222,8 @@ describe('FunView', () => {
     );
     expect(screen.queryByText('CS by role')).not.toBeInTheDocument();
     expect(screen.queryByText('Objective Thief')).not.toBeInTheDocument();
+    expect(screen.queryByText(MOST_BANNED_TITLE)).not.toBeInTheDocument();
+    expect(screen.getByText(MOST_PICKED_TITLE)).toBeInTheDocument();
     expect(screen.getByText('Most kills')).toBeInTheDocument();
   });
 

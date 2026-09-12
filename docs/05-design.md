@@ -2154,16 +2154,37 @@ group list it is the winner's, on a focused list it is that player's. No green, 
 `/fun` wears the same Rift / ARAM chips, same `?queue=`, same default. CS by role and Objective Thief
 are hidden on ARAM.
 
-Order under the strip: First Blood Museum (killer, champion, night — not the victim), Death Hall of
-Fame, Objective Thief (Rift), Fear Ban, then CS by role, one-game records, habits. First blood and
-vision are no longer printed as missing notes; the museum is empty only when the stored block named
-no killer. Fear Ban is one sentence per person: `Omar's Shaco has been banned in 64% of games where
-they were available (16 of 25).`
+Order under the strip: First Blood Museum (killer, champion, night), First Blood Donated (who
+died — only when the block named `firstBloodDeath`), Pentakill / Quadrakill / Triple / Double
+museums, First Turret, Death Hall of Fame, Objective Thief (Rift), Fear Ban, Most banned (Rift),
+Most picked, then CS by role, one-game records, habits. First blood and vision are no longer
+printed as missing notes; the killer museum is empty only when the stored block named no killer.
+Donated stays empty when the death flag is missing — deaths and `longestTimeSpentLiving` are not
+a corpse. Multi-kill halls sum the stored count fields; a game with two triples is one opening
+labelled `2 triples`. First Turret is the `firstTowerKill` flag, never inferred from gold. Fear
+Ban is one sentence per person: `Omar's Shaco has been banned in 64% of games where they were
+available (16 of 25).` Most banned and Most picked are the lobby's champions, not a person's:
+`Shaco · 16 bans`, `Ahri · 12 picks`. One-game records include Longest killing spree from
+`largestKillingSpree` (at least three). Every English card title and record name carries an
+Egyptian 3ameya roast under it in brand (`مين فتحها`, `كنسهم كنس`, `كسب وهو زبالة`) — not فصحى
+and not a translation. The English heading stays the name of the fact.
+
+The museum is **grouped by the killer**, a hairline between people. One first blood is the row
+itself (champion, night, **This game**). Two or more open **See games** and list each opening.
+Deathless games and Career thief do the same: one counted custom is **This game**; more than one is
+**See games**. A steal names the objective when the block recorded exactly one epic type they also
+killed (`1 dragon steal`); it stays `1 steal` when the type is missing or mixed.
 
 A one-game record (Most kills, a CS high, a museum opening) carries **This game**. The control is
 the summary of a `<details>` — same expand `/games` uses, no JavaScript — and opens both
-scoreboards of that custom, with the record holder's row marked. Habits and window totals stay
-flat: there is no one night to reopen.
+scoreboards of that custom, with the record holder's row marked. Habits that are not a list of
+nights stay flat.
+
+The open scoreboard prints roles and sits in lane order. A stored `game_players.role` wins. A
+backfilled null is filled for display only from `games.raw` (`detectedTeamPosition`, Smite, the
+timeline pairs the fixtures did not refute, then the leftover unique lane on a five-seat Rift
+side). Never from the champion. ARAM does not invent lanes. `/stats` and role inference never
+see this fill.
 
 ### The player page (`/p/[puuid]`) — settled 2026-09-09
 

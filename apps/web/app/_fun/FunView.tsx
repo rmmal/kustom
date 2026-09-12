@@ -10,21 +10,27 @@ import {
   DEATH_HALL_TITLE,
   FEAR_BAN_RULE,
   FUN_LABEL,
+  funRoast,
   HABITS_HEADING,
+  MOST_BANNED_RULE,
+  MOST_PICKED_RULE,
   noCsAtRole,
   RECORDS_HEADING,
+  SEE_GAMES,
   THIEF_EMPTY,
   THIEF_TITLE,
   THIS_GAME,
 } from '@/lib/stats/funCopy';
 import type {
+  FunBloodGroup,
   FunBloodRow,
+  FunChampRow,
   FunFactsView,
   FunFearBan,
   FunHolder,
+  FunOpening,
   FunRecord,
   FunSection,
-  FunTable,
   PlayerRef,
   RoleCsPair,
 } from '@/lib/stats/types';
@@ -40,10 +46,11 @@ import '../board-parts.css';
  * `/fun` (M5.24, M5.27): the window's records, in the same shell `/stats` already wears.
  *
  * A pure function of one snapshot. The numbers live in `lib/stats/fun.ts`; this file decides
- * nothing except order: first blood, deaths, steals, fear bans, then CS by role, then one-game
- * records, then habits. The Rift / ARAM picker is the same chips `/games` wears. CS-by-role
- * and objective steals are Rift only. Rows are labelled (name left, number right) so a long
- * Riot ID cannot wrap into the score.
+ * nothing except order: first blood, donated, multi-kill halls, first turret, deaths, steals,
+ * fear bans, most banned / picked, then CS by role, then one-game records, then habits. The
+ * Rift / ARAM picker is the same chips `/games` wears. CS-by-role, objective steals and most
+ * banned are Rift only. Rows are labelled (name left, number right) so a long Riot ID cannot
+ * wrap into the score.
  */
 
 export function FunView({ facts }: { facts: FunFactsView }) {
@@ -76,10 +83,16 @@ export function FunView({ facts }: { facts: FunFactsView }) {
               <p className="cn-stats-line">{playersLine(facts.players)}</p>
             </section>
           </section>
-          <Museum museum={facts.museum} most={facts.tables.find((table) => table.id === 'first-blood')} />
+          <Museum museum={facts.museum} />
+          <Museum museum={facts.donated} />
+          {facts.halls.map((hall) => (
+            <Museum key={hall.title} museum={hall} />
+          ))}
           <Records heading={DEATH_HALL_TITLE} records={facts.deathHall} />
           {facts.queue === 'aram' ? null : <Thieves records={facts.thieves} />}
           <FearBans section={facts.fearBans} />
+          {facts.queue === 'aram' ? null : <ChampTable section={facts.mostBanned} rule={MOST_BANNED_RULE} />}
+          <ChampTable section={facts.mostPicked} rule={MOST_PICKED_RULE} />
           {facts.queue === 'aram' ? null : <CsByRole pairs={facts.csByRole} />}
           <Records
             heading={RECORDS_HEADING}
@@ -96,31 +109,76 @@ function isHabit(id: string): boolean {
   return id === 'attendance' || id === 'comfort' || id === 'longest' || id === 'shortest';
 }
 
-function Museum({ museum, most }: { museum: FunSection<FunBloodRow>; most: FunTable | undefined }) {
+function FunHead({
+  title,
+  as: Tag = 'h2',
+  className = 'cn-board-title',
+}: {
+  title: string;
+  as?: 'h2' | 'p';
+  className?: string;
+}) {
+  const roast = funRoast(title);
+  return (
+    <div className="cn-fun-named">
+      <Tag className={className}>{title}</Tag>
+      {roast === null ? null : (
+        <p className="cn-fun-roast" lang="ar" dir="rtl">
+          {roast}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Museum({ museum }: { museum: FunSection<FunBloodGroup> }) {
   return (
     <section className="cn-block">
       <section className="cn-card cn-list-card">
-        <header className="cn-card-head cn-list-head">
-          <h2 className="cn-board-title">{museum.title}</h2>
+        <header className="cn-card-head cn-list-head cn-fun-head">
+          <FunHead title={museum.title} />
         </header>
         <div className="cn-role-block">
           <p className="cn-stats-intro">{museum.intro}</p>
-          {most !== undefined && most.rows.length > 0 ? (
-            <ul className="cn-records">
-              {most.rows.map((row) => (
-                <HolderRow key={row.puuid} holder={row} />
-              ))}
-            </ul>
-          ) : null}
           {museum.rows.length === 0 ? (
             <p className="cn-stats-empty">{museum.empty}</p>
           ) : (
-            <ol className="cn-records">
-              {museum.rows.map((row) => (
-                <BloodRow key={row.gameId} row={row} />
+            <ol className="cn-fun-groups">
+              {museum.rows.map((group) => (
+                <BloodGroup key={group.taker.puuid} group={group} />
               ))}
             </ol>
           )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function ChampTable({ section, rule }: { section: FunSection<FunChampRow>; rule: string }) {
+  return (
+    <section className="cn-block">
+      <section className="cn-card cn-list-card">
+        <header className="cn-card-head cn-list-head cn-fun-head">
+          <FunHead title={section.title} />
+        </header>
+        <div className="cn-role-block">
+          <p className="cn-stats-intro">{section.intro}</p>
+          {section.rows.length === 0 ? (
+            <p className="cn-stats-empty">{section.empty}</p>
+          ) : (
+            <ol className="cn-records">
+              {section.rows.map((row) => (
+                <li key={row.championId} className="cn-record cn-fun-holder">
+                  <span className="cn-stats-name">{row.champion}</span>
+                  <span className="cn-fun-stat">
+                    <span className="cn-num cn-record-wl">{row.valueLabel}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="cn-award-rule">{rule}</p>
         </div>
       </section>
     </section>
@@ -132,8 +190,8 @@ function Thieves({ records }: { records: FunRecord[] }) {
     return (
       <section className="cn-block">
         <section className="cn-card cn-list-card">
-          <header className="cn-card-head cn-list-head">
-            <h2 className="cn-board-title">{THIEF_TITLE}</h2>
+          <header className="cn-card-head cn-list-head cn-fun-head">
+            <FunHead title={THIEF_TITLE} />
           </header>
           <div className="cn-role-block">
             <p className="cn-stats-empty">{THIEF_EMPTY}</p>
@@ -149,8 +207,8 @@ function FearBans({ section }: { section: FunSection<FunFearBan> }) {
   return (
     <section className="cn-block">
       <section className="cn-card cn-list-card">
-        <header className="cn-card-head cn-list-head">
-          <h2 className="cn-board-title">{section.title}</h2>
+        <header className="cn-card-head cn-list-head cn-fun-head">
+          <FunHead title={section.title} />
         </header>
         <div className="cn-role-block">
           <p className="cn-stats-intro">{section.intro}</p>
@@ -180,8 +238,8 @@ function CsByRole({ pairs }: { pairs: RoleCsPair[] }) {
   return (
     <section className="cn-block">
       <section className="cn-card cn-list-card">
-        <header className="cn-card-head cn-list-head">
-          <h2 className="cn-board-title">{CS_HEADING}</h2>
+        <header className="cn-card-head cn-list-head cn-fun-head">
+          <FunHead title={CS_HEADING} />
         </header>
         {pairs.map((pair) => (
           <div key={pair.role} className="cn-role-block">
@@ -212,12 +270,12 @@ function Records({ heading, records }: { heading: string; records: FunRecord[] }
   return (
     <section className="cn-block">
       <section className="cn-card cn-list-card">
-        <header className="cn-card-head cn-list-head">
-          <h2 className="cn-board-title">{heading}</h2>
+        <header className="cn-card-head cn-list-head cn-fun-head">
+          <FunHead title={heading} />
         </header>
         {records.map((block) => (
           <div key={block.id} className="cn-role-block">
-            <p className="cn-stats-subtitle">{block.title}</p>
+            <FunHead title={block.title} as="p" className="cn-stats-subtitle" />
             {block.holders.length === 0 ? (
               <p className="cn-stats-empty">{block.empty}</p>
             ) : (
@@ -236,9 +294,33 @@ function Records({ heading, records }: { heading: string; records: FunRecord[] }
 }
 
 function HolderRow({ holder, label }: { holder: FunHolder; label?: string }) {
+  const className = label === undefined ? 'cn-fun-holder' : 'cn-fun-cs';
+
+  if (holder.openings.length > 1) {
+    return (
+      <li className="cn-fun-group">
+        <details className="cn-fun-game">
+          <summary className={`cn-record ${className}`}>
+            {label === undefined ? null : <FunLabel label={label} />}
+            <PlayerName player={holder} />
+            <span className="cn-fun-stat">
+              <span className="cn-num cn-record-wl">{holder.valueLabel}</span>
+              <span className="cn-fun-toggle">{SEE_GAMES}</span>
+            </span>
+          </summary>
+          <ol className="cn-fun-openings">
+            {holder.openings.map((opening) => (
+              <OpeningRow key={opening.game.id} opening={opening} focusPuuid={holder.puuid} />
+            ))}
+          </ol>
+        </details>
+      </li>
+    );
+  }
+
   const row = (
     <>
-      {label === undefined ? null : <span className="cn-stats-subtitle">{label}</span>}
+      {label === undefined ? null : <FunLabel label={label} />}
       <PlayerName player={holder} />
       <span className="cn-fun-stat">
         <span className="cn-num cn-record-wl">{holder.valueLabel}</span>
@@ -254,13 +336,62 @@ function HolderRow({ holder, label }: { holder: FunHolder; label?: string }) {
 
   return (
     <li>
-      <GameReveal
-        game={holder.game}
-        focusPuuid={holder.puuid}
-        className={label === undefined ? 'cn-fun-holder' : 'cn-fun-cs'}
-      >
+      <GameReveal game={holder.game} focusPuuid={holder.puuid} className={className}>
         {row}
       </GameReveal>
+    </li>
+  );
+}
+
+function FunLabel({ label }: { label: string }) {
+  const roast = funRoast(label);
+  return (
+    <span className="cn-fun-named">
+      <span className="cn-stats-subtitle">{label}</span>
+      {roast === null ? null : (
+        <span className="cn-fun-roast" lang="ar" dir="rtl">
+          {roast}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function OpeningRow({ opening, focusPuuid }: { opening: FunOpening; focusPuuid: string }) {
+  return (
+    <li>
+      <GameReveal game={opening.game} focusPuuid={focusPuuid} className="cn-fun-holder">
+        <span className="cn-stats-name">{opening.label ?? opening.detail}</span>
+        <span className="cn-fun-stat">
+          {opening.label === null ? null : <span className="cn-fun-when">{opening.detail}</span>}
+          <span className="cn-fun-toggle">{THIS_GAME}</span>
+        </span>
+      </GameReveal>
+    </li>
+  );
+}
+
+function BloodGroup({ group }: { group: FunBloodGroup }) {
+  if (group.openings.length === 1 && group.openings[0] !== undefined) {
+    return <BloodRow row={group.openings[0]} />;
+  }
+
+  return (
+    <li className="cn-fun-group">
+      <details className="cn-fun-game">
+        <summary className="cn-record cn-fun-holder">
+          <PlayerName player={group.taker} />
+          <span className="cn-fun-stat">
+            <span className="cn-num cn-record-wl">{group.countLabel}</span>
+            <span className="cn-fun-toggle">{SEE_GAMES}</span>
+          </span>
+        </summary>
+        <ol className="cn-fun-openings">
+          {group.openings.map((row) => (
+            <BloodRow key={row.gameId} row={row} />
+          ))}
+        </ol>
+      </details>
     </li>
   );
 }
@@ -272,13 +403,14 @@ function BloodRow({ row }: { row: FunBloodRow }) {
         <PlayerName player={row.taker} />
         {row.victim === null ? null : (
           <span className="cn-fun-when">
-            over <PlayerName player={row.victim} />
+            {row.foeVerb} <PlayerName player={row.victim} />
           </span>
         )}
       </span>
       <span className="cn-fun-stat">
         <span className="cn-num cn-record-wl">
           {row.champion}
+          {row.haul === null ? '' : ` · ${row.haul}`}
           {row.opponent === null ? '' : ` vs ${row.opponent}`}
         </span>
         <span className="cn-fun-when">{row.when}</span>
