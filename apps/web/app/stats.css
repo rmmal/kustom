@@ -236,3 +236,43 @@
   font-size: var(--cn-t-xs);
   color: var(--cn-dim);
 }
+
+/* ---------------------------------------------------------------------------
+ * `/fun`: labelled rows, not award sentences.
+ *
+ * CS high/low reused `.cn-stats-record`'s 1.5rem rank track, so `Highest CS`
+ * wrapped onto the name. One-game records reused the award line, so name, KDA
+ * and date became one wrapping sentence. Both are two-or-three-cell rows, the
+ * same recipe `/stats` already uses for streaks and duos.
+ * ------------------------------------------------------------------------- */
+
+.cn-record.cn-fun-cs {
+  grid-template-columns: 7rem minmax(0, 1fr) auto;
+}
+
+.cn-fun-cs .cn-stats-subtitle,
+.cn-fun-cs .cn-record-wl {
+  white-space: nowrap;
+}
+
+.cn-record.cn-fun-holder {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.cn-fun-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+  text-align: right;
+}
+
+.cn-fun-stat .cn-record-wl {
+  white-space: nowrap;
+}
+
+.cn-fun-when {
+  font-size: var(--cn-t-xs);
+  color: var(--cn-dim);
+  white-space: nowrap;
+}

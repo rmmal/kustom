@@ -22,7 +22,8 @@ import '../board-parts.css';
  *
  * A pure function of one snapshot. The numbers live in `lib/stats/fun.ts`; this file decides
  * nothing except order: the notes about what we do not store, then CS by role, then one-game
- * records, then habits.
+ * records, then habits. CS and records are labelled rows (name left, number right) — the same
+ * recipe `/stats` uses for streaks — so a long Riot ID cannot wrap into the score.
  */
 
 export function FunView({ facts }: { facts: FunFactsView }) {
@@ -44,12 +45,16 @@ export function FunView({ facts }: { facts: FunFactsView }) {
 
       {empty ? null : (
         <>
-          <p className="cn-stats-line">{playersLine(facts.players)}</p>
-          {facts.notes.map((note) => (
-            <p key={note} className="cn-hint">
-              {note}
-            </p>
-          ))}
+          <section className="cn-block">
+            <section className="cn-card cn-stats-lines">
+              <p className="cn-stats-line">{playersLine(facts.players)}</p>
+              {facts.notes.map((note) => (
+                <p key={note} className="cn-stats-empty">
+                  {note}
+                </p>
+              ))}
+            </section>
+          </section>
           {facts.tables.map((table) => (
             <Table key={table.id} table={table} />
           ))}
@@ -76,20 +81,22 @@ function Table({ table }: { table: FunTable }) {
         <header className="cn-card-head cn-list-head">
           <h2 className="cn-board-title">{table.title}</h2>
         </header>
-        <p className="cn-stats-intro">{table.intro}</p>
-        {table.rows.length === 0 ? (
-          <p className="cn-stats-empty">{table.empty}</p>
-        ) : (
-          <ol className="cn-records">
-            {table.rows.map((row, index) => (
-              <li key={row.puuid} className="cn-record cn-stats-record">
-                <span className="cn-num cn-stats-rank">{index + 1}</span>
-                <PlayerName player={row} />
-                <span className="cn-num cn-record-wl">{row.valueLabel}</span>
-              </li>
-            ))}
-          </ol>
-        )}
+        <div className="cn-role-block">
+          <p className="cn-stats-intro">{table.intro}</p>
+          {table.rows.length === 0 ? (
+            <p className="cn-stats-empty">{table.empty}</p>
+          ) : (
+            <ol className="cn-records">
+              {table.rows.map((row, index) => (
+                <li key={row.puuid} className="cn-record cn-stats-record">
+                  <span className="cn-num cn-stats-rank">{index + 1}</span>
+                  <PlayerName player={row} />
+                  <span className="cn-num cn-record-wl">{row.valueLabel}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </section>
     </section>
   );
@@ -125,7 +132,7 @@ function CsByRole({ pairs }: { pairs: RoleCsPair[] }) {
 
 function CsRow({ label, holder }: { label: string; holder: FunHolder }) {
   return (
-    <li className="cn-record cn-stats-record">
+    <li className="cn-record cn-fun-cs">
       <span className="cn-stats-subtitle">{label}</span>
       <PlayerName player={holder} />
       <span className="cn-num cn-record-wl">{holder.valueLabel}</span>
@@ -141,18 +148,22 @@ function Records({ heading, records }: { heading: string; records: FunRecord[] }
           <h2 className="cn-board-title">{heading}</h2>
         </header>
         {records.map((block) => (
-          <div key={block.id} className="cn-award">
-            <p className="cn-award-label">{block.title}</p>
+          <div key={block.id} className="cn-role-block">
+            <p className="cn-stats-subtitle">{block.title}</p>
             {block.holders.length === 0 ? (
-              <p className="cn-award-line cn-award-none">{block.empty}</p>
+              <p className="cn-stats-empty">{block.empty}</p>
             ) : (
-              block.holders.map((holder) => (
-                <p key={holder.puuid} className="cn-award-line">
-                  <PlayerName player={holder} />
-                  {` · ${holder.valueLabel}`}
-                  {holder.detail === null ? null : ` · ${holder.detail}`}
-                </p>
-              ))
+              <ul className="cn-records">
+                {block.holders.map((holder) => (
+                  <li key={holder.puuid} className="cn-record cn-fun-holder">
+                    <PlayerName player={holder} />
+                    <span className="cn-fun-stat">
+                      <span className="cn-num cn-record-wl">{holder.valueLabel}</span>
+                      {holder.detail === null ? null : <span className="cn-fun-when">{holder.detail}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
             <p className="cn-award-rule">{block.rule}</p>
           </div>
