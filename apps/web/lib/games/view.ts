@@ -8,6 +8,7 @@ import { csCountLine, kdaLine } from '../stats/funCopy';
 import type { StatsGame, StatsPlayer, StatsRow } from '../stats/types';
 import type { PlayerName } from '../tonight/types';
 import { focusMetaLine, resultForWinner, scoreLine, teamHeading } from './copy';
+import { withDisplayRoles } from './displayRoles';
 import { GAMES_QUEUE, matchesQueue, type QueueKind } from './queue';
 import type { GamesHistoryView, HistoryGame, HistorySeat, HistoryTeam } from './types';
 
@@ -74,10 +75,11 @@ export function historyGameOf(
   focusPuuid: string | null,
   timeZone: string | undefined,
 ): HistoryGame {
-  const peakDamage = Math.max(0, ...game.rows.map((row) => row.damageToChamps));
-  const blue = teamOf(game, 100, roster, peakDamage);
-  const red = teamOf(game, 200, roster, peakDamage);
-  const focusRow = focusPuuid === null ? undefined : game.rows.find((row) => row.puuid === focusPuuid);
+  const painted = { ...game, rows: withDisplayRoles(game) };
+  const peakDamage = Math.max(0, ...painted.rows.map((row) => row.damageToChamps));
+  const blue = teamOf(painted, 100, roster, peakDamage);
+  const red = teamOf(painted, 200, roster, peakDamage);
+  const focusRow = focusPuuid === null ? undefined : painted.rows.find((row) => row.puuid === focusPuuid);
   const focusSide = focusRow?.side;
   const focusSeat =
     focusSide === 100

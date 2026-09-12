@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { rosterFor, statsGame, tenPlayerGame } from '../testing/statsFixtures';
 import { funFactsView } from './fun';
-import { FIRST_BLOOD_EMPTY, fearBanLine } from './funCopy';
-import type { RawGameFacts } from './rawFacts';
+import {
+  DOUBLE_TITLE,
+  FIRST_BLOOD_EMPTY,
+  FIRST_BLOOD_TAKEN_EMPTY,
+  FIRST_BLOOD_TITLE,
+  fearBanLine,
+  funRoast,
+  PENTA_EMPTY,
+  PENTA_TITLE,
+  QUADRA_TITLE,
+  TRIPLE_TITLE,
+  TURRET_TITLE,
+  WON_UGLY,
+} from './funCopy';
+import { playerFacts, type RawGameFacts } from './rawFacts';
 
 function loudLena() {
   return tenPlayerGame({
@@ -138,6 +151,13 @@ describe('funFactsView', () => {
     expect(adc?.lowest?.name).toBe('Yuki');
   });
 
+  it('roasts the English titles in Egyptian 3ameya, not a translation', () => {
+    expect(funRoast(FIRST_BLOOD_TITLE)).toBe('مين فتحها');
+    expect(funRoast(PENTA_TITLE)).toBe('كنسهم كنس');
+    expect(funRoast(WON_UGLY)).toBe('كسب وهو زبالة');
+    expect(funRoast('not a /fun title')).toBeNull();
+  });
+
   it('crowns one-game combat records from the stored scoreboard', () => {
     const game = loudLena();
     const facts = funFactsView([game], rosterFor([game]));
@@ -155,7 +175,19 @@ describe('funFactsView', () => {
     const facts = funFactsView([game], rosterFor([game]));
     expect(facts.museum.rows).toEqual([]);
     expect(facts.museum.empty).toBe(FIRST_BLOOD_EMPTY);
+    expect(facts.donated.rows).toEqual([]);
+    expect(facts.donated.empty).toBe(FIRST_BLOOD_TAKEN_EMPTY);
     expect(facts.notes).toEqual([]);
+    expect(facts.halls.map((hall) => hall.title)).toEqual([
+      PENTA_TITLE,
+      QUADRA_TITLE,
+      TRIPLE_TITLE,
+      DOUBLE_TITLE,
+      TURRET_TITLE,
+    ]);
+    expect(facts.halls.every((hall) => hall.rows.length === 0)).toBe(true);
+    expect(facts.halls[0]?.empty).toBe(PENTA_EMPTY);
+    expect(facts.records.find((record) => record.id === 'spree')?.holders).toEqual([]);
   });
 
   it('names the first-blood killer, their champion, and the night', () => {
@@ -169,13 +201,55 @@ describe('funFactsView', () => {
       }),
     });
     const facts = funFactsView([game], rosterFor([game]));
-    expect(facts.museum.rows[0]).toMatchObject({
-      taker: { puuid: 'u-lena', name: 'Lena' },
+    expect(facts.museum.rows[0]?.taker).toEqual({ puuid: 'u-lena', name: 'Lena' });
+    expect(facts.museum.rows[0]?.countLabel).toBe('1 first blood');
+    expect(facts.museum.rows[0]?.openings[0]).toMatchObject({
       champion: 'Ahri',
       victim: null,
       when: expect.stringContaining('Sep'),
     });
-    expect(facts.tables[0]?.rows[0]?.name).toBe('Lena');
+    expect(facts.donated.rows).toEqual([]);
+  });
+
+  it('names who donated first blood only when the block flagged the death', () => {
+    const named = tenPlayerGame({
+      id: 'fb-named',
+      at: '2026-09-02T20:00:00Z',
+      durationS: 1_800,
+      winner: 100,
+      blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 4, deaths: 0, assists: 6 }],
+      red: [{ key: 'yuki', role: 'adc', championId: 22, kills: 1, deaths: 4, assists: 1 }],
+      rawFacts: rawFacts({
+        players: {
+          'u-lena': { firstBloodKill: true, championName: 'Ahri' },
+          'u-yuki': { firstBloodDeath: true, championName: 'Ashe' },
+        },
+      }),
+    });
+    const guessed = tenPlayerGame({
+      id: 'fb-guess',
+      at: '2026-09-03T20:00:00Z',
+      durationS: 1_800,
+      winner: 100,
+      blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 3, deaths: 0, assists: 2 }],
+      red: [{ key: 'yuki', role: 'adc', championId: 22, kills: 0, deaths: 8, assists: 1 }],
+      rawFacts: rawFacts({
+        players: {
+          'u-lena': { firstBloodKill: true },
+          'u-yuki': { longestLivedS: 40 },
+        },
+      }),
+    });
+    const facts = funFactsView([named, guessed], rosterFor([named, guessed]));
+    expect(facts.donated.rows).toHaveLength(1);
+    expect(facts.donated.rows[0]?.taker).toEqual({ puuid: 'u-yuki', name: 'Yuki' });
+    expect(facts.donated.rows[0]?.countLabel).toBe('1 first blood taken');
+    expect(facts.donated.rows[0]?.openings[0]).toMatchObject({
+      champion: 'Ashe',
+      victim: { puuid: 'u-lena', name: 'Lena' },
+      foeVerb: 'to',
+    });
+    expect(facts.museum.rows[0]?.openings.map((row) => row.victim?.puuid ?? null)).toEqual([null, 'u-yuki']);
   });
 
   it('crowns a deathless streak and a steal from the stored extras', () => {
@@ -213,6 +287,101 @@ describe('funFactsView', () => {
     expect(facts.deathHall.find((record) => record.id === 'deathless-streak')?.holders[0]?.name).toBe('Lena');
     expect(facts.deathHall.find((record) => record.id === 'shortest-life')?.holders[0]?.name).toBe('Yuki');
     expect(facts.thieves.find((record) => record.id === 'steals')?.holders[0]?.name).toBe('Lena');
+    expect(facts.thieves.find((record) => record.id === 'steals')?.holders[0]?.valueLabel).toBe(
+      '2 dragon steals',
+    );
+    expect(
+      facts.deathHall.find((record) => record.id === 'deathless-games')?.holders[0]?.openings,
+    ).toHaveLength(2);
+    expect(facts.thieves.find((record) => record.id === 'steals-window')?.holders[0]?.openings.length).toBe(
+      2,
+    );
+  });
+
+  it('groups first bloods by the taker and ranks the lobby champions', () => {
+    const first = (id: string, at: string, key: 'lena' | 'omar', championId: number) =>
+      tenPlayerGame({
+        id,
+        at,
+        durationS: 1_800,
+        winner: 100,
+        blue: [{ key, role: 'adc', championId, kills: 3, deaths: 1, assists: 2 }],
+        rawFacts: rawFacts({
+          players: { [`u-${key}`]: { firstBloodKill: true } },
+          bans: [{ championId: 35, teamId: 200 }],
+        }),
+      });
+    const games = [
+      first('fb-a', '2026-09-01T20:00:00Z', 'lena', 103),
+      first('fb-b', '2026-09-02T20:00:00Z', 'lena', 103),
+      first('fb-c', '2026-09-03T20:00:00Z', 'omar', 35),
+    ];
+    const facts = funFactsView(games, rosterFor(games));
+    expect(facts.museum.rows.map((row) => [row.taker.name, row.count])).toEqual([
+      ['Lena', 2],
+      ['Omar', 1],
+    ]);
+    expect(facts.museum.rows[0]?.openings).toHaveLength(2);
+    expect(facts.mostBanned.rows[0]).toMatchObject({ champion: 'Shaco', valueLabel: '3 bans' });
+    expect(facts.mostPicked.rows[0]).toMatchObject({ champion: 'Ahri', valueLabel: '2 picks' });
+  });
+
+  it('sums stored multi-kills per person and does not invent a penta from KDA', () => {
+    const games = [
+      tenPlayerGame({
+        id: 'mk-a',
+        at: '2026-09-01T20:00:00Z',
+        durationS: 1_800,
+        winner: 100,
+        blue: [
+          { key: 'lena', role: 'adc', championId: 103, kills: 18, deaths: 1, assists: 4 },
+          { key: 'omar', role: 'mid', championId: 35, kills: 8, deaths: 2, assists: 6 },
+        ],
+        rawFacts: rawFacts({
+          players: {
+            'u-lena': { tripleKills: 2, doubleKills: 3, largestKillingSpree: 8, championName: 'Ahri' },
+            'u-omar': { tripleKills: 1, firstTowerKill: true, championName: 'Shaco' },
+          },
+        }),
+      }),
+      tenPlayerGame({
+        id: 'mk-b',
+        at: '2026-09-02T20:00:00Z',
+        durationS: 1_800,
+        winner: 100,
+        blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 12, deaths: 2, assists: 5 }],
+        rawFacts: rawFacts({
+          players: {
+            'u-lena': { pentaKills: 1, quadraKills: 1, tripleKills: 1, championName: 'Ahri' },
+          },
+        }),
+      }),
+    ];
+    const facts = funFactsView(games, rosterFor(games));
+    const pentas = facts.halls.find((hall) => hall.title === PENTA_TITLE);
+    const quadras = facts.halls.find((hall) => hall.title === QUADRA_TITLE);
+    const triples = facts.halls.find((hall) => hall.title === TRIPLE_TITLE);
+    const doubles = facts.halls.find((hall) => hall.title === DOUBLE_TITLE);
+    const turrets = facts.halls.find((hall) => hall.title === TURRET_TITLE);
+    expect(pentas?.rows.map((row) => [row.taker.name, row.count, row.countLabel])).toEqual([
+      ['Lena', 1, '1 penta'],
+    ]);
+    expect(quadras?.rows[0]?.countLabel).toBe('1 quadra');
+    expect(triples?.rows.map((row) => [row.taker.name, row.count, row.countLabel])).toEqual([
+      ['Lena', 3, '3 triples'],
+      ['Omar', 1, '1 triple'],
+    ]);
+    expect(triples?.rows[0]?.openings.map((row) => row.haul)).toEqual([null, '2 triples']);
+    expect(doubles?.rows[0]).toMatchObject({ taker: { name: 'Lena' }, count: 3, countLabel: '3 doubles' });
+    expect(turrets?.rows[0]).toMatchObject({
+      taker: { name: 'Omar' },
+      countLabel: '1 first turret',
+      openings: [{ champion: 'Shaco', haul: null }],
+    });
+    expect(facts.records.find((record) => record.id === 'spree')?.holders[0]).toMatchObject({
+      name: 'Lena',
+      valueLabel: '8 kill streak',
+    });
   });
 
   it('writes a fear-ban sentence from enemy draft bans', () => {
@@ -276,17 +445,7 @@ function rawFacts(spec: {
 }): RawGameFacts {
   const byPuuid: RawGameFacts['byPuuid'] = {};
   for (const [puuid, extras] of Object.entries(spec.players ?? {})) {
-    byPuuid[puuid] = {
-      firstBloodKill: extras.firstBloodKill ?? false,
-      firstBloodAssist: extras.firstBloodAssist ?? false,
-      visionScore: extras.visionScore ?? null,
-      objectivesStolen: extras.objectivesStolen ?? 0,
-      objectivesStolenAssists: extras.objectivesStolenAssists ?? 0,
-      baronKills: extras.baronKills ?? 0,
-      dragonKills: extras.dragonKills ?? 0,
-      longestLivedS: extras.longestLivedS ?? null,
-      championName: extras.championName ?? null,
-    };
+    byPuuid[puuid] = playerFacts(extras);
   }
   return { byPuuid, bans: spec.bans ?? [] };
 }

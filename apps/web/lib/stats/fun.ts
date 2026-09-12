@@ -17,14 +17,22 @@ import {
   DEATHLESS_GAMES_RULE,
   DEATHLESS_STREAK,
   DEATHLESS_STREAK_RULE,
+  DOUBLE_EMPTY,
+  DOUBLE_INTRO,
+  DOUBLE_MANY,
+  DOUBLE_ONE,
+  DOUBLE_TITLE,
   damageLine,
   FEAR_BAN_EMPTY,
   FEAR_BAN_INTRO,
   FEAR_BAN_TITLE,
   FIRST_BLOOD_EMPTY,
   FIRST_BLOOD_INTRO,
-  FIRST_BLOOD_MOST,
-  FIRST_BLOOD_MOST_RULE,
+  FIRST_BLOOD_TAKEN_EMPTY,
+  FIRST_BLOOD_TAKEN_INTRO,
+  FIRST_BLOOD_TAKEN_MANY,
+  FIRST_BLOOD_TAKEN_ONE,
+  FIRST_BLOOD_TAKEN_TITLE,
   FIRST_BLOOD_TITLE,
   FOUNTAIN,
   FOUNTAIN_RULE,
@@ -41,12 +49,17 @@ import {
   kpLine,
   LONGEST,
   LONGEST_RULE,
+  LONGEST_SPREE,
+  LONGEST_SPREE_RULE,
   LOST_JUNGLE,
   LOST_JUNGLE_RULE,
   LOST_PRETTY,
   LOST_PRETTY_RULE,
   MOST_ASSISTS,
   MOST_ASSISTS_RULE,
+  MOST_BANNED_EMPTY,
+  MOST_BANNED_INTRO,
+  MOST_BANNED_TITLE,
   MOST_BARONS,
   MOST_BARONS_RULE,
   MOST_DAMAGE,
@@ -59,6 +72,9 @@ import {
   MOST_DRAGONS_RULE,
   MOST_KILLS,
   MOST_KILLS_RULE,
+  MOST_PICKED_EMPTY,
+  MOST_PICKED_INTRO,
+  MOST_PICKED_TITLE,
   MOST_STEALS,
   MOST_STEALS_RULE,
   MOST_STEALS_WINDOW,
@@ -70,23 +86,47 @@ import {
   NOBODY_THIS,
   PAPER,
   PAPER_RULE,
+  PENTA_EMPTY,
+  PENTA_INTRO,
+  PENTA_MANY,
+  PENTA_ONE,
+  PENTA_TITLE,
+  QUADRA_EMPTY,
+  QUADRA_INTRO,
+  QUADRA_MANY,
+  QUADRA_ONE,
+  QUADRA_TITLE,
   RICH_WRONG,
   RICH_WRONG_RULE,
   SHORTEST,
   SHORTEST_LIFE,
   SHORTEST_LIFE_RULE,
   SHORTEST_RULE,
+  spreeLine,
+  TRIPLE_EMPTY,
+  TRIPLE_INTRO,
+  TRIPLE_MANY,
+  TRIPLE_ONE,
+  TRIPLE_TITLE,
+  TURRET_EMPTY,
+  TURRET_INTRO,
+  TURRET_MANY,
+  TURRET_ONE,
+  TURRET_TITLE,
   WON_UGLY,
   WON_UGLY_RULE,
   ZERO_X,
   ZERO_X_RULE,
 } from './funCopy';
-import type { RawPlayerFacts } from './rawFacts';
+import { playerFacts, type RawPlayerFacts, stealLine } from './rawFacts';
 import type {
+  FunBloodGroup,
   FunBloodRow,
+  FunChampRow,
   FunFactsView,
   FunFearBan,
   FunHolder,
+  FunOpening,
   FunRecord,
   FunSection,
   PlayerRef,
@@ -116,9 +156,10 @@ const GLUE_TEAM_KILLS = 5;
 const FOUNTAIN_CS = 30;
 const FOUNTAIN_TAKEDOWNS = 4;
 const COMFORT_RATE = 0.35;
-const MUSEUM_LIMIT = 25;
 const FEAR_BAN_LIMIT = 5;
+const CHAMP_TABLE_LIMIT = 10;
 const DEATHLESS_STREAK_MIN = 2;
+const SPREE_MIN = 3;
 
 interface Play {
   game: StatsGame;
@@ -169,17 +210,25 @@ function ref(player: StatsPlayer): PlayerRef {
 
 type BindGame = (game: StatsGame) => HistoryGame;
 
+function openingOf(game: StatsGame, bind: BindGame, label: string | null = null): FunOpening {
+  return { label, detail: matchDetail(game.startedAt, game.durationS), game: bind(game) };
+}
+
 function holder(
   player: StatsPlayer,
   valueLabel: string,
   game: StatsGame | null = null,
   bind: BindGame | null = null,
+  openings: readonly FunOpening[] = [],
 ): FunHolder {
+  const listed =
+    openings.length > 0 ? [...openings] : game === null || bind === null ? [] : [openingOf(game, bind)];
   return {
     ...ref(player),
     valueLabel,
-    detail: game === null ? null : matchDetail(game.startedAt, game.durationS),
-    game: game === null || bind === null ? null : bind(game),
+    detail: listed[0]?.detail ?? (game === null ? null : matchDetail(game.startedAt, game.durationS)),
+    game: listed[0]?.game ?? null,
+    openings: listed,
   };
 }
 
@@ -351,6 +400,16 @@ export function funFactsView(
       (play) => kdaLine(play.row.kills, play.row.deaths, play.row.assists),
     ),
     rec(
+      'spree',
+      LONGEST_SPREE,
+      LONGEST_SPREE_RULE,
+      pickMax(
+        plays.filter((play) => (extrasOf(play)?.largestKillingSpree ?? 0) >= SPREE_MIN),
+        (play) => extrasOf(play)?.largestKillingSpree ?? 0,
+      ),
+      (play) => spreeLine(extrasOf(play)?.largestKillingSpree ?? 0),
+    ),
+    rec(
       'clean',
       CLEAN_KDA,
       CLEAN_KDA_RULE,
@@ -509,25 +568,79 @@ export function funFactsView(
 
   records.push(attendanceRecord(plays), comfortRecord(plays));
 
-  const museum = firstBloodMuseum(counted, plays, bind);
-  const mostBlood = mostFirstBloods(plays);
-
   return {
     games: counted.length,
     players: new Set(plays.map((play) => play.player.playerId)).size,
-    tables: [
-      {
-        id: 'first-blood',
-        title: FIRST_BLOOD_MOST,
-        intro: FIRST_BLOOD_MOST_RULE,
-        rows: mostBlood,
-        empty: FIRST_BLOOD_EMPTY,
-      },
+    tables: [],
+    museum: firstBloodMuseum(counted, plays, bind, {
+      title: FIRST_BLOOD_TITLE,
+      intro: FIRST_BLOOD_INTRO,
+      empty: FIRST_BLOOD_EMPTY,
+      pick: (play) => extrasOf(play)?.firstBloodKill === true,
+      foe: (play) => extrasOf(play)?.firstBloodDeath === true,
+      foeVerb: 'over',
+      one: '1 first blood',
+      many: 'first bloods',
+    }),
+    donated: firstBloodMuseum(counted, plays, bind, {
+      title: FIRST_BLOOD_TAKEN_TITLE,
+      intro: FIRST_BLOOD_TAKEN_INTRO,
+      empty: FIRST_BLOOD_TAKEN_EMPTY,
+      pick: (play) => extrasOf(play)?.firstBloodDeath === true,
+      foe: (play) => extrasOf(play)?.firstBloodKill === true,
+      foeVerb: 'to',
+      one: FIRST_BLOOD_TAKEN_ONE,
+      many: FIRST_BLOOD_TAKEN_MANY,
+    }),
+    halls: [
+      countMuseum(counted, plays, bind, {
+        title: PENTA_TITLE,
+        intro: PENTA_INTRO,
+        empty: PENTA_EMPTY,
+        amount: (play) => extrasOf(play)?.pentaKills ?? 0,
+        one: PENTA_ONE,
+        many: PENTA_MANY,
+      }),
+      countMuseum(counted, plays, bind, {
+        title: QUADRA_TITLE,
+        intro: QUADRA_INTRO,
+        empty: QUADRA_EMPTY,
+        amount: (play) => extrasOf(play)?.quadraKills ?? 0,
+        one: QUADRA_ONE,
+        many: QUADRA_MANY,
+      }),
+      countMuseum(counted, plays, bind, {
+        title: TRIPLE_TITLE,
+        intro: TRIPLE_INTRO,
+        empty: TRIPLE_EMPTY,
+        amount: (play) => extrasOf(play)?.tripleKills ?? 0,
+        one: TRIPLE_ONE,
+        many: TRIPLE_MANY,
+      }),
+      countMuseum(counted, plays, bind, {
+        title: DOUBLE_TITLE,
+        intro: DOUBLE_INTRO,
+        empty: DOUBLE_EMPTY,
+        amount: (play) => extrasOf(play)?.doubleKills ?? 0,
+        one: DOUBLE_ONE,
+        many: DOUBLE_MANY,
+      }),
+      firstBloodMuseum(counted, plays, bind, {
+        title: TURRET_TITLE,
+        intro: TURRET_INTRO,
+        empty: TURRET_EMPTY,
+        pick: (play) => extrasOf(play)?.firstTowerKill === true,
+        foe: () => false,
+        foeVerb: 'over',
+        one: TURRET_ONE,
+        many: TURRET_MANY,
+      }),
     ],
-    museum,
     deathHall: deathHall(counted, plays, bind),
     thieves: objectiveThieves(plays, bind),
     fearBans: fearBans(plays),
+    mostBanned: mostBanned(plays),
+    mostPicked: mostPicked(plays),
     csByRole: csByRole(plays, bind),
     records,
     notes: [],
@@ -536,6 +649,10 @@ export function funFactsView(
 
 function extrasOf(play: Play): RawPlayerFacts | null {
   return play.game.rawFacts?.byPuuid[play.row.puuid] ?? null;
+}
+
+function stealLabel(play: Play): string {
+  return stealLine(extrasOf(play) ?? playerFacts());
 }
 
 function champOf(play: Play): string {
@@ -547,7 +664,17 @@ function firstBloodMuseum(
   counted: readonly StatsGame[],
   plays: readonly Play[],
   bind: BindGame,
-): FunSection<FunBloodRow> {
+  spec: {
+    title: string;
+    intro: string;
+    empty: string;
+    pick: (play: Play) => boolean;
+    foe: (play: Play) => boolean;
+    foeVerb: FunBloodRow['foeVerb'];
+    one: string;
+    many: string;
+  },
+): FunSection<FunBloodGroup> {
   const byGame = new Map<string, Play[]>();
   for (const play of plays) {
     const list = byGame.get(play.game.id) ?? [];
@@ -555,44 +682,116 @@ function firstBloodMuseum(
     byGame.set(play.game.id, list);
   }
 
-  const rows: FunBloodRow[] = [];
+  const groups = new Map<string, FunBloodGroup>();
   for (const game of [...counted].reverse()) {
-    const seat = (byGame.get(game.id) ?? []).find((play) => extrasOf(play)?.firstBloodKill === true);
+    const seats = byGame.get(game.id) ?? [];
+    const seat = seats.find(spec.pick);
     if (seat === undefined) continue;
-    rows.push({
+    const foe = seats.find(spec.foe);
+    const opening: FunBloodRow = {
       gameId: game.id,
       taker: ref(seat.player),
       champion: champOf(seat),
-      victim: null,
-      opponent: null,
+      victim: foe === undefined ? null : ref(foe.player),
+      foeVerb: spec.foeVerb,
+      opponent: foe === undefined ? null : champOf(foe),
+      haul: null,
       when: matchDetail(game.startedAt, game.durationS),
       game: bind(game),
-    });
-    if (rows.length >= MUSEUM_LIMIT) break;
+    };
+    const existing = groups.get(seat.player.playerId);
+    if (existing === undefined) {
+      groups.set(seat.player.playerId, {
+        taker: opening.taker,
+        count: 1,
+        countLabel: spec.one,
+        openings: [opening],
+      });
+      continue;
+    }
+    existing.openings.push(opening);
+    existing.count += 1;
+    existing.countLabel = `${existing.count} ${spec.many}`;
   }
 
+  const rows = [...groups.values()].sort(
+    (a, b) => b.count - a.count || renderWebName(a.taker.name).localeCompare(renderWebName(b.taker.name)),
+  );
+
   return {
-    title: FIRST_BLOOD_TITLE,
-    intro: FIRST_BLOOD_INTRO,
+    title: spec.title,
+    intro: spec.intro,
     rows,
-    empty: FIRST_BLOOD_EMPTY,
+    empty: spec.empty,
   };
 }
 
-function mostFirstBloods(plays: readonly Play[]): FunHolder[] {
-  const counts = new Map<string, { player: StatsPlayer; games: number }>();
+/**
+ * One row per person, count is the sum of a stored field. Several people can
+ * hit in the same custom; one person can hit twice in one custom.
+ */
+function countMuseum(
+  counted: readonly StatsGame[],
+  plays: readonly Play[],
+  bind: BindGame,
+  spec: {
+    title: string;
+    intro: string;
+    empty: string;
+    amount: (play: Play) => number;
+    one: string;
+    many: string;
+  },
+): FunSection<FunBloodGroup> {
+  const byGame = new Map<string, Play[]>();
   for (const play of plays) {
-    if (extrasOf(play)?.firstBloodKill !== true) continue;
-    const row = counts.get(play.player.playerId) ?? { player: play.player, games: 0 };
-    row.games += 1;
-    counts.set(play.player.playerId, row);
+    const list = byGame.get(play.game.id) ?? [];
+    list.push(play);
+    byGame.set(play.game.id, list);
   }
-  return [...counts.values()]
-    .sort(
-      (a, b) => b.games - a.games || renderWebName(a.player.name).localeCompare(renderWebName(b.player.name)),
-    )
-    .slice(0, 5)
-    .map((row) => holder(row.player, row.games === 1 ? '1 first blood' : `${row.games} first bloods`));
+
+  const groups = new Map<string, FunBloodGroup>();
+  for (const game of [...counted].reverse()) {
+    for (const play of byGame.get(game.id) ?? []) {
+      const n = spec.amount(play);
+      if (n <= 0) continue;
+      const opening: FunBloodRow = {
+        gameId: game.id,
+        taker: ref(play.player),
+        champion: champOf(play),
+        victim: null,
+        foeVerb: 'over',
+        opponent: null,
+        haul: n === 1 ? null : `${n} ${spec.many}`,
+        when: matchDetail(game.startedAt, game.durationS),
+        game: bind(game),
+      };
+      const existing = groups.get(play.player.playerId);
+      if (existing === undefined) {
+        groups.set(play.player.playerId, {
+          taker: opening.taker,
+          count: n,
+          countLabel: n === 1 ? spec.one : `${n} ${spec.many}`,
+          openings: [opening],
+        });
+        continue;
+      }
+      existing.openings.push(opening);
+      existing.count += n;
+      existing.countLabel = existing.count === 1 ? spec.one : `${existing.count} ${spec.many}`;
+    }
+  }
+
+  const rows = [...groups.values()].sort(
+    (a, b) => b.count - a.count || renderWebName(a.taker.name).localeCompare(renderWebName(b.taker.name)),
+  );
+
+  return {
+    title: spec.title,
+    intro: spec.intro,
+    rows,
+    empty: spec.empty,
+  };
 }
 
 function deathHall(counted: readonly StatsGame[], plays: readonly Play[], bind: BindGame): FunRecord[] {
@@ -610,7 +809,14 @@ function deathHall(counted: readonly StatsGame[], plays: readonly Play[], bind: 
 
   const totals = new Map<
     string,
-    { player: StatsPlayer; deaths: number; deathless: number; current: number; best: number }
+    {
+      player: StatsPlayer;
+      deaths: number;
+      deathless: number;
+      current: number;
+      best: number;
+      clean: Play[];
+    }
   >();
   for (const game of counted) {
     for (const play of playsByGame.get(game.id) ?? []) {
@@ -620,12 +826,14 @@ function deathHall(counted: readonly StatsGame[], plays: readonly Play[], bind: 
         deathless: 0,
         current: 0,
         best: 0,
+        clean: [],
       };
       slot.deaths += play.row.deaths;
       if (play.row.deaths === 0) {
         slot.deathless += 1;
         slot.current += 1;
         slot.best = Math.max(slot.best, slot.current);
+        slot.clean.push(play);
       } else {
         slot.current = 0;
       }
@@ -687,7 +895,17 @@ function deathHall(counted: readonly StatsGame[], plays: readonly Play[], bind: 
       title: DEATHLESS_GAMES,
       rule: DEATHLESS_GAMES_RULE,
       holders:
-        mostClean === undefined ? [] : [holder(mostClean.player, gamesCountLineFrom(mostClean.deathless))],
+        mostClean === undefined
+          ? []
+          : [
+              holder(
+                mostClean.player,
+                gamesCountLineFrom(mostClean.deathless),
+                null,
+                bind,
+                mostClean.clean.map((play) => openingOf(play.game, bind, champOf(play))),
+              ),
+            ],
       empty: NOBODY_THIS,
     },
   ];
@@ -698,10 +916,12 @@ function objectiveThieves(plays: readonly Play[], bind: BindGame): FunRecord[] {
   const dragons = (play: Play) => extrasOf(play)?.dragonKills ?? 0;
   const barons = (play: Play) => extrasOf(play)?.baronKills ?? 0;
 
-  const totals = new Map<string, { player: StatsPlayer; stolen: number }>();
+  const totals = new Map<string, { player: StatsPlayer; stolen: number; heists: Play[] }>();
   for (const play of plays) {
-    const row = totals.get(play.player.playerId) ?? { player: play.player, stolen: 0 };
-    row.stolen += stolen(play);
+    const take = stolen(play);
+    const row = totals.get(play.player.playerId) ?? { player: play.player, stolen: 0, heists: [] };
+    row.stolen += take;
+    if (take > 0) row.heists.push(play);
     totals.set(play.player.playerId, row);
   }
   const career = [...totals.values()].sort(
@@ -717,7 +937,7 @@ function objectiveThieves(plays: readonly Play[], bind: BindGame): FunRecord[] {
         plays.filter((play) => stolen(play) > 0),
         stolen,
       ),
-      (play) => (stolen(play) === 1 ? '1 steal' : `${stolen(play)} steals`),
+      stealLabel,
       bind,
     ),
     {
@@ -727,7 +947,17 @@ function objectiveThieves(plays: readonly Play[], bind: BindGame): FunRecord[] {
       holders:
         career === undefined || career.stolen === 0
           ? []
-          : [holder(career.player, career.stolen === 1 ? '1 steal' : `${career.stolen} steals`)],
+          : [
+              holder(
+                career.player,
+                career.stolen === 1 && career.heists[0] !== undefined
+                  ? stealLabel(career.heists[0])
+                  : `${career.stolen} steals`,
+                null,
+                bind,
+                career.heists.map((play) => openingOf(play.game, bind, stealLabel(play))),
+              ),
+            ],
       empty: NOBODY_THIS,
     },
     record(
@@ -815,4 +1045,49 @@ function fearBans(plays: readonly Play[]): FunSection<FunFearBan> {
     rows,
     empty: FEAR_BAN_EMPTY,
   };
+}
+
+function mostBanned(plays: readonly Play[]): FunSection<FunChampRow> {
+  const seen = new Set<string>();
+  const counts = new Map<number, number>();
+  for (const play of plays) {
+    if (seen.has(play.game.id)) continue;
+    seen.add(play.game.id);
+    for (const ban of play.game.rawFacts?.bans ?? []) {
+      counts.set(ban.championId, (counts.get(ban.championId) ?? 0) + 1);
+    }
+  }
+  return {
+    title: MOST_BANNED_TITLE,
+    intro: MOST_BANNED_INTRO,
+    rows: rankChamps(counts, 'ban', 'bans'),
+    empty: MOST_BANNED_EMPTY,
+  };
+}
+
+function mostPicked(plays: readonly Play[]): FunSection<FunChampRow> {
+  const counts = new Map<number, number>();
+  for (const play of plays) {
+    if (play.row.championId === null || play.row.championId <= 0) continue;
+    counts.set(play.row.championId, (counts.get(play.row.championId) ?? 0) + 1);
+  }
+  return {
+    title: MOST_PICKED_TITLE,
+    intro: MOST_PICKED_INTRO,
+    rows: rankChamps(counts, 'pick', 'picks'),
+    empty: MOST_PICKED_EMPTY,
+  };
+}
+
+function rankChamps(counts: Map<number, number>, one: string, many: string): FunChampRow[] {
+  return [...counts.entries()]
+    .filter(([championId, count]) => championId > 0 && count > 0)
+    .sort((left, right) => right[1] - left[1] || championName(left[0]).localeCompare(championName(right[0])))
+    .slice(0, CHAMP_TABLE_LIMIT)
+    .map(([championId, count]) => ({
+      championId,
+      champion: championName(championId),
+      count,
+      valueLabel: count === 1 ? `1 ${one}` : `${count} ${many}`,
+    }));
 }

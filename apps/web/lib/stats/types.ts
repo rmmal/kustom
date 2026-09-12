@@ -220,6 +220,14 @@ export interface StatsView {
  * columns `/stats` deliberately does not fold.
  * ------------------------------------------------------------------------- */
 
+/** One counted custom under a record that can reopen more than one night. */
+export interface FunOpening {
+  /** Champion, steal name, or null when the row already said the number. */
+  label: string | null;
+  detail: string;
+  game: HistoryGame;
+}
+
 /** One named line on `/fun`: a person, a number, and optional match context. */
 export interface FunHolder extends PlayerRef {
   valueLabel: string;
@@ -229,6 +237,20 @@ export interface FunHolder extends PlayerRef {
    * window total). The page opens both scoreboards from this.
    */
   game: HistoryGame | null;
+  /**
+   * Every counted custom behind a window total (deathless games, career
+   * steals). Empty when there is no night to reopen. One opening is the
+   * same expand as {@link game}; more than one nests under See games.
+   */
+  openings: FunOpening[];
+}
+
+/** A champion the group banned or picked, not tied to one person. */
+export interface FunChampRow {
+  championId: number;
+  champion: string;
+  count: number;
+  valueLabel: string;
 }
 
 /** A ranked season table — first-blood totals still use this shape. */
@@ -245,11 +267,29 @@ export interface FunBloodRow {
   gameId: string;
   taker: PlayerRef;
   champion: string;
-  /** Who died. Null — the block stores the killer, not the victim. */
+  /**
+   * The other person the block also named. Killer museum: who died. Donated
+   * museum: who killed. Null when that flag is missing — never a guess.
+   */
   victim: PlayerRef | null;
+  /** `over` on a kill, `to` on a donation. Unused when {@link victim} is null. */
+  foeVerb: 'over' | 'to';
   opponent: string | null;
+  /**
+   * A count that is not 1, printed next to the champion (`2 triples`). Null on
+   * a single first blood or a single multi-kill.
+   */
+  haul: string | null;
   when: string;
   game: HistoryGame | null;
+}
+
+/** One killer's first bloods, grouped so two people are not one undivided list. */
+export interface FunBloodGroup {
+  taker: PlayerRef;
+  count: number;
+  countLabel: string;
+  openings: FunBloodRow[];
 }
 
 /** One fear-ban sentence: a person's champion, banned by the other side while they were in. */
@@ -296,10 +336,19 @@ export interface FunFactsView {
   capped: boolean;
   cap: number;
   tables: FunTable[];
-  museum: FunSection<FunBloodRow>;
+  museum: FunSection<FunBloodGroup>;
+  donated: FunSection<FunBloodGroup>;
+  /**
+   * Pentakill, quadrakill, triple, double, then first turret. Same grouping as
+   * the first-blood museums. Empty sections still print so the lobby knows
+   * the category exists.
+   */
+  halls: FunSection<FunBloodGroup>[];
   deathHall: FunRecord[];
   thieves: FunRecord[];
   fearBans: FunSection<FunFearBan>;
+  mostBanned: FunSection<FunChampRow>;
+  mostPicked: FunSection<FunChampRow>;
   csByRole: RoleCsPair[];
   records: FunRecord[];
   notes: string[];

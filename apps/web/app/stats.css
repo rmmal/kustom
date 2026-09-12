@@ -321,3 +321,53 @@
 .cn-fun-sheet .cn-sheet {
   border-top: 0;
 }
+
+.cn-fun-groups,
+.cn-fun-openings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cn-fun-group + .cn-fun-group,
+.cn-fun-groups > li + li {
+  border-top: 2px solid var(--cn-line);
+}
+
+.cn-fun-openings {
+  border-top: 1px solid var(--cn-line);
+}
+
+.cn-fun-openings > li + li {
+  border-top: 1px solid var(--cn-line);
+}
+
+/*
+ * Egyptian 3ameya roast under the English title. Brand is the one lamp; the
+ * page stays `lang=en` and the roast is marked `lang=ar`. No extra webfont —
+ * Archivo has no Arabic, so the line falls through to the system face.
+ */
+.cn-fun-head {
+  align-items: flex-start;
+}
+
+.cn-fun-named {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.cn-fun-roast {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: var(--cn-t-sm);
+  font-weight: 600;
+  color: var(--cn-brand);
+  line-height: 1.35;
+}
+
+.cn-fun-named .cn-stats-subtitle + .cn-fun-roast {
+  font-size: var(--cn-t-xs);
+}
