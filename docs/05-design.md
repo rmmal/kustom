@@ -249,12 +249,12 @@ Three named looks, one `data-theme` on `<html>`, persisted in `localStorage` as 
 
 | Name | File | What it is |
 |---|---|---|
-| **Day** (default) | `tokens.css` `:root` / `[data-theme=day]` plus `theme-gaming.css` | Light gaming look: cool paper, sharper radii (6 / 4 / 2), a blue floodlight, HUD top-bar edge, uppercase mono champion chips. |
-| **Night** | `tokens.css` `[data-theme=night]` plus `theme-gaming.css` | The same system after dark: deeper ink than Floodlit, hotter gold, the same sharp geometry. |
-| **Current** | `theme-current.css` only | Floodlit as it shipped (dark default, light when the OS asks). Isolated so it can be deleted: drop that file and its import, drop `current` from `THEME_ORDER` / `THEME_LABELS`, drop the Current assertions. |
+| **Day** (default) | `tokens.css` plus `theme-gaming.css` | Production gaming look on cool paper: two corner lamps, a faint pitch grid, HUD top bar with a gold underline, tracked uppercase tabs, pill filters, inset side rules on teams and scoreboards, tracker-dense match cards. Same Archivo + Plex Mono as Night. |
+| **Night** | same files, `[data-theme=night]` | The same system after dark: void ink, hotter gold, electric sides. No second typeface and no second layout. |
+| **Current** | `theme-current.css` only | Floodlit as it shipped. Isolated so it can be deleted: drop that file and its import, drop `current` from `THEME_ORDER` / `THEME_LABELS`, drop the Current assertions. |
 
 Colour is still a team, a state, or nothing. Day and Night do not add a fourth colour, champion art, glass,
-or a second font. Admin is untouched.
+or a second font. Admin is untouched. The gaming layer never edits Floodlit files; it only paints over them.
 
 The theme control is a 44px radiogroup in the top bar (`Day` · `Night` · `Current`), Archivo `t-sm`, the
 chosen chip in `brand` on `brand-tint`. Phone: wordmark and the group on the first row, tabs on the second.

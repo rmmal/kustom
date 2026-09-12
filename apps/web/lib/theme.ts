@@ -26,8 +26,8 @@ export const THEME_LABELS: Readonly<Record<ThemeKind, string>> = {
 
 /** Phone chrome, one hex per forced theme. Current-on-light-OS is handled in {@link applyTheme}. */
 export const THEME_COLOR: Readonly<Record<ThemeKind, string>> = {
-  day: '#f1f4fa',
-  night: '#080a10',
+  day: '#e8eef6',
+  night: '#05070c',
   current: '#0b0e14',
 };
 
