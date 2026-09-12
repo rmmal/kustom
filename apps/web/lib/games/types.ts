@@ -1,6 +1,7 @@
 import type { RoleValue, SideValue } from '@customs/db';
 import type { WindowKind } from '../night';
 import type { PlayerName } from '../tonight/types';
+import type { QueueKind } from './queue';
 
 /**
  * What `/games` renders: one window of captured customs, each with both scoreboards.
@@ -69,6 +70,8 @@ export interface HistoryGame {
 
 export interface GamesHistoryView {
   window: WindowKind;
+  /** Which map the list is filtered to. The toggle and `?queue=` are this word. */
+  queue: QueueKind;
   /**
    * The slot's range half, or `null` when this list is empty — the same empty-window rule
    * `/stats` uses, so a quiet week is one sentence in the header and nothing under it.

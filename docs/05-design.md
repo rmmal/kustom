@@ -2137,16 +2137,20 @@ and the group say them in lower case).
 ### Game history (`/games`) — 2026-09-12
 
 The captured customs, newest first, each a collapsed match card that opens into both scoreboards. Same
-window picker as the board, default `This week`. Optional `?p=<puuid>` filters to one person and switches
-the headline from `Blue won` / `Red won` to their own `Won` / `Lost`, with their KDA · KP · CS on the
-collapsed card — the match-history shape, without champion art or item icons (Floodlit forbids both, and
-items are not stored as columns). Expand is a `<details>`, so the scoreboard is in the first paint.
+window picker as the board, default `This week`. A second chip row under it is **Summoner's Rift** (default)
+and **ARAM** — the same 44px chip recipe, `?queue=aram` when not on Rift. Optional `?p=<puuid>` filters to
+one person and switches the headline from `Blue won` / `Red won` to their own `Won` / `Lost`, with their
+KDA · KP · CS on the collapsed card — the match-history shape, without champion art or item icons
+(Floodlit forbids both, and items are not stored as columns). Expand is a `<details>`, so the scoreboard
+is in the first paint. The toggle stays up on an empty list so a quiet Rift week can still open ARAM.
 
 Columns the companion already stores: role, name, KDA, damage (bar + compact `k`), gold, CS. Kill
 participation is `(kills + assists) / that side's kills`. A side rule on the card's leading edge; on the
 group list it is the winner's, on a focused list it is that player's. No green, no fill behind `Won`.
 
 `Recent games` on `/p/[puuid]` keeps the last five and links `All games` at this page in the same window.
+
+`/fun` wears the same Rift / ARAM chips, same `?queue=`, same default. CS by role is hidden on ARAM.
 
 ### The player page (`/p/[puuid]`) — settled 2026-09-09
 

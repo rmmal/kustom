@@ -72,6 +72,11 @@ describe('GamesView', () => {
     render(<GamesView history={history({ focusPuuid: 'u-hana' })} />);
     expect(screen.getByText("Showing Hana's games.")).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Everyone' })).toHaveAttribute('href', '/games?window=this-week');
+    expect(screen.getByRole('link', { name: "Summoner's Rift" })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'ARAM' })).toHaveAttribute(
+      'href',
+      '/games?window=this-week&p=u-hana&queue=aram',
+    );
     expect(screen.getByText('Won')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Hana' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Lena' })[0]).toHaveAttribute('href', '/p/u-lena');
@@ -90,5 +95,44 @@ describe('GamesView', () => {
     render(<GamesView history={empty} />);
     expect(screen.getByText(WINDOW_EMPTY['last-week'])).toBeInTheDocument();
     expect(screen.queryByText('Blue won')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'ARAM' })).toHaveAttribute(
+      'href',
+      '/games?window=last-week&queue=aram',
+    );
+  });
+
+  it('keeps ARAM on the Everyone link and the window chips', () => {
+    const game = tenPlayerGame({
+      id: 'g-aram',
+      at: '2026-09-09T20:00:00Z',
+      winner: 100,
+      gameMode: 'ARAM',
+      blue: [{ key: 'hana', role: 'top', kills: 9, deaths: 6, assists: 5 }],
+      red: [{ key: 'lena', role: 'adc', kills: 15, deaths: 5, assists: 6 }],
+    });
+    render(
+      <GamesView
+        history={gamesHistoryView({
+          window: 'this-week',
+          games: [game],
+          players: rosterFor([game]),
+          range: WEEK,
+          capped: false,
+          cap: 2_000,
+          timeZone: 'Africa/Cairo',
+          focusPuuid: 'u-hana',
+          queue: 'aram',
+        })}
+      />,
+    );
+    expect(screen.getByRole('link', { name: 'ARAM' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Everyone' })).toHaveAttribute(
+      'href',
+      '/games?window=this-week&queue=aram',
+    );
+    expect(screen.getByRole('link', { name: 'Last week' })).toHaveAttribute(
+      'href',
+      '/games?window=last-week&p=u-hana&queue=aram',
+    );
   });
 });

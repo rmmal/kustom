@@ -1,5 +1,6 @@
 import type { RoleValue, SideValue } from '@customs/db';
 import type { Streak } from '../board/streak';
+import type { QueueKind } from '../games/queue';
 import type { WindowKind } from '../night';
 import type { PlayerName } from '../tonight/types';
 
@@ -57,6 +58,11 @@ export interface StatsGame {
   lcuGameId: string | number | null;
   durationS: number;
   winningSide: SideValue;
+  /**
+   * The client's `gameMode` (`CLASSIC`, `ARAM`, `KIWI`), or `null` when `games.raw` never
+   * named one. `/games` filters on this; `/stats` and `/fun` ignore it.
+   */
+  gameMode?: string | null;
   rows: readonly StatsRow[];
 }
 
@@ -241,6 +247,8 @@ export interface FunRecord {
 /** Everything `/fun` prints, computed on the server from the same window `/stats` reads. */
 export interface FunFactsView {
   window: WindowKind;
+  /** Which map the records are from. Default Rift; `?queue=aram` is the other picker. */
+  queue: QueueKind;
   range: string | null;
   games: number;
   players: number;

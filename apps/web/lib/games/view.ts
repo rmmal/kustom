@@ -7,16 +7,17 @@ import { csCountLine, kdaLine } from '../stats/funCopy';
 import type { StatsGame, StatsPlayer, StatsRow } from '../stats/types';
 import type { PlayerName } from '../tonight/types';
 import { focusMetaLine, resultForWinner, scoreLine, teamHeading } from './copy';
+import { GAMES_QUEUE, matchesQueue, type QueueKind } from './queue';
 import type { GamesHistoryView, HistoryGame, HistorySeat, HistoryTeam } from './types';
 
 /**
  * `/games`, assembled from the same window `/stats` reads — **pure**, so the list and the
  * scoreboard are a unit test with a hand-built fixture and not a night of waiting.
  *
- * The universe here is **every captured game in the window**, not `gateGame`. A remake and a
- * nine-player custom still happened; the player page already lists those under Recent games,
- * and a history page that hid them would disagree with it. `/stats` and `/fun` keep the gate
- * because their numbers are a fold.
+ * The universe here is **every captured game of this map in the window**, not `gateGame`. A
+ * remake and a nine-player custom still happened; the player page already lists those under
+ * Recent games, and a history page that hid them would disagree with it. `/stats` and `/fun`
+ * keep the gate because their numbers are a fold, and they still mix the maps.
  */
 
 export interface GamesHistoryInput {
@@ -29,19 +30,24 @@ export interface GamesHistoryInput {
   timeZone?: string | undefined;
   /** `?p=`. Absent is the group list. */
   focusPuuid?: string | null | undefined;
+  /** `?queue=`. Absent is Summoner's Rift. */
+  queue?: QueueKind | undefined;
 }
 
 export function gamesHistoryView(input: GamesHistoryInput): GamesHistoryView {
   const focusPuuid = input.focusPuuid ?? null;
+  const queue = input.queue ?? GAMES_QUEUE;
   const roster = new Map(input.players.map((player) => [player.puuid, player]));
-  const listed = newestFirst(input.games).filter((game) =>
-    focusPuuid === null ? true : game.rows.some((row) => row.puuid === focusPuuid),
-  );
+  const listed = newestFirst(input.games).filter((game) => {
+    if (!matchesQueue(game.gameMode, queue)) return false;
+    return focusPuuid === null ? true : game.rows.some((row) => row.puuid === focusPuuid);
+  });
   const oldest = listed.length === 0 ? undefined : listed[listed.length - 1];
   const focusName = focusPuuid === null ? null : (roster.get(focusPuuid)?.name ?? null);
 
   return {
     window: input.window,
+    queue,
     range:
       listed.length === 0
         ? null

@@ -281,7 +281,7 @@ function gamesCountLineFrom(games: number): string {
 export function funFactsView(
   games: readonly StatsGame[],
   players: readonly StatsPlayer[],
-): Omit<FunFactsView, 'window' | 'range' | 'capped' | 'cap'> {
+): Omit<FunFactsView, 'window' | 'queue' | 'range' | 'capped' | 'cap'> {
   const counted = countedGames(games);
   const plays = playsOf(counted, players);
   const long = plays.filter((play) => play.game.durationS >= LONG_GAME_S);

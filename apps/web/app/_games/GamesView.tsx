@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { WINDOW_LABELS, windowSlotLine } from '@/lib/board/copy';
-import { windowHref } from '@/lib/board/window';
 import {
   COL_CS,
   COL_DAMAGE,
@@ -11,12 +10,14 @@ import {
   SCOREBOARD_LABEL,
   showingFocus,
 } from '@/lib/games/copy';
+import { gamesHref, gamesQuery } from '@/lib/games/href';
 import type { GamesHistoryView, HistoryGame, HistorySeat, HistoryTeam } from '@/lib/games/types';
 import { capLine } from '@/lib/stats/copy';
 import { isNameless, renderWebName } from '@/lib/tonight/copy';
 import { NamelessHint, RoleName } from '../_board/parts';
 import { WindowPicker } from '../_board/WindowPicker';
 import { WindowSlot } from '../_board/WindowSlot';
+import { QueuePicker } from './QueuePicker';
 
 /**
  * `/games`: the window's captured customs, each a collapsed match card that opens into both
@@ -36,7 +37,7 @@ export function GamesView({ history }: { history: GamesHistoryView }) {
         game.blue.seats.some((seat) => isNameless(seat.name)) ||
         game.red.seats.some((seat) => isNameless(seat.name)),
     );
-  const query = history.focusPuuid === null ? undefined : { p: history.focusPuuid };
+  const extra = gamesQuery({ focusPuuid: history.focusPuuid, queue: history.queue });
 
   return (
     <main className="cn-page">
@@ -44,7 +45,17 @@ export function GamesView({ history }: { history: GamesHistoryView }) {
         <h1 className="cn-strip-title">
           {WINDOW_LABELS[history.window]} <span className="cn-strip-sub">{GAMES_LABEL}</span>
         </h1>
-        <WindowPicker path="/games" selected={history.window} {...(query === undefined ? {} : { query })} />
+        <WindowPicker
+          path="/games"
+          selected={history.window}
+          {...(Object.keys(extra).length === 0 ? {} : { query: extra })}
+        />
+        <QueuePicker
+          path="/games"
+          window={history.window}
+          selected={history.queue}
+          query={history.focusPuuid ? { p: history.focusPuuid } : {}}
+        />
         <WindowSlot
           window={history.window}
           line={empty ? null : windowSlotLine(history.range as string, history.games)}
@@ -52,7 +63,7 @@ export function GamesView({ history }: { history: GamesHistoryView }) {
         {history.focusPuuid === null || history.focusName === null ? null : (
           <p className="cn-hint">
             {showingFocus(renderWebName(history.focusName))}{' '}
-            <Link className="cn-lineup-link" href={windowHref('/games', history.window)}>
+            <Link className="cn-lineup-link" href={gamesHref(history.window, { queue: history.queue })}>
               {EVERYONE_LABEL}
             </Link>
           </p>

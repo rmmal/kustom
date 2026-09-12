@@ -14,6 +14,7 @@ import type { FunFactsView, FunHolder, FunRecord, FunTable, PlayerRef, RoleCsPai
 import { renderWebName } from '@/lib/tonight/copy';
 import { WindowPicker } from '../_board/WindowPicker';
 import { WindowSlot } from '../_board/WindowSlot';
+import { QueuePicker } from '../_games/QueuePicker';
 import { RoleIcon } from '../_icons/RoleIcon';
 import '../board-parts.css';
 
@@ -22,12 +23,14 @@ import '../board-parts.css';
  *
  * A pure function of one snapshot. The numbers live in `lib/stats/fun.ts`; this file decides
  * nothing except order: the notes about what we do not store, then CS by role, then one-game
- * records, then habits. CS and records are labelled rows (name left, number right) — the same
- * recipe `/stats` uses for streaks — so a long Riot ID cannot wrap into the score.
+ * records, then habits. The Rift / ARAM picker is the same chips `/games` wears. CS-by-role
+ * is Rift only. CS and records are labelled rows (name left, number right) — the same recipe
+ * `/stats` uses for streaks — so a long Riot ID cannot wrap into the score.
  */
 
 export function FunView({ facts }: { facts: FunFactsView }) {
   const empty = facts.range === null;
+  const queueQuery = facts.queue === 'sr' ? {} : { queue: facts.queue };
 
   return (
     <main className="cn-page">
@@ -35,7 +38,12 @@ export function FunView({ facts }: { facts: FunFactsView }) {
         <h1 className="cn-strip-title">
           {WINDOW_LABELS[facts.window]} <span className="cn-strip-sub">{FUN_LABEL}</span>
         </h1>
-        <WindowPicker path="/fun" selected={facts.window} />
+        <WindowPicker
+          path="/fun"
+          selected={facts.window}
+          {...(Object.keys(queueQuery).length === 0 ? {} : { query: queueQuery })}
+        />
+        <QueuePicker path="/fun" window={facts.window} selected={facts.queue} />
         <WindowSlot
           window={facts.window}
           line={empty ? null : windowSlotLine(facts.range as string, facts.games)}
@@ -58,7 +66,7 @@ export function FunView({ facts }: { facts: FunFactsView }) {
           {facts.tables.map((table) => (
             <Table key={table.id} table={table} />
           ))}
-          <CsByRole pairs={facts.csByRole} />
+          {facts.queue === 'aram' ? null : <CsByRole pairs={facts.csByRole} />}
           <Records
             heading={RECORDS_HEADING}
             records={facts.records.filter((record) => !isHabit(record.id))}

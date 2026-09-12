@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import type { QueueKind } from '@/lib/games/queue';
 import type { WindowKind } from '@/lib/night';
 import { FIRST_BLOOD_EMPTY, FIRST_BLOOD_NOTE, FUN_LABEL } from '@/lib/stats/funCopy';
 import { assembleFunFacts } from '@/lib/stats/funView';
@@ -9,22 +10,28 @@ import { FunView } from './FunView';
 
 const MONTH = { start: new Date('2026-09-01T03:00:00Z'), end: new Date('2026-10-01T03:00:00Z') };
 
-function view(options: { window?: WindowKind } = {}): FunFactsView {
+function view(
+  options: { window?: WindowKind; queue?: QueueKind; gameMode?: string | null } = {},
+): FunFactsView {
   const game = tenPlayerGame({
     at: '2026-09-02T20:00:00Z',
     durationS: 1_800,
     winner: 100,
+    ...(options.gameMode === undefined ? {} : { gameMode: options.gameMode }),
     blue: [{ key: 'lena', role: 'adc', kills: 12, deaths: 2, assists: 8, cs: 240, damageToChamps: 20_000 }],
   });
-  return assembleFunFacts({
-    window: options.window ?? 'this-month',
-    games: [game],
-    players: rosterFor([game]),
-    range: MONTH,
-    capped: false,
-    cap: 2_000,
-    timeZone: 'Africa/Cairo',
-  });
+  return assembleFunFacts(
+    {
+      window: options.window ?? 'this-month',
+      games: [game],
+      players: rosterFor([game]),
+      range: MONTH,
+      capped: false,
+      cap: 2_000,
+      timeZone: 'Africa/Cairo',
+    },
+    options.queue,
+  );
 }
 
 describe('FunView', () => {
@@ -46,6 +53,30 @@ describe('FunView', () => {
     expect(screen.getByText('Highest CS')).toBeInTheDocument();
     expect(screen.getByText('Most kills')).toBeInTheDocument();
     expect(screen.getAllByText('12/2/8').length).toBeGreaterThan(0);
+  });
+
+  it('defaults to Rift and keeps the window when switching to ARAM', () => {
+    render(<FunView facts={view()} />);
+    expect(screen.getByRole('link', { name: "Summoner's Rift" })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'ARAM' })).toHaveAttribute(
+      'href',
+      '/fun?window=this-month&queue=aram',
+    );
+  });
+
+  it('hides CS by role on ARAM', () => {
+    render(<FunView facts={view({ queue: 'aram', gameMode: 'ARAM' })} />);
+    expect(screen.getByRole('link', { name: 'ARAM' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: "Summoner's Rift" })).toHaveAttribute(
+      'href',
+      '/fun?window=this-month',
+    );
+    expect(screen.getByRole('link', { name: 'Last month' })).toHaveAttribute(
+      'href',
+      '/fun?window=last-month&queue=aram',
+    );
+    expect(screen.queryByText('CS by role')).not.toBeInTheDocument();
+    expect(screen.getByText('Most kills')).toBeInTheDocument();
   });
 
   it('draws nothing under the strip on an empty window', () => {
