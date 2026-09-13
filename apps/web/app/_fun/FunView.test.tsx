@@ -9,11 +9,16 @@ import {
   FUN_LABEL,
   MOST_BANNED_TITLE,
   MOST_PICKED_TITLE,
+  OTP_TITLE,
   PENTA_EMPTY,
   PENTA_TITLE,
+  POOL_EMPTY,
+  POOLS_HEADING,
+  SEE_CHAMPS,
   SEE_GAMES,
   THIS_GAME,
   TRIPLE_TITLE,
+  VARIETY_TITLE,
 } from '@/lib/stats/funCopy';
 import { assembleFunFacts } from '@/lib/stats/funView';
 import { playerFacts } from '@/lib/stats/rawFacts';
@@ -65,6 +70,10 @@ describe('FunView', () => {
     expect(screen.getByText(FIRST_BLOOD_TITLE)).toBeInTheDocument();
     expect(screen.queryByText(FIRST_BLOOD_TAKEN_TITLE)).not.toBeInTheDocument();
     expect(screen.getByText(MOST_PICKED_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(POOLS_HEADING)).toBeInTheDocument();
+    expect(screen.getByText(OTP_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(VARIETY_TITLE)).toBeInTheDocument();
+    expect(screen.getAllByText(POOL_EMPTY).length).toBe(2);
     expect(screen.getByText(FIRST_BLOOD_EMPTY)).toBeInTheDocument();
     expect(screen.getByText(PENTA_TITLE)).toBeInTheDocument();
     expect(screen.getByText(TRIPLE_TITLE)).toBeInTheDocument();
@@ -235,6 +244,46 @@ describe('FunView', () => {
     expect(within(museum).getByText(SEE_GAMES)).toBeInTheDocument();
     expect(within(museum).getByText('Ahri · 2 triples')).toBeInTheDocument();
     expect(within(museum).getAllByText(THIS_GAME).length).toBe(2);
+  });
+
+  it('opens a collapsed champion × games list under the one-trick', () => {
+    const champs = [103, 22, 51, 67, 222];
+    const games = champs.map((championId, index) =>
+      tenPlayerGame({
+        id: `pool-${index}`,
+        at: `2026-09-0${index + 1}T20:00:00Z`,
+        durationS: 1_800,
+        winner: 100,
+        blue: [
+          { key: 'omar', role: 'mid', championId: 35 },
+          { key: 'lena', role: 'adc', championId },
+        ],
+      }),
+    );
+    const facts = assembleFunFacts({
+      window: 'this-month',
+      games,
+      players: rosterFor(games),
+      range: MONTH,
+      capped: false,
+      cap: 2_000,
+      timeZone: 'Africa/Cairo',
+    });
+    render(<FunView facts={facts} />);
+    const otp = screen.getByText(OTP_TITLE).closest('.cn-role-block') as HTMLElement;
+    const variety = screen.getByText(VARIETY_TITLE).closest('.cn-role-block') as HTMLElement;
+    expect(within(otp).getByText('اكتر واحد معرق')).toBeInTheDocument();
+    expect(within(variety).getByText('لعيب بيلعب بشامبيونات مختلفة')).toBeInTheDocument();
+    expect(within(otp).getByRole('link', { name: 'Omar' })).toBeInTheDocument();
+    expect(within(variety).getByRole('link', { name: 'Lena' })).toBeInTheDocument();
+    const card = otp.querySelector('details');
+    expect(card).not.toBeNull();
+    expect(card).not.toHaveAttribute('open');
+    expect(within(otp).getAllByText(SEE_CHAMPS).length).toBeGreaterThan(0);
+    expect(within(otp).getByText('Shaco')).toBeInTheDocument();
+    expect(within(otp).getByText('× 5')).toBeInTheDocument();
+    expect(within(variety).getByText('Ahri')).toBeInTheDocument();
+    expect(within(variety).getAllByText('× 1').length).toBe(5);
   });
 
   it('hides CS by role on ARAM', () => {

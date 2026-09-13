@@ -8,9 +8,7 @@ import { countedGames } from './fold';
 import {
   CLEAN_KDA,
   CLEAN_KDA_RULE,
-  COMFORT,
-  COMFORT_RULE,
-  comfortLine,
+  champTimesLine,
   csCountLine,
   csValue,
   DEATHLESS_GAMES,
@@ -84,6 +82,10 @@ import {
   NEVER_MISSES,
   NEVER_MISSES_RULE,
   NOBODY_THIS,
+  OTP_INTRO,
+  OTP_RULE,
+  OTP_TITLE,
+  otpLine,
   PAPER,
   PAPER_RULE,
   PENTA_EMPTY,
@@ -91,6 +93,7 @@ import {
   PENTA_MANY,
   PENTA_ONE,
   PENTA_TITLE,
+  POOL_EMPTY,
   QUADRA_EMPTY,
   QUADRA_INTRO,
   QUADRA_MANY,
@@ -113,6 +116,10 @@ import {
   TURRET_MANY,
   TURRET_ONE,
   TURRET_TITLE,
+  VARIETY_INTRO,
+  VARIETY_RULE,
+  VARIETY_TITLE,
+  varietyLine,
   WON_UGLY,
   WON_UGLY_RULE,
   ZERO_X,
@@ -127,6 +134,8 @@ import type {
   FunFearBan,
   FunHolder,
   FunOpening,
+  FunPool,
+  FunPoolRow,
   FunRecord,
   FunSection,
   PlayerRef,
@@ -155,9 +164,9 @@ const GHOST_TEAM_KILLS = 8;
 const GLUE_TEAM_KILLS = 5;
 const FOUNTAIN_CS = 30;
 const FOUNTAIN_TAKEDOWNS = 4;
-const COMFORT_RATE = 0.35;
 const FEAR_BAN_LIMIT = 5;
 const CHAMP_TABLE_LIMIT = 10;
+const POOL_TABLE_LIMIT = 10;
 const DEATHLESS_STREAK_MIN = 2;
 const SPREE_MIN = 3;
 
@@ -289,10 +298,20 @@ function csByRole(plays: readonly Play[], bind: BindGame): RoleCsPair[] {
   });
 }
 
-function comfortRecord(plays: readonly Play[]): FunRecord {
+interface ChampPool {
+  player: StatsPlayer;
+  games: number;
+  champs: Map<number, number>;
+  mainId: number;
+  mainCount: number;
+  rate: number;
+  unique: number;
+}
+
+function champPoolsOf(plays: readonly Play[]): ChampPool[] {
   const byPlayer = new Map<string, { player: StatsPlayer; games: number; champs: Map<number, number> }>();
   for (const play of plays) {
-    if (play.row.championId === null) continue;
+    if (play.row.championId === null || play.row.championId <= 0) continue;
     const row = byPlayer.get(play.player.playerId) ?? {
       player: play.player,
       games: 0,
@@ -303,30 +322,71 @@ function comfortRecord(plays: readonly Play[]): FunRecord {
     byPlayer.set(play.player.playerId, row);
   }
 
-  const otp = [...byPlayer.values()]
+  return [...byPlayer.values()]
     .filter((row) => row.games >= MIN_RECORD_GAMES)
     .map((row) => {
-      const [championId, count] = [...row.champs.entries()].sort((a, b) => b[1] - a[1])[0] ?? [0, 0];
-      return { ...row, championId, count, rate: count / row.games };
-    })
+      const [mainId, mainCount] = [...row.champs.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0] ?? [
+        0, 0,
+      ];
+      return {
+        ...row,
+        mainId,
+        mainCount,
+        rate: mainCount / row.games,
+        unique: row.champs.size,
+      };
+    });
+}
+
+function poolRow(pool: ChampPool, valueLabel: string): FunPoolRow {
+  return {
+    ...ref(pool.player),
+    valueLabel,
+    champs: [...pool.champs.entries()]
+      .sort((a, b) => b[1] - a[1] || championName(a[0]).localeCompare(championName(b[0])))
+      .map(([championId, count]) => ({
+        championId,
+        champion: championName(championId),
+        count,
+        valueLabel: champTimesLine(count),
+      })),
+  };
+}
+
+function byName(left: ChampPool, right: ChampPool): number {
+  return renderWebName(left.player.name).localeCompare(renderWebName(right.player.name));
+}
+
+function championPools(plays: readonly Play[]): FunPool[] {
+  const pools = champPoolsOf(plays);
+  const otp = [...pools]
+    .sort((a, b) => b.rate - a.rate || b.games - a.games || byName(a, b))
+    .slice(0, POOL_TABLE_LIMIT);
+  const variety = [...pools]
     .sort(
       (a, b) =>
-        b.rate - a.rate ||
-        b.games - a.games ||
-        renderWebName(a.player.name).localeCompare(renderWebName(b.player.name)),
-    )[0];
+        b.unique - a.unique || b.unique / b.games - a.unique / a.games || b.games - a.games || byName(a, b),
+    )
+    .slice(0, POOL_TABLE_LIMIT);
 
-  if (otp === undefined || otp.rate < COMFORT_RATE) {
-    return { id: 'comfort', title: COMFORT, rule: COMFORT_RULE, holders: [], empty: NOBODY_THIS };
-  }
-
-  return {
-    id: 'comfort',
-    title: COMFORT,
-    rule: COMFORT_RULE,
-    holders: [holder(otp.player, comfortLine(otp.count, otp.games))],
-    empty: NOBODY_THIS,
-  };
+  return [
+    {
+      id: 'otp',
+      title: OTP_TITLE,
+      intro: OTP_INTRO,
+      rule: OTP_RULE,
+      rows: otp.map((row) => poolRow(row, otpLine(championName(row.mainId), row.mainCount, row.games))),
+      empty: POOL_EMPTY,
+    },
+    {
+      id: 'variety',
+      title: VARIETY_TITLE,
+      intro: VARIETY_INTRO,
+      rule: VARIETY_RULE,
+      rows: variety.map((row) => poolRow(row, varietyLine(row.unique, row.games))),
+      empty: POOL_EMPTY,
+    },
+  ];
 }
 
 function attendanceRecord(plays: readonly Play[]): FunRecord {
@@ -566,7 +626,7 @@ export function funFactsView(
     empty: NOBODY_THIS,
   });
 
-  records.push(attendanceRecord(plays), comfortRecord(plays));
+  records.push(attendanceRecord(plays));
 
   return {
     games: counted.length,
@@ -641,6 +701,7 @@ export function funFactsView(
     fearBans: fearBans(plays),
     mostBanned: mostBanned(plays),
     mostPicked: mostPicked(plays),
+    pools: championPools(plays),
     csByRole: csByRole(plays, bind),
     records,
     notes: [],

@@ -2193,15 +2193,18 @@ are hidden on ARAM.
 Order under the strip: First Blood Museum (killer, champion, night), First Blood Donated only
 when the block named `firstBloodDeath` (hidden when empty — the live blob does not name who
 died), Pentakill / Quadrakill / Triple / Double museums, First Turret, Death Hall of Fame,
-Objective Thief (Rift), Fear Ban, Most banned (Rift), Most picked, then CS by role, one-game
-records, habits. First blood and vision are no longer printed as missing notes; the killer
+Objective Thief (Rift), Fear Ban, Most banned (Rift), Most picked, Who they lock (one-trick
+vs always a new champ), then CS by role, one-game records, habits. First blood and vision are no longer printed as missing notes; the killer
 museum is empty only when the stored block named no killer. Deaths and
 `longestTimeSpentLiving` are not a corpse. Multi-kill halls sum the stored count fields; a
 game with two triples is one opening labelled `2 triples`. First Turret is the
 `firstTowerKill` flag, never inferred from gold. Fear Ban is one sentence per person:
 `Omar's Shaco has been banned in 64% of games where they were available (16 of 25).` Most
 banned and Most picked are the lobby's champions, not a person's: `Shaco · 16 bans`,
-`Ahri · 12 picks`. One-game records include Longest killing spree from `largestKillingSpree`
+`Ahri · 12 picks`. Who they lock ranks people with at least five counted games that named a
+champion: **One-trick** is the highest share on one champion (`Shaco · 100% of 15 games`),
+**Always a new champ** is the most distinct champions (`12 champions · 15 games`). Each row
+is a closed `<details>` that opens **See champs** into `Ahri × 12`. One-game records include Longest killing spree from `largestKillingSpree`
 (at least three). Every English card title and record name carries an Egyptian 3ameya roast
 facing it on the right in brand (`مين فتحها`, `كنسهم كنس`, `كسب وهو زبالة`) — not فصحى and
 not a translation. Odd rows sit on `raise` so a long museum is a zebra.

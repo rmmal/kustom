@@ -2,17 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { rosterFor, statsGame, tenPlayerGame } from '../testing/statsFixtures';
 import { funFactsView } from './fun';
 import {
+  champTimesLine,
   DOUBLE_TITLE,
   FIRST_BLOOD_EMPTY,
   FIRST_BLOOD_TAKEN_EMPTY,
   FIRST_BLOOD_TITLE,
   fearBanLine,
   funRoast,
+  OTP_TITLE,
+  otpLine,
   PENTA_EMPTY,
   PENTA_TITLE,
+  POOL_EMPTY,
   QUADRA_TITLE,
   TRIPLE_TITLE,
   TURRET_TITLE,
+  VARIETY_TITLE,
+  varietyLine,
   WON_UGLY,
 } from './funCopy';
 import { playerFacts, type RawGameFacts } from './rawFacts';
@@ -155,6 +161,8 @@ describe('funFactsView', () => {
     expect(funRoast(FIRST_BLOOD_TITLE)).toBe('مين فتحها');
     expect(funRoast(PENTA_TITLE)).toBe('كنسهم كنس');
     expect(funRoast(WON_UGLY)).toBe('كسب وهو زبالة');
+    expect(funRoast(OTP_TITLE)).toBe('اكتر واحد معرق');
+    expect(funRoast(VARIETY_TITLE)).toBe('لعيب بيلعب بشامبيونات مختلفة');
     expect(funRoast('not a /fun title')).toBeNull();
   });
 
@@ -420,6 +428,54 @@ describe('funFactsView', () => {
     );
     const facts = funFactsView(games, rosterFor(games));
     expect(facts.fearBans.rows[0]?.line).toBe(fearBanLine('Omar', 'Shaco', 60, 3, 5));
+  });
+
+  it('ranks the one-trick and the player who never repeats a champion', () => {
+    const champs = [103, 22, 51, 67, 222];
+    const games = champs.map((championId, index) =>
+      tenPlayerGame({
+        id: `pool-${index}`,
+        at: `2026-09-0${index + 1}T20:00:00Z`,
+        durationS: 1_800,
+        winner: 100,
+        blue: [
+          { key: 'omar', role: 'mid', championId: 35 },
+          { key: 'lena', role: 'adc', championId },
+        ],
+      }),
+    );
+    const facts = funFactsView(games, rosterFor(games));
+    const otp = facts.pools.find((pool) => pool.id === 'otp');
+    const variety = facts.pools.find((pool) => pool.id === 'variety');
+    expect(otp?.rows[0]?.name).toBe('Omar');
+    expect(otp?.rows[0]?.valueLabel).toBe(otpLine('Shaco', 5, 5));
+    expect(otp?.rows[0]?.champs).toEqual([
+      { championId: 35, champion: 'Shaco', count: 5, valueLabel: champTimesLine(5) },
+    ]);
+    expect(variety?.rows[0]?.name).toBe('Lena');
+    expect(variety?.rows[0]?.valueLabel).toBe(varietyLine(5, 5));
+    expect(variety?.rows[0]?.champs.map((row) => [row.champion, row.count])).toEqual([
+      ['Ahri', 1],
+      ['Ashe', 1],
+      ['Caitlyn', 1],
+      ['Jinx', 1],
+      ['Vayne', 1],
+    ]);
+  });
+
+  it('leaves both pools empty under five counted games with a champion', () => {
+    const games = [1, 2, 3, 4].map((n) =>
+      tenPlayerGame({
+        id: `short-${n}`,
+        at: `2026-09-0${n}T20:00:00Z`,
+        durationS: 1_800,
+        winner: 100,
+        blue: [{ key: 'omar', role: 'mid', championId: 35 }],
+      }),
+    );
+    const facts = funFactsView(games, rosterFor(games));
+    expect(facts.pools.every((pool) => pool.rows.length === 0)).toBe(true);
+    expect(facts.pools[0]?.empty).toBe(POOL_EMPTY);
   });
 
   it('names a fountain resident only when CS and takedowns are both that low', () => {
