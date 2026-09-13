@@ -43,6 +43,10 @@ export function readTheme(): ThemeKind {
   return parseTheme(document.documentElement.dataset.theme) ?? THEME_DEFAULT;
 }
 
+export function otherTheme(theme: ThemeKind): ThemeKind {
+  return theme === 'night' ? 'day' : 'night';
+}
+
 export function applyTheme(theme: ThemeKind): void {
   document.documentElement.dataset.theme = theme;
   try {
