@@ -14,13 +14,14 @@
  *   empty page is the end, and the deepest `begIndex` reached is logged for M5.6.
  * - **The scan.** `POST /api/companion/backfill/scan`; the contract, in full, is the doc comment on
  *   `companionBackfillScanResponseSchema` in `@customs/db/schemas`. Not approved is one plain sentence and a
- *   stop; the next pass asks again. Ids the server already has go into the local cache and are never scanned
- *   again.
+ *   stop; the next pass asks again. Ids the server already has a draft-ban list for go into the local cache
+ *   and are not scanned again. A live eog row has no list, so the server still asks for a detail. Version 2
+ *   of this cache forgets the old "we have the id" set so last night's Yi/Zac get asked about once.
  * - **Details.** `GET /lol-match-history/v1/games/{gameId}` for the unknown ids, at most 20 per pass, one at a
  *   time, at least 2 s apart. Each one is mapped with `mapMatchDetail` and dropped with one line naming the id
  *   when it is not a `CUSTOM_GAME`, not `GameComplete`, not ten participants, has no winner or fails the
- *   schema. What survives goes to the game watcher's queue: the same file, the same drain, the same dedupe on
- *   `gameId` as an end-of-game block, so a game already captured live is never posted twice from here.
+ *   schema. What survives goes to the game watcher's queue. A game already captured live is posted again
+ *   so the server can copy `teams[].bans` onto the eog row — Most banned cannot see last night otherwise.
  * - **The cache.** `<configDir>/backfill.json`, tmp-file-and-rename: ids known to be handled (capped at 2000),
  *   ids scanned but not yet fetched, the walk cursor and the deepest index seen. It saves detail fetches and
  *   nothing else: delete it and the next pass re-walks and re-scans, and every post answers `created: false`.
@@ -59,7 +60,7 @@ export const BACKFILL_SCAN_API_PATH = '/api/companion/backfill/scan';
 export const MATCH_DETAIL_PATH = readEndpoint('match-detail').path;
 
 export const BACKFILL_CACHE_FILE = 'backfill.json';
-export const BACKFILL_CACHE_VERSION = 1;
+export const BACKFILL_CACHE_VERSION = 2;
 /** Ids remembered as handled. Over this the oldest are forgotten, which costs a scan, not a post. */
 export const MAX_KNOWN_GAME_IDS = 2000;
 
@@ -818,7 +819,7 @@ export class Backfill {
       return 'queued';
     }
     if (outcome === 'duplicate') {
-      this.logger.debug('backfilled game already handled by the end-of-game path', { gameId });
+      this.logger.debug('backfilled game already in the queue', { gameId });
       return 'duplicate';
     }
     // The queue said why (one line of its own); the id is tried again next pass.

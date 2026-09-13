@@ -492,7 +492,7 @@ describe('Backfill: the walk', () => {
     expect(existsSync(path)).toBe(true);
     expect(existsSync(`${path}.tmp`)).toBe(false);
     const parsed = backfillCacheSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(2);
     expect(parsed.lastRunAt).toBe('2026-09-09T10:00:00.000Z');
     expect(parsed.knownGameIds).toEqual(expect.arrayContaining(FIXTURE_CUSTOMS));
   });
@@ -854,9 +854,11 @@ describe('Backfill: drops and dedupe', () => {
     expect(h.gamePosts()[0]?.source).toBeUndefined();
 
     await pass(h);
+    await until(() => h.gamePosts().length === 2);
     expect(h.detailGets()).toEqual([EOG_GAME]);
-    expect(h.gamePosts()).toHaveLength(1);
-    expect(h.backfill.passes[0]).toMatchObject({ end: 'done', fetched: 1, duplicates: 1, queued: 0 });
+    expect(h.gamePosts()).toHaveLength(2);
+    expect(h.gamePosts()[1]).toMatchObject({ gameId: EOG_GAME, source: 'backfill' });
+    expect(h.backfill.passes[0]).toMatchObject({ end: 'done', fetched: 1, queued: 1, duplicates: 0 });
     expect(h.backfill.cache().knownGameIds).toContain(EOG_GAME);
   });
 

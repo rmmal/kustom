@@ -1,3 +1,4 @@
+import { rawNeedsDraftBanEnrichment } from '../stats/rawFacts';
 import type { ServiceClient } from '../supabase';
 
 /**
@@ -61,11 +62,13 @@ export async function markBackfillRequested(
 }
 
 /**
- * The ids in `gameIds` with no `games` row, in the order they were asked about.
+ * The ids in `gameIds` that still need a match-history detail, in the order they
+ * were asked about.
  *
- * "Do we have it" is `games.lcu_game_id`, from **any** source: a game we captured live is the
- * better record and backfill is never asked to fetch a detail for it. The caller has already
- * capped the batch at 100 (`BACKFILL_SCAN_BATCH_SIZE`), so this is one `in` list.
+ * A live end-of-game row is the better scoreboard, but it has no `teams[].bans`.
+ * Those Rift games stay "unknown" until a later detail post copies the list on.
+ * A row that already has a `bans` array — even empty, a blind custom — is done,
+ * and so is ARAM (no draft). The caller has already capped the batch at 100.
  */
 export async function selectUnknownGameIds(
   client: ServiceClient,
@@ -73,16 +76,20 @@ export async function selectUnknownGameIds(
 ): Promise<number[]> {
   const { data, error } = await client
     .from('games')
-    .select('lcu_game_id')
+    .select('lcu_game_id, raw')
     .in('lcu_game_id', [...gameIds]);
   if (error) throw new Error(`backfill: games select failed: ${error.message}`);
 
-  const known = new Set((data ?? []).map((row) => row.lcu_game_id));
-  // De-duplicated: a companion that asks about the same id twice in one batch gets it once.
+  const done = new Set<number>();
+  for (const row of data ?? []) {
+    if (row.lcu_game_id !== null && !rawNeedsDraftBanEnrichment(row.raw)) {
+      done.add(row.lcu_game_id);
+    }
+  }
   const unknown: number[] = [];
   const seen = new Set<number>();
   for (const gameId of gameIds) {
-    if (known.has(gameId) || seen.has(gameId)) continue;
+    if (done.has(gameId) || seen.has(gameId)) continue;
     seen.add(gameId);
     unknown.push(gameId);
   }

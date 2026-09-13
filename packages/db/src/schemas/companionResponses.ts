@@ -98,7 +98,10 @@ export const companionLobbyResponseSchema = z.object({
 export const companionGameResponseSchema = z.object({
   ok: z.literal(true),
   phase: z.enum(['in_progress', 'eog']),
-  /** False when this `lcu_game_id` was already stored: the second identical post. */
+  /**
+   * False when this `lcu_game_id` was already stored. A later backfill of the same id
+   * may still copy `teams[].bans` onto a live eog row that never stored them.
+   */
   created: z.boolean(),
   gameId: z.uuid().nullable(),
   lobbyId: z.uuid().nullable(),
@@ -155,7 +158,8 @@ export const BACKFILL_SCAN_BATCH_SIZE = 100;
  * with `source: 'backfill'`, **no `partyId` key** and `role: null` on every participant
  * (`companionGamePayloadSchema`, `mapMatchDetail` in `@customs/lcu`). The route stores such a game without
  * rating it inline, requires the token's player among the participants with no lobby fallback (403
- * otherwise), never overwrites a row it already has, and **must answer 2xx with the usual
+ * otherwise), never replaces a row it already has (it may copy `teams[].bans` onto a live
+ * eog block that never stored them), and **must answer 2xx with the usual
  * `companionGameResponseSchema` fields (`created` true or false) for a stored-but-unrated game**: a 2xx is
  * what deletes the companion's queue file, and a 400/403/404/422 deletes it as a permanent refusal.
  */

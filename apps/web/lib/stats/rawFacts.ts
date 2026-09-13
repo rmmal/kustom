@@ -99,11 +99,73 @@ export function playerFacts(partial: Partial<RawPlayerFacts> = {}): RawPlayerFac
 
 export function rawFactsFromUnknown(raw: unknown): RawGameFacts {
   if (!isRecord(raw)) return emptyRawFacts();
-  if (Array.isArray(raw.participants) && Array.isArray(raw.participantIdentities)) {
-    return fromMatchDetail(raw);
+  const facts =
+    Array.isArray(raw.participants) && Array.isArray(raw.participantIdentities)
+      ? fromMatchDetail(raw)
+      : Array.isArray(raw.teams)
+        ? fromEog(raw)
+        : emptyRawFacts();
+  // Bans live on `teams[]` in every verified shape. Collect them after the player
+  // branch: an end-of-game team has `players` and no bans; a match-history team
+  // has `bans` and no players. Taking only one branch used to drop the list.
+  facts.bans = collectBans(raw);
+  return facts;
+}
+
+/** True when `teams[]` already carries a `bans` array — including an empty blind draft. */
+export function rawHasDraftBanList(raw: unknown): boolean {
+  if (!isRecord(raw) || !Array.isArray(raw.teams)) return false;
+  return raw.teams.some((team) => isRecord(team) && Array.isArray(team.bans));
+}
+
+/**
+ * Whether a stored row still needs a match-history detail so Most banned can
+ * see it. ARAM and other non-Rift modes have no draft — we do not keep asking.
+ * A missing `gameMode` is old Rift (every night before the queue picker).
+ */
+export function rawNeedsDraftBanEnrichment(raw: unknown): boolean {
+  if (rawHasDraftBanList(raw)) return false;
+  if (!isRecord(raw)) return true;
+  const mode = typeof raw.gameMode === 'string' ? raw.gameMode.trim().toUpperCase() : '';
+  return mode === '' || mode === 'CLASSIC';
+}
+
+/**
+ * Copy `teams[].bans` from a match-history block onto an end-of-game row that
+ * never stored them. Returns a new raw object when something was added, else null.
+ * Never replaces players, stats, or a list that is already present.
+ */
+export function mergeDraftBans(stored: unknown, incoming: unknown): Record<string, unknown> | null {
+  if (
+    !isRecord(stored) ||
+    rawHasDraftBanList(stored) ||
+    !isRecord(incoming) ||
+    !Array.isArray(incoming.teams)
+  ) {
+    return null;
   }
-  if (Array.isArray(raw.teams)) return fromEog(raw);
-  return emptyRawFacts();
+  if (!Array.isArray(stored.teams)) return null;
+
+  const incomingBans = new Map<SideValue, unknown[]>();
+  for (const team of incoming.teams) {
+    if (!isRecord(team) || !Array.isArray(team.bans)) continue;
+    const teamId = asSide(team.teamId);
+    if (teamId === null) continue;
+    incomingBans.set(teamId, team.bans);
+  }
+  if (incomingBans.size === 0) return null;
+
+  let changed = false;
+  const teams = stored.teams.map((team) => {
+    if (!isRecord(team) || Array.isArray(team.bans)) return team;
+    const teamId = asSide(team.teamId);
+    if (teamId === null) return team;
+    const bans = incomingBans.get(teamId);
+    if (bans === undefined) return team;
+    changed = true;
+    return { ...team, bans };
+  });
+  return changed ? { ...stored, teams } : null;
 }
 
 export type EpicKind = 'dragon' | 'baron' | 'herald' | 'void-grub' | 'atakhan';
@@ -148,7 +210,6 @@ function fromEog(raw: Record<string, unknown>): RawGameFacts {
   const facts = emptyRawFacts();
   for (const team of raw.teams as unknown[]) {
     if (!isRecord(team) || !Array.isArray(team.players)) continue;
-    const teamId = asSide(team.teamId);
     for (const player of team.players) {
       if (!isRecord(player)) continue;
       const puuid = asPuuid(player.puuid);
@@ -161,9 +222,6 @@ function fromEog(raw: Record<string, unknown>): RawGameFacts {
         timelineLane: null,
         timelineRole: null,
       });
-    }
-    if (teamId !== null) {
-      pushBans(facts.bans, team.bans, teamId);
     }
   }
   return facts;
@@ -196,14 +254,6 @@ function fromMatchDetail(raw: Record<string, unknown>): RawGameFacts {
     });
   }
 
-  if (Array.isArray(raw.teams)) {
-    for (const team of raw.teams) {
-      if (!isRecord(team)) continue;
-      const teamId = asSide(team.teamId);
-      if (teamId === null) continue;
-      pushBans(facts.bans, team.bans, teamId);
-    }
-  }
   return facts;
 }
 
@@ -253,14 +303,26 @@ function hasSmite(spell1: unknown, spell2: unknown, stats: Record<string, unknow
   );
 }
 
-function pushBans(into: RawBan[], bans: unknown, teamId: SideValue): void {
-  if (!Array.isArray(bans)) return;
-  for (const ban of bans) {
-    if (!isRecord(ban)) continue;
-    const championId = asInt(ban.championId);
-    if (championId === null || championId <= 0) continue;
-    into.push({ championId, teamId });
+function collectBans(raw: Record<string, unknown>): RawBan[] {
+  const bans: RawBan[] = [];
+  if (!Array.isArray(raw.teams)) return bans;
+  for (const team of raw.teams) {
+    if (!isRecord(team) || !Array.isArray(team.bans)) continue;
+    const teamId = asSide(team.teamId);
+    if (teamId === null) continue;
+    for (const ban of team.bans) {
+      if (!isRecord(ban)) continue;
+      const championId = asChampionId(ban.championId);
+      if (championId === null) continue;
+      bans.push({ championId, teamId });
+    }
   }
+  return bans;
+}
+
+function asChampionId(value: unknown): number | null {
+  const n = typeof value === 'string' ? asInt(Number(value.trim())) : asInt(value);
+  return n !== null && n > 0 ? n : null;
 }
 
 function flag(value: unknown): boolean {

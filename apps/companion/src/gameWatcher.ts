@@ -390,14 +390,17 @@ export class GameWatcher implements GameSink {
   }
 
   /**
-   * Writes a payload to the queue and starts a drain. The dedupe is the one `capture` uses — posted in this
-   * process, holding a queue file, or a file on disk — so an end-of-game block and a backfilled detail for the
-   * same `gameId` (M5.1) can never both cost a post. Never throws; a refused write is one log line from the
-   * queue.
+   * Writes a payload to the queue and starts a drain. A second eog of the same `gameId` is a
+   * no-op. A backfill of that id is posted so the server can copy draft bans onto the eog row.
+   * Never throws; a refused write is one log line from the queue.
    */
   enqueue(payload: CompanionGameEogPayloadInput, origin: string): EnqueueOutcome {
     const gameId = String(payload.gameId);
-    if (this.settledGames.has(gameId) || this.queuedGames.has(gameId) || this.queue.has(gameId)) {
+    const already = this.settledGames.has(gameId) || this.queuedGames.has(gameId) || this.queue.has(gameId);
+    // A live eog row wins the scoreboard. A later backfill of the same id is still posted
+    // so the server can copy `teams[].bans` onto that row — Most banned cannot see last
+    // night otherwise. Any other second enqueue stays a no-op.
+    if (already && origin !== 'backfill') {
       this.logger.debug('game already handled; not queued again', { gameId, origin });
       return 'duplicate';
     }
