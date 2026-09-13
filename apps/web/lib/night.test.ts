@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  civilDayKey,
+  civilDayStart,
   closedWindow,
   DEFAULT_NIGHT_TIME_ZONE,
   formatDayMonthYear,
@@ -9,6 +11,7 @@ import {
   isInWindow,
   isValidTimeZone,
   monthStart,
+  nextCivilMidnight,
   nightStart,
   type WindowKind,
   weekStart,
@@ -79,6 +82,30 @@ describe('nightStart', () => {
   it('defaults to where the group is', () => {
     expect(DEFAULT_NIGHT_TIME_ZONE).toBe('Africa/Cairo');
     expect(nightStart(new Date('2026-09-08T18:00:00Z')).toISOString()).toBe('2026-09-08T03:00:00.000Z');
+  });
+});
+
+describe('civil midnight (M5.32 Daily Mystery)', () => {
+  it('starts the calendar day at 00:00 local, not the night 06:00', () => {
+    // 15:00 Cairo on 13 September 2026 (UTC+3) is 12:00Z. Civil midnight was 21:00Z on the 12th.
+    const afternoon = new Date('2026-09-13T12:00:00Z');
+    expect(civilDayStart(afternoon, CAIRO).toISOString()).toBe('2026-09-12T21:00:00.000Z');
+    expect(civilDayKey(afternoon, CAIRO)).toBe('2026-09-13');
+    expect(nextCivilMidnight(afternoon, CAIRO).toISOString()).toBe('2026-09-13T21:00:00.000Z');
+  });
+
+  it('keeps a 01:30 session on the next civil day, unlike nightStart', () => {
+    // 01:30 Cairo on the 14th is still the 13th's night, but Daily Mystery has already rotated.
+    const late = new Date('2026-09-13T22:30:00Z');
+    expect(civilDayKey(late, CAIRO)).toBe('2026-09-14');
+    expect(nightStart(late, CAIRO).toISOString()).toBe('2026-09-13T03:00:00.000Z');
+  });
+
+  it('reads winter midnight on UTC+2', () => {
+    // 15 January 2026 15:00 Cairo (UTC+2) is 13:00Z; midnight was 22:00Z on the 14th.
+    const winter = new Date('2026-01-15T13:00:00Z');
+    expect(civilDayStart(winter, CAIRO).toISOString()).toBe('2026-01-14T22:00:00.000Z');
+    expect(civilDayKey(winter, CAIRO)).toBe('2026-01-15');
   });
 });
 

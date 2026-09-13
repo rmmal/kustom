@@ -48,6 +48,8 @@ describe('the top bar', () => {
     expect(screen.getByRole('link', { name: 'Stats' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Fun' })).toHaveAttribute('href', '/fun');
     expect(screen.getByRole('link', { name: 'Fun' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Mystery' })).toHaveAttribute('href', '/mystery');
+    expect(screen.getByRole('link', { name: 'Mystery' })).not.toHaveAttribute('aria-current');
   });
 
   it('underlines Games on the games page', () => {
@@ -69,6 +71,13 @@ describe('the top bar', () => {
 
     expect(screen.getByRole('link', { name: 'Fun' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Stats' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('underlines Mystery on the mystery page', () => {
+    draw('/mystery');
+
+    expect(screen.getByRole('link', { name: 'Mystery' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Fun' })).not.toHaveAttribute('aria-current');
   });
 
   it('moves the underline to the leaderboard on a player page', () => {

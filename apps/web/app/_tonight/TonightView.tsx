@@ -2,6 +2,7 @@ import { displayRating } from '@customs/core';
 import type { RoleValue } from '@customs/db';
 import type { BoardRow } from '@/lib/board/types';
 import { favoredClause, formatDamage, formatDuration } from '@/lib/discord/embeds';
+import type { MysteryPageState } from '@/lib/mystery/service';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import { NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
@@ -31,6 +32,7 @@ import type {
 import { type ViewerState, viewerIsAdmin, viewerPuuid } from '@/lib/tonight/viewer';
 import { RoleIcon } from '../_icons/RoleIcon';
 import { TopOfBoard } from '../_leaderboard/BoardCard';
+import { MysteryLive } from '../_mystery/MysteryLive';
 import { CompanionCard, HowThisWorksCard } from '../_shell/HowThisWorks';
 import { RerollControl } from './RerollControl';
 import { RoleTonight } from './RoleTonight';
@@ -96,6 +98,11 @@ export interface TonightViewProps {
    * two things they re-read are two different facts that happen to live in one place.
    */
   onLobbyStarted?: (() => void) | undefined;
+  /**
+   * Today's Daily Mystery (M5.32). Optional so the tonight fixture tests stay a
+   * snapshot of the lobby. The live page always passes one.
+   */
+  mystery?: MysteryPageState | null;
 }
 
 export function TonightView({
@@ -105,6 +112,7 @@ export function TonightView({
   lobbyStart = null,
   onViewerChanged,
   onLobbyStarted,
+  mystery = null,
 }: TonightViewProps) {
   const state = tonightState(snapshot);
   const header = tonightHeader(state);
@@ -194,6 +202,12 @@ export function TonightView({
          * rows at every count. It draws nothing at all for the common case — a visitor who
          * is not signed in and no live lobby.
          */}
+        {mystery === null ? null : (
+          <section className="cn-block cn-mystery-home">
+            <MysteryLive initial={mystery} />
+          </section>
+        )}
+
         <RoleTonight lobby={snapshot.lobby} viewer={viewer} onViewerChanged={onViewerChanged} />
       </main>
 

@@ -52,6 +52,8 @@ export interface RawPlayerFacts {
   largestKillingSpree: number;
   /** Named only when the blob carried `firstTowerKill`. Never inferred from gold or towers. */
   firstTowerKill: boolean;
+  /** `totalDamageTaken` when the block stored it. Null when it did not. */
+  damageTaken: number | null;
 }
 
 export interface RawBan {
@@ -93,6 +95,7 @@ export function playerFacts(partial: Partial<RawPlayerFacts> = {}): RawPlayerFac
     doubleKills: 0,
     largestKillingSpree: 0,
     firstTowerKill: false,
+    damageTaken: null,
     ...partial,
   };
 }
@@ -291,6 +294,7 @@ function extrasFromStats(
     doubleKills: asCount(stats.doubleKills, stats.DOUBLE_KILLS),
     largestKillingSpree: asCount(stats.largestKillingSpree, stats.LARGEST_KILLING_SPREE),
     firstTowerKill: flag(stats.firstTowerKill) || flag(stats.FIRST_TOWER_KILL),
+    damageTaken: asInt(stats.totalDamageTaken) ?? asInt(stats.TOTAL_DAMAGE_TAKEN),
   });
 }
 

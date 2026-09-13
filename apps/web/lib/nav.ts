@@ -1,13 +1,15 @@
 import type { Route } from 'next';
 import { GAMES_LABEL } from './games/copy';
+import { MYSTERY_LABEL } from './mystery/copy';
 import { STATS_LABEL } from './stats/copy';
 import { FUN_LABEL } from './stats/funCopy';
 
 /**
  * Where the shell can send you, in one list (05-design.md, "The app shell").
  *
- * **A tab is rendered only if its route exists.** `Tonight`, `Leaderboard`, `Games`, `Stats` and
- * — since M5.24 — `Fun` are routes in this app; `Companion ↗` is external and is always there.
+ * **A tab is rendered only if its route exists.** `Tonight`, `Leaderboard`, `Games`, `Stats`,
+ * `Fun` and — since M5.32 — `Mystery` are routes in this app; `Companion ↗` is external and is
+ * always there.
  * A nav item that 404s is worse than a missing one, and keeping the list here is what stops a
  * second page hand-writing a fifth answer.
  *
@@ -65,6 +67,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
    */
   { label: STATS_LABEL, href: '/stats' },
   { label: FUN_LABEL, href: '/fun' },
+  { label: MYSTERY_LABEL, href: '/mystery' },
   { label: 'Companion ↗', href: RELEASES_URL, external: true },
 ];
 

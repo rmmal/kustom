@@ -7,4 +7,5 @@ export * from './common';
 export * from './companion';
 export * from './companionResponses';
 export * from './me';
+export * from './mystery';
 export * from './windowPosts';

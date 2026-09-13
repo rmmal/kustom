@@ -29,6 +29,11 @@ export type CompanionCommandRow = Tables<'companion_commands'>;
 export type DiscordConfigRow = Tables<'discord_config'>;
 /** One closed window the weekly/monthly Discord post has claimed (M5.13). */
 export type WindowPostRow = Tables<'window_posts'>;
+/** One Daily Mystery challenge (M5.32). Service-role only — the answer column is secret. */
+export type DailyMysteryRow = Tables<'daily_mysteries'>;
+export type DailyMysteryClueRow = Tables<'daily_mystery_clues'>;
+export type DailyMysterySessionRow = Tables<'daily_mystery_sessions'>;
+export type DailyMysteryAttemptRow = Tables<'daily_mystery_attempts'>;
 
 /**
  * `players` without `discord_id`. This is the only players relation anon and authenticated
@@ -49,6 +54,10 @@ export type CompanionTokenInsert = TablesInsert<'companion_tokens'>;
 export type CompanionCommandInsert = TablesInsert<'companion_commands'>;
 export type DiscordConfigInsert = TablesInsert<'discord_config'>;
 export type WindowPostInsert = TablesInsert<'window_posts'>;
+export type DailyMysteryInsert = TablesInsert<'daily_mysteries'>;
+export type DailyMysteryClueInsert = TablesInsert<'daily_mystery_clues'>;
+export type DailyMysterySessionInsert = TablesInsert<'daily_mystery_sessions'>;
+export type DailyMysteryAttemptInsert = TablesInsert<'daily_mystery_attempts'>;
 
 /** Update shapes. */
 export type PlayerUpdate = TablesUpdate<'players'>;

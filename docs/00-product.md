@@ -142,6 +142,7 @@ See `02-milestones.md` for the build order. In product terms:
 | Backfill every past custom from the client's match history | M5 |
 | This week / this month / all time on the board, awards, role and duo stats | M5 |
 | Game history with per-player KDA, damage, gold and CS (Summoner's Rift by default, ARAM toggle) | M5 |
+| Daily Mystery: one accountless "who was it?" guess per civil day | M5 |
 | Tray app wrapper with auto-start | M6 |
 
 Backfill (M5) reads the client's own match history, and M0 confirmed it can: customs are in there

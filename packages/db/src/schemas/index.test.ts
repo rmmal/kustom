@@ -26,6 +26,7 @@ import {
   roleSchema,
   sideSchema,
   summonerIdSchema,
+  mysteryVisitorIdSchema,
   WINDOW_POST_KINDS,
   windowPostKindSchema,
   ZERO_PUUID,
@@ -512,6 +513,14 @@ describe('command queue contract (M4.1)', () => {
  * the same pair, and the cron route's response schema is built from this one — so a third
  * closed window is a change in one place.
  */
+describe('mysteryVisitorIdSchema (M5.32)', () => {
+  it('accepts a random anonymous id and refuses a short or named one', () => {
+    expect(mysteryVisitorIdSchema.parse('a1b2c3d4-e5f6-7890-abcd-ef1234567890')).toHaveLength(36);
+    expect(mysteryVisitorIdSchema.safeParse('short').success).toBe(false);
+    expect(mysteryVisitorIdSchema.safeParse('Ahmed the detective').success).toBe(false);
+  });
+});
+
 describe('windowPostKindSchema', () => {
   it('is the two windows that close', () => {
     expect(WINDOW_POST_KINDS).toEqual(['last-week', 'last-month']);
