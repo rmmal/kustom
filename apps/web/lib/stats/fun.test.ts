@@ -326,6 +326,27 @@ describe('funFactsView', () => {
     expect(facts.mostPicked.rows[0]).toMatchObject({ champion: 'Ahri', valueLabel: '2 picks' });
   });
 
+  it('counts Master Yi and Zac from stored draft bans, one per team per game', () => {
+    const game = tenPlayerGame({
+      id: 'bans-yi-zac',
+      at: '2026-09-12T20:00:00Z',
+      durationS: 1_800,
+      winner: 100,
+      blue: [{ key: 'lena', role: 'adc', championId: 103, kills: 4, deaths: 1, assists: 2 }],
+      rawFacts: rawFacts({
+        bans: [
+          { championId: 11, teamId: 100 },
+          { championId: 154, teamId: 200 },
+        ],
+      }),
+    });
+    const facts = funFactsView([game], rosterFor([game]));
+    expect(facts.mostBanned.rows.map((row) => [row.champion, row.count])).toEqual([
+      ['Master Yi', 1],
+      ['Zac', 1],
+    ]);
+  });
+
   it('sums stored multi-kills per person and does not invent a penta from KDA', () => {
     const games = [
       tenPlayerGame({

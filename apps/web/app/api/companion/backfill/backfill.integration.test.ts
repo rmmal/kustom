@@ -66,6 +66,7 @@ if (stack === null) {
   const scanUnknownGameId = baseGameId + 6;
   const staleNameGameId = baseGameId + 7;
   const staleBackfillGameId = baseGameId + 8;
+  const banMergeGameId = baseGameId + 9;
   const gameIds = [
     backfillGameId,
     eogFirstGameId,
@@ -75,6 +76,7 @@ if (stack === null) {
     scanUnknownGameId,
     staleNameGameId,
     staleBackfillGameId,
+    banMergeGameId,
   ];
 
   let ownerToken = '';
@@ -273,11 +275,12 @@ if (stack === null) {
         post({ gameIds: [scanKnownGameId, scanUnknownGameId, scanUnknownGameId] }, ownerToken),
       );
       expect(response.status).toBe(200);
-      // De-duplicated, in the order asked, and the stored id is gone.
+      // The live eog row is stored but has no `teams[].bans`, so it still needs a
+      // match-history detail. De-duplicated, in the order asked.
       expect(await response.json()).toEqual({
         ok: true,
         approved: true,
-        unknown: [scanUnknownGameId],
+        unknown: [scanKnownGameId, scanUnknownGameId],
       });
     });
 
@@ -415,6 +418,56 @@ if (stack === null) {
       // And not one `players` row either: a re-post of a game we have says nothing about who
       // anybody is (M5.1 review).
       expect(await readPlayers()).toEqual(beforePlayers);
+    });
+
+    it('copies teams[].bans onto a live eog row that never stored them', async () => {
+      const live = await postGame(
+        post(
+          eogBody({
+            gameId: banMergeGameId,
+            puuids,
+            partyId: null,
+            raw: {
+              gameMode: 'CLASSIC',
+              teams: [
+                { teamId: 100, players: [{ puuid: ownerPuuid }] },
+                { teamId: 200, players: [] },
+              ],
+            },
+          }),
+          ownerToken,
+        ),
+      );
+      expect(live.status).toBe(200);
+
+      const before = await db
+        .from('games')
+        .select('id, source, raw')
+        .eq('lcu_game_id', banMergeGameId)
+        .single();
+      expect(before.data?.source).toBe('eog');
+
+      const detail = backfillBody(banMergeGameId, {
+        raw: {
+          gameMode: 'CLASSIC',
+          teams: [
+            { teamId: 100, bans: [{ championId: 11, pickTurn: 1 }] },
+            { teamId: 200, bans: [{ championId: 154, pickTurn: 6 }] },
+          ],
+        },
+      });
+      const response = await postGame(post(detail, ownerToken));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ created: false });
+
+      const after = await db.from('games').select('source, raw').eq('lcu_game_id', banMergeGameId).single();
+      expect(after.data?.source).toBe('eog');
+      const teams =
+        (after.data?.raw as { teams?: { bans?: { championId: number }[] }[] } | null)?.teams ?? [];
+      expect(teams.flatMap((team) => team.bans ?? []).map((ban) => ban.championId)).toEqual([11, 154]);
+
+      const scan = await postScan(post({ gameIds: [banMergeGameId] }, ownerToken));
+      expect(await scan.json()).toEqual({ ok: true, approved: true, unknown: [] });
     });
 
     it('never walks a name backwards: an old detail does not rename a player we know', async () => {

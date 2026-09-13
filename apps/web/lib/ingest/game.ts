@@ -6,6 +6,7 @@ import {
   type Json,
   scrubRawEogBlock,
 } from '@customs/db';
+import { mergeDraftBans } from '../stats/rawFacts';
 import type { ServiceClient } from '../supabase';
 import { selectLatestLobby } from './lobby';
 import { ensurePlayers } from './players';
@@ -22,9 +23,8 @@ import { ensurePlayers } from './players';
  * from — including a rebuild (M5.2) that replays the fold from scratch.
  *
  * Idempotency is on `lcu_game_id`: two companions in the same game both post, and the second
- * post changes no rows. That is also what makes an eog row win over a backfill of the same
- * game — `ignoreDuplicates` means not one column of the stored row changes, whichever arrived
- * first (M5.1).
+ * post does not replace the row. A later match-history post may copy `teams[].bans` onto a
+ * live eog block that never stored them — that list only, nothing else.
  */
 
 /** The only `gameType` we ingest. Anything else is not our night (`M2.5`). */
@@ -104,6 +104,9 @@ export async function ingestEogGame(
   const created = inserted !== null;
 
   await upsertGamePlayers(client, game.id, payload, created);
+  if (!created) {
+    await mergeStoredDraftBans(client, game.id, payload.raw);
+  }
 
   return {
     gameId: game.id,
@@ -111,6 +114,27 @@ export async function ingestEogGame(
     created,
     participants: await countGamePlayers(client, game.id),
   };
+}
+
+/**
+ * A second post of the same `lcu_game_id` used to change no column. Live eog
+ * rows have no `teams[].bans`; a later match-history post carries them. Copy
+ * only that list onto the stored block so `/fun` Most banned can see last night.
+ */
+async function mergeStoredDraftBans(
+  client: ServiceClient,
+  gameId: string,
+  incomingRaw: Record<string, unknown>,
+): Promise<void> {
+  const { data, error } = await client.from('games').select('raw').eq('id', gameId).maybeSingle();
+  if (error) throw new Error(`ingestGame: raw select failed: ${error.message}`);
+  const merged = mergeDraftBans(data?.raw, incomingRaw);
+  if (merged === null) return;
+  const { error: updateError } = await client
+    .from('games')
+    .update({ raw: asJson(scrubRawEogBlock(merged)) })
+    .eq('id', gameId);
+  if (updateError) throw new Error(`ingestGame: raw ban merge failed: ${updateError.message}`);
 }
 
 async function selectGame(

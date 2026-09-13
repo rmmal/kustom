@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { emptyRawFacts, rawFactsFromUnknown, stealLine } from './rawFacts';
+import {
+  emptyRawFacts,
+  mergeDraftBans,
+  rawFactsFromUnknown,
+  rawHasDraftBanList,
+  rawNeedsDraftBanEnrichment,
+  stealLine,
+} from './rawFacts';
 
 describe('rawFactsFromUnknown', () => {
   it('is empty on junk', () => {
@@ -129,5 +136,99 @@ describe('rawFactsFromUnknown', () => {
       { championId: 35, teamId: 100 },
       { championId: 103, teamId: 200 },
     ]);
+  });
+
+  it('reads draft bans off match-history teams that have no players', () => {
+    const facts = rawFactsFromUnknown({
+      teams: [
+        {
+          teamId: 100,
+          bans: [
+            { championId: 11, pickTurn: 1 },
+            { championId: '154', pickTurn: 2 },
+          ],
+        },
+        { teamId: 200, bans: [{ championId: 11, pickTurn: 6 }] },
+      ],
+    });
+    expect(facts.bans).toEqual([
+      { championId: 11, teamId: 100 },
+      { championId: 154, teamId: 100 },
+      { championId: 11, teamId: 200 },
+    ]);
+  });
+
+  it('reads bans copied onto an end-of-game team that already has players', () => {
+    const facts = rawFactsFromUnknown({
+      gameMode: 'CLASSIC',
+      teams: [
+        {
+          teamId: 100,
+          players: [{ puuid: 'u-lena', stats: { firstBloodKill: 1 } }],
+          bans: [{ championId: 11, pickTurn: 1 }],
+        },
+        {
+          teamId: 200,
+          players: [{ puuid: 'u-yuki', stats: {} }],
+          bans: [{ championId: 154, pickTurn: 6 }],
+        },
+      ],
+    });
+    expect(facts.byPuuid['u-lena']?.firstBloodKill).toBe(true);
+    expect(facts.bans).toEqual([
+      { championId: 11, teamId: 100 },
+      { championId: 154, teamId: 200 },
+    ]);
+  });
+});
+
+describe('rawNeedsDraftBanEnrichment', () => {
+  it('asks for a live eog Rift row that never stored bans', () => {
+    expect(rawNeedsDraftBanEnrichment({ gameMode: 'CLASSIC', teams: [{ teamId: 100, players: [] }] })).toBe(
+      true,
+    );
+    expect(rawNeedsDraftBanEnrichment({ teams: [{ teamId: 100, players: [] }] })).toBe(true);
+  });
+
+  it('does not keep asking once a ban list is present, or for ARAM', () => {
+    expect(
+      rawNeedsDraftBanEnrichment({
+        gameMode: 'CLASSIC',
+        teams: [{ teamId: 100, bans: [{ championId: 11 }] }],
+      }),
+    ).toBe(false);
+    expect(rawNeedsDraftBanEnrichment({ gameMode: 'ARAM', teams: [{ teamId: 100, players: [] }] })).toBe(
+      false,
+    );
+  });
+});
+
+describe('mergeDraftBans', () => {
+  it('copies match-history bans onto an eog block that never stored them', () => {
+    const stored = {
+      gameId: 1,
+      teams: [
+        { teamId: 100, players: [{ puuid: 'u-lena' }] },
+        { teamId: 200, players: [{ puuid: 'u-yuki' }] },
+      ],
+    };
+    const incoming = {
+      teams: [
+        { teamId: 100, bans: [{ championId: 11, pickTurn: 1 }] },
+        { teamId: 200, bans: [{ championId: 154, pickTurn: 6 }] },
+      ],
+    };
+    expect(rawHasDraftBanList(stored)).toBe(false);
+    const merged = mergeDraftBans(stored, incoming);
+    expect(merged).not.toBeNull();
+    expect(rawHasDraftBanList(merged)).toBe(true);
+    expect(rawFactsFromUnknown(merged).bans.map((ban) => ban.championId)).toEqual([11, 154]);
+    expect(mergeDraftBans(merged, incoming)).toBeNull();
+  });
+
+  it('does not invent a list when the incoming block has none', () => {
+    expect(
+      mergeDraftBans({ teams: [{ teamId: 100, players: [] }] }, { teams: [{ teamId: 100 }] }),
+    ).toBeNull();
   });
 });
