@@ -39,17 +39,19 @@ export type MysteryPageState =
   | { kind: 'play'; play: MysteryPlayView }
   | { kind: 'closed'; result: MysteryResultView };
 
+export function emptyMysteryPage(now: Date, timeZone: string): MysteryPageState {
+  return {
+    kind: 'empty',
+    empty: { empty: true, expiresAt: nextCivilMidnight(now, timeZone).toISOString() },
+  };
+}
+
 export async function loadMysteryPage(
   client: ServiceClient,
   options: { now: Date; timeZone: string; visitorId: string | null },
 ): Promise<MysteryPageState> {
   const row = await ensureTodayMystery(client, options.now, options.timeZone);
-  if (row === null) {
-    return {
-      kind: 'empty',
-      empty: { empty: true, expiresAt: nextCivilMidnight(options.now, options.timeZone).toISOString() },
-    };
-  }
+  if (row === null) return emptyMysteryPage(options.now, options.timeZone);
   if (options.visitorId !== null) {
     const attempt = await loadAttempt(client, row.id, options.visitorId);
     if (attempt !== null) {

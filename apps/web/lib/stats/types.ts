@@ -370,6 +370,11 @@ export interface FunFactsView {
    * with a collapsed champion × games pool.
    */
   pools: FunPool[];
+  /**
+   * Lowest KDA on a winning side, highest KDA on a losing side. Ranked by
+   * how often, each with the customs that did it.
+   */
+  fates: FunRecord[];
   csByRole: RoleCsPair[];
   records: FunRecord[];
   notes: string[];

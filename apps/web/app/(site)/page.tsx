@@ -23,8 +23,8 @@ import '../tonight.css';
  * Reads go through the **anon key** and RLS (`lib/publicClient.ts`). The one thing the session
  * decides is whether the reroll control is drawn, and the route behind it re-checks the
  * session server-side anyway. Daily Mystery (M5.32) is the exception: creating today's
- * challenge is a service-role write, and a failure there logs and leaves the card off so
- * this page still answers "am I in".
+ * challenge is a service-role write, and a failure there logs and keeps the empty card
+ * so this page still answers "am I in".
  */
 export const dynamic = 'force-dynamic';
 

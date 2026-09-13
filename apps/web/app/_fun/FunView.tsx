@@ -8,6 +8,7 @@ import {
   CS_HIGH_LABEL,
   CS_LOW_LABEL,
   DEATH_HALL_TITLE,
+  FATES_HEADING,
   FEAR_BAN_RULE,
   FUN_LABEL,
   funRoast,
@@ -51,8 +52,9 @@ import '../board-parts.css';
  *
  * A pure function of one snapshot. The numbers live in `lib/stats/fun.ts`; this file decides
  * nothing except order: first blood, multi-kill halls, first turret, deaths, steals,
- * fear bans, most banned / picked, who they lock (OTP vs variety), then CS by role, then
- * one-game records, then habits. The Rift / ARAM picker is the same chips `/games` wears.
+ * fear bans, most banned / picked, who they lock (OTP vs variety), luck (lowest
+ * winning KDA / highest losing KDA), then CS by role, then one-game records, then
+ * habits. The Rift / ARAM picker is the same chips `/games` wears.
  * CS-by-role, objective steals and most banned are Rift only. Rows are labelled (name left,
  * number right) so a long Riot ID cannot wrap into the score.
  */
@@ -98,6 +100,7 @@ export function FunView({ facts }: { facts: FunFactsView }) {
           {facts.queue === 'aram' ? null : <ChampTable section={facts.mostBanned} rule={MOST_BANNED_RULE} />}
           <ChampTable section={facts.mostPicked} rule={MOST_PICKED_RULE} />
           <Pools pools={facts.pools} />
+          <Records heading={FATES_HEADING} records={facts.fates} />
           {facts.queue === 'aram' ? null : <CsByRole pairs={facts.csByRole} />}
           <Records
             heading={RECORDS_HEADING}

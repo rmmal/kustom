@@ -53,6 +53,8 @@ import {
   LOST_JUNGLE_RULE,
   LOST_PRETTY,
   LOST_PRETTY_RULE,
+  LUCKY_TRASH,
+  LUCKY_TRASH_RULE,
   MOST_ASSISTS,
   MOST_ASSISTS_RULE,
   MOST_BANNED_EMPTY,
@@ -101,6 +103,8 @@ import {
   QUADRA_TITLE,
   RICH_WRONG,
   RICH_WRONG_RULE,
+  ROBBED,
+  ROBBED_RULE,
   SHORTEST,
   SHORTEST_LIFE,
   SHORTEST_LIFE_RULE,
@@ -116,6 +120,7 @@ import {
   TURRET_MANY,
   TURRET_ONE,
   TURRET_TITLE,
+  timesLine,
   VARIETY_INTRO,
   VARIETY_RULE,
   VARIETY_TITLE,
@@ -167,6 +172,7 @@ const FOUNTAIN_TAKEDOWNS = 4;
 const FEAR_BAN_LIMIT = 5;
 const CHAMP_TABLE_LIMIT = 10;
 const POOL_TABLE_LIMIT = 10;
+const FATE_TABLE_LIMIT = 10;
 const DEATHLESS_STREAK_MIN = 2;
 const SPREE_MIN = 3;
 
@@ -419,6 +425,106 @@ function attendanceRecord(plays: readonly Play[]): FunRecord {
 
 function gamesCountLineFrom(games: number): string {
   return games === 1 ? '1 custom' : `${games} customs`;
+}
+
+function pickFirst(plays: readonly Play[], compare: (left: Play, right: Play) => number): Play | null {
+  let best: Play | null = null;
+  for (const play of plays) {
+    if (best === null || compare(play, best) < 0) best = play;
+  }
+  return best;
+}
+
+function byPlayerName(left: Play, right: Play): number {
+  return renderWebName(left.player.name).localeCompare(renderWebName(right.player.name));
+}
+
+/** Lower KDA, then more deaths, then fewer takedowns, then name. */
+function worseKda(left: Play, right: Play): number {
+  const kd = kda(left.row) - kda(right.row);
+  if (kd !== 0) return kd;
+  if (left.row.deaths !== right.row.deaths) return right.row.deaths - left.row.deaths;
+  const takes = takedowns(left.row) - takedowns(right.row);
+  if (takes !== 0) return takes;
+  return byPlayerName(left, right);
+}
+
+/** Higher KDA, then fewer deaths, then more takedowns, then name. */
+function betterKda(left: Play, right: Play): number {
+  return worseKda(right, left) || byPlayerName(left, right);
+}
+
+function rankFate(picks: readonly Play[], bind: BindGame): FunHolder[] {
+  const groups = new Map<string, { player: StatsPlayer; plays: Play[] }>();
+  for (const play of picks) {
+    const slot = groups.get(play.player.playerId) ?? { player: play.player, plays: [] };
+    slot.plays.push(play);
+    groups.set(play.player.playerId, slot);
+  }
+  return [...groups.values()]
+    .sort(
+      (a, b) =>
+        b.plays.length - a.plays.length ||
+        renderWebName(a.player.name).localeCompare(renderWebName(b.player.name)),
+    )
+    .slice(0, FATE_TABLE_LIMIT)
+    .map((row) =>
+      holder(
+        row.player,
+        timesLine(row.plays.length),
+        null,
+        bind,
+        row.plays.map((play) =>
+          openingOf(
+            play.game,
+            bind,
+            `${kdaLine(play.row.kills, play.row.deaths, play.row.assists)} · ${champOf(play)}`,
+          ),
+        ),
+      ),
+    );
+}
+
+function fatesOf(counted: readonly StatsGame[], plays: readonly Play[], bind: BindGame): FunRecord[] {
+  const byGame = new Map<string, Play[]>();
+  for (const play of plays) {
+    const list = byGame.get(play.game.id) ?? [];
+    list.push(play);
+    byGame.set(play.game.id, list);
+  }
+
+  const lucky: Play[] = [];
+  const robbed: Play[] = [];
+  for (const game of [...counted].reverse()) {
+    const seats = byGame.get(game.id) ?? [];
+    const trash = pickFirst(
+      seats.filter((play) => won(play.row, game)),
+      worseKda,
+    );
+    const hardLuck = pickFirst(
+      seats.filter((play) => !won(play.row, game)),
+      betterKda,
+    );
+    if (trash !== null) lucky.push(trash);
+    if (hardLuck !== null) robbed.push(hardLuck);
+  }
+
+  return [
+    {
+      id: 'lucky-trash',
+      title: LUCKY_TRASH,
+      rule: LUCKY_TRASH_RULE,
+      holders: rankFate(lucky, bind),
+      empty: NOBODY_THIS,
+    },
+    {
+      id: 'robbed',
+      title: ROBBED,
+      rule: ROBBED_RULE,
+      holders: rankFate(robbed, bind),
+      empty: NOBODY_THIS,
+    },
+  ];
 }
 
 /**
@@ -702,6 +808,7 @@ export function funFactsView(
     mostBanned: mostBanned(plays),
     mostPicked: mostPicked(plays),
     pools: championPools(plays),
+    fates: fatesOf(counted, plays, bind),
     csByRole: csByRole(plays, bind),
     records,
     notes: [],
