@@ -519,10 +519,12 @@ export const LobbyMembersSchema = z.array(LobbyMemberSchema);
  * One entry of a custom-game subcategory's `mutators[]` (`LolGameQueuesQueueGameTypeConfig` in the 16.17
  * schema). The client's Create Custom dialog lists these as the "champion select" choices and sends the chosen
  * `id` as both `customGameLobby.configuration.mutators.id` and the top-level `queueId` of
- * `POST /lol-lobby/v2/lobby`. **Unverified (no fixture yet):** the shape is from the client's own OpenAPI
- * document for 16.17.812.4632 (dysolix dump), read 2026-09-10; `verify-commands` saves the first fixture.
- * `name` and `pickMode` were empty on the queue the client itself used (id 19 for queue 3100), so nothing
- * here may assume a name.
+ * `POST /lol-lobby/v2/lobby`. **Verified (16.18, 2026-09-12):** `custom-game-queues.json` (a real
+ * `--verify-commands` capture) confirmed the shape and, more importantly, that on this patch `id`, `name`,
+ * `pickMode` and `banMode` carry no descriptive text at all for *any* mode: `name` is just the `id` as a
+ * string (`"3100"`, `"3110"`, ...) and `pickMode`/`banMode` are `""` for every entry, blind or draft alike.
+ * So nothing here, or in `chooseCustomLobbyMutator`, may resolve a mode from this shape's own text; the ids
+ * have to be joined against `GameQueueSchema`'s names instead (see `writes.ts`).
  */
 export const CustomGameMutatorSchema = z.looseObject({
   id: z.number().int(),
@@ -533,7 +535,7 @@ export const CustomGameMutatorSchema = z.looseObject({
 });
 export type CustomGameMutator = z.infer<typeof CustomGameMutatorSchema>;
 
-/** One map/mode the dialog offers (`LolGameQueuesQueueCustomGameSubcategory`). Unverified, see above. */
+/** One map/mode the dialog offers (`LolGameQueuesQueueCustomGameSubcategory`). Verified (16.18, 2026-09-12), see above. */
 export const CustomGameSubcategorySchema = z.looseObject({
   mapId: z.number().int(),
   gameMode: z.string(),
@@ -545,13 +547,20 @@ export const CustomGameSubcategorySchema = z.looseObject({
 });
 export type CustomGameSubcategory = z.infer<typeof CustomGameSubcategorySchema>;
 
-/** `GET /lol-game-queues/v1/custom` (`LolGameQueuesQueueCustomGame`). Unverified, see `CustomGameMutatorSchema`. */
+/**
+ * `GET /lol-game-queues/v1/custom` (`LolGameQueuesQueueCustomGame`). **Verified (16.18, 2026-09-12)** against
+ * `fixtures/16.18/custom-game-queues.json`, a real `--verify-commands` capture. `gameServerRegions` is `null`
+ * on this patch, not absent, hence `.nullish()` below (a bug in the first flip: `.optional()` alone rejected
+ * the real body outright, `schemas.test.ts` now pins the fixture). See `CustomGameMutatorSchema` for the
+ * "no descriptive text" finding.
+ */
 export const CustomGameQueuesSchema = z.looseObject({
   subcategories: z.array(CustomGameSubcategorySchema),
   queueAvailability: z.string().optional(),
   spectatorPolicies: z.array(z.string()).optional(),
   spectatorSlotLimit: z.number().int().optional(),
-  gameServerRegions: z.array(z.string()).optional(),
+  /** `null` on 16.18 (`custom-game-queues.json`, real fixture); `.optional()` alone rejects that. */
+  gameServerRegions: z.array(z.string()).nullish(),
 });
 export type CustomGameQueues = z.infer<typeof CustomGameQueuesSchema>;
 
@@ -560,7 +569,11 @@ export type CustomGameQueues = z.infer<typeof CustomGameQueuesSchema>;
  * and its game-type config. The shape is also what the client logs as `UpdateQueueData` (this Mac's
  * `LeagueClient.log`, 16.17, 2026-09-08: queue 3100 "SR Blind Pick Custom", CLASSIC, map 11, `isCustom`,
  * `gameTypeConfig { id: 19, name: "", pickMode: "" }`; queue 3220 ARAM custom, `gameTypeConfig { id: 21,
- * name: "GAME_CFG_TEAM_BUILDER_RANDOM", pickMode: "AllRandomPickStrategy" }`). Unverified by GET.
+ * name: "GAME_CFG_TEAM_BUILDER_RANDOM", pickMode: "AllRandomPickStrategy" }`). **Verified (16.18,
+ * 2026-09-12)** against `fixtures/16.18/game-queues.json`: unlike the dialog's own mutators, this list
+ * *does* carry names for the Summoner's Rift customs — `3100` "SR Blind Pick Custom", `3110` "SR Draft Pick
+ * Custom", `3120` "SR All Random", `3130` "SR Tournament Draft" — and the queue `id` here equals the dialog
+ * mutator `id` for the same entry, which is what `customLobbyIdsFor` joins on.
  */
 export const GameQueueSchema = z.looseObject({
   id: z.number().int(),

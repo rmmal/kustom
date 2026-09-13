@@ -59,7 +59,8 @@ every create attempt (`ui-live-<id>`, `ui-3100-19`, `ui-3100-3100`, `dto-full-31
 `create-lobby` for the accepted one, `create-lobby--draft`, `lobby-invitations`, `lobby-invitations--by-puuid`,
 `lobby-team`, `lobby-team--full-side`. The same run also writes two GET envelopes, `custom-game-queues` and
 `game-queues` (`note: "--verify-commands"`), which `smoke` captures too. The 2026-09-09 run's files are kept
-under state suffixes (see Captures); the accepted-shape ids do not exist yet.
+under state suffixes (see Captures); the accepted-shape ids (`create-lobby`, `lobby-invitations`, `lobby-team`)
+exist as of the 2026-09-12 run below.
 
 ## Captures
 
@@ -104,6 +105,24 @@ under state suffixes (see Captures); the accepted-shape ids do not exist yet.
   (was `create-lobby--draft`, `mutators.id` 2), `lobby-invitations--no-lobby.json` (was `lobby-invitations`,
   `[{ toSummonerId }]`) and `lobby-invitations--by-puuid--no-lobby.json` (was `lobby-invitations--by-puuid`).
   Bodies and `request`s are exactly as captured. No switch fixture: that probe was skipped for want of a lobby.
+- `16.18`, second `verify-commands` run (2026-09-12, **Windows**, `Kustom.exe --verify-commands`, second
+  edition, client 16.18.8175716, a friend's run). All three writes were accepted. Create: candidate
+  `ui-live-3110` (the live dialog's own entry, first tried, best evidence) answered `200`; the follow-up
+  `GET /lol-lobby/v2/lobby` read back `queueId: 3110, isCustom: true,
+  customMutatorName: "TeamBuilderDraftPickStrategy"`, so the loop stopped there and no other candidate was
+  sent. Saved as both `create-lobby--ui-live-3110.json` (the candidate envelope) and `create-lobby.json` (the
+  same accepted lobby, note "accepted candidate ui-live-3110") — the first time the base `create-lobby` id has
+  existed. Invite: `POST /lol-lobby/v2/lobby/invitations` with `[{ toSummonerId: 55838205 }]` answered `200`
+  against the lobby the create step made; `[{ toPuuid }]` was never tried, since the first attempt was already
+  accepted (`lobby-invitations.json`). Switch: `POST /lol-lobby/v2/lobby/team/TEAM2` with no body answered
+  `204`; a follow-up GET confirmed the local player moved from side 100 to 200 (`lobby-team.json`; the optional
+  full-side repeat was skipped). The same run's two dialog reads are `custom-game-queues.json` and
+  `game-queues.json`. No `manifest.json`: this is a `verify-commands` run, not a `smoke` run, so the read-only
+  endpoint table this directory would otherwise carry does not exist for `16.18` yet. Ingested by script,
+  `scrubValue` unchanged (`lobbyPassword`/chat credentials already `[redacted]`). `LOBBY_WRITE_VERIFICATION`
+  for `create_lobby`, `invite` and `switch_side` is `{ verified: true, patch: '16.18', date: '2026-09-12' }`
+  from this run (`packages/lcu/src/writes.ts`); the three rows in `docs/03-lcu-reference.md` read
+  `verified (16.18, 2026-09-12)`.
 - HTTP bodies are scrubbed like events (`scrubValue`): `mucJwtDto`, `multiUserChatPassword`, `password`,
   `spectatorKey`, `encryptionKey` and any other credential-looking key read `[redacted]`, including inside
   JSON carried as a string. The smoke table notes which endpoints had something redacted. Files captured by

@@ -14,16 +14,17 @@ import type { CompanionCommandKind } from '@customs/db/schemas';
  * This file is deliberately a table of booleans and nothing else. Flipping one is the same
  * edit as writing the reference row green, and it belongs in the same commit.
  *
- * As of 2026-09-10 all three rows are `unverified`: the first live `verify-commands` run got
- * `500 INVALID_LOBBY` from the create body, and neither the invite nor the side switch was
- * ever exercised because there was no lobby to exercise them in. So the whole queue writes
- * zero rows today, on purpose, and every caller below is a no-op that still typechecks and is
- * still tested with the gate overridden.
+ * **All three rows went green on 2026-09-12, patch 16.18** (M4.1). The first run, on 16.17
+ * with the community create body, got `500 INVALID_LOBBY`; 0.1.4's corrected body — built from
+ * the client's own lobby dialog, top-level `queueId` equal to `mutators.id` — was accepted
+ * first try, and with a real lobby to work in the invite and the side switch were exercised too
+ * (200 / 200 / 204). So the queue writes rows from here on. A test that wants the old zero-row
+ * behavior passes a `gate` override; it must not read the constant and hope.
  */
 export const COMMAND_KIND_ENABLED: Readonly<Record<CompanionCommandKind, boolean>> = {
-  create_lobby: false,
-  invite: false,
-  switch_side: false,
+  create_lobby: true,
+  invite: true,
+  switch_side: true,
 };
 
 /** M4.3 reads this one by name: the auto side switch is on only when the row is green. */

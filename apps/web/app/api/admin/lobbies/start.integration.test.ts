@@ -17,6 +17,7 @@ import {
 } from '@/lib/adminAuth';
 import {
   COMMAND_ERRORS,
+  type CommandGate,
   clearCommandHooks,
   enqueueCommands,
   fanOutInvites,
@@ -73,8 +74,13 @@ if (stack === null) {
 
   /** Season 1, seeded by `0001_init.sql` with a fixed id: never the *active* season of a run. */
   const SEASON_ONE = '00000000-0000-0000-0000-000000000001';
-  /** Both kinds green. Production has them off, and one test below proves what that costs. */
+  /**
+   * Both kinds green, which is also production since the writes were verified (16.18,
+   * 2026-09-12). {@link OFF} is kept because the refusal it causes is still reachable: a patch
+   * that breaks a write is a flag flip away, and the 409 has to keep working.
+   */
   const ON = { create_lobby: true, invite: true, switch_side: false } as const;
+  const OFF = { create_lobby: false, invite: false, switch_side: false } as const;
 
   const runId = randomUUID().slice(0, 8);
   const puuidOf = (name: string): string => `sl-${runId}-${name}`;
@@ -115,7 +121,7 @@ if (stack === null) {
       });
   }
 
-  function press(options: { user?: SessionUserLike | null; gate?: typeof ON | undefined } = {}) {
+  function press(options: { user?: SessionUserLike | null; gate?: CommandGate | undefined } = {}) {
     return startLobbyRoute({
       getClient: () => db,
       authorize: authorizeAs(options.user === undefined ? sessionUser(adminDiscordId) : options.user),
@@ -262,8 +268,9 @@ if (stack === null) {
 
   describe('the refusals', () => {
     it('says the writes are not verified while the gate is off, and reads nothing', async () => {
-      // No `gate` override: this is the production table in `lib/commands/gate.ts`, all off.
-      const response = await press()(postStart());
+      // The gate is named: the production table in `lib/commands/gate.ts` is all **on** since
+      // the 16.18 verification, so this case is the flag being turned back off for a patch.
+      const response = await press({ gate: OFF })(postStart());
 
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({ ok: false, error: LOBBY_WRITES_UNVERIFIED });
@@ -452,8 +459,9 @@ if (stack === null) {
     });
 
     it('queues nothing at all while the invite kind is gated off', async () => {
-      // The production gate, on a host with nobody yet invited: no read, no write, no rows.
-      const result = await fanOutInvites(db, { hostPlayerId: id('fresh') }, { now: NOW });
+      // The gate off, on a host with nobody yet invited: no read, no write, no rows. The kind
+      // is green in production since 16.18, so the flag is named rather than defaulted.
+      const result = await fanOutInvites(db, { hostPlayerId: id('fresh') }, { now: NOW, gate: OFF });
 
       expect(result).toMatchObject({ invited: [], gated: true });
       expect(await commandsOf('invite')).toHaveLength(2);

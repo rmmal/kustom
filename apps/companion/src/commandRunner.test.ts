@@ -57,7 +57,12 @@ const NOW = Date.parse('2026-09-09T20:00:00.000Z');
 const ID_A = '3f1e2d4c-5b6a-4798-8c9d-0e1f2a3b4c5d';
 const ID_B = '3f1e2d4c-5b6a-4798-8c9d-0e1f2a3b4c5e';
 const LOBBY_PASSWORD = '4821';
-const READ_PATHS = ['/lol-lobby/v2/lobby', '/lol-gameflow/v1/gameflow-phase', '/lol-game-queues/v1/custom'];
+const READ_PATHS = [
+  '/lol-lobby/v2/lobby',
+  '/lol-gameflow/v1/gameflow-phase',
+  '/lol-game-queues/v1/custom',
+  '/lol-game-queues/v1/queues',
+];
 /** Assumed: the dialog data for 16.17 (shape per the client's OpenAPI document). */
 const ASSUMED_CUSTOM_QUEUES = {
   queueAvailability: 'Available',
@@ -78,9 +83,33 @@ const ASSUMED_CUSTOM_QUEUES = {
     },
   ],
 };
+/**
+ * Assumed: `/lol-game-queues/v1/queues` naming the same two ids `ASSUMED_CUSTOM_QUEUES` offers, in the shape
+ * the real 16.18 capture has (`GameQueueSchema`). Content does not matter to these hand-crafted tests (the
+ * dialog mutators above already carry words), but the production `create_lobby` executor fetches this GET
+ * unconditionally now (Bug 2 fix), so the fake client must answer it.
+ */
+const ASSUMED_GAME_QUEUES = [
+  {
+    id: 19,
+    name: 'SR Blind Pick Custom',
+    gameMode: 'CLASSIC',
+    mapId: 11,
+    isCustom: true,
+    category: 'Custom',
+  },
+  {
+    id: 20,
+    name: 'SR Draft Pick Custom',
+    gameMode: 'CLASSIC',
+    mapId: 11,
+    isCustom: true,
+    category: 'Custom',
+  },
+];
 
-function fixtureBody(id: string): unknown {
-  const read = readFixture(PATCH, id);
+function fixtureBody(id: string, patch: string = PATCH): unknown {
+  const read = readFixture(patch, id);
   if (!read.ok) {
     throw new Error(read.reason);
   }
@@ -110,6 +139,10 @@ interface LobbyWorld {
   switchMoves: boolean;
   /** What `/lol-game-queues/v1/custom` answers. Default the assumed dialog data. */
   customQueues: unknown;
+  /** What `/lol-game-queues/v1/queues` answers. Default the assumed queue list, naming the same ids. */
+  gameQueues: unknown;
+  /** Status for `/lol-game-queues/v1/queues`. Default 200. */
+  gameQueuesStatus: number;
   createStatus: number;
   /** How many lobby GETs after a successful create are dropped (the client dying right after the POST). */
   dropLobbyReadsAfterCreate: number;
@@ -138,6 +171,15 @@ function lobbyHandler(world: LobbyWorld): (request: RecordedRequest) => CannedRo
     }
     if (request.method === 'GET' && request.path === '/lol-game-queues/v1/custom') {
       return { status: 200, body: world.customQueues };
+    }
+    if (request.method === 'GET' && request.path === '/lol-game-queues/v1/queues') {
+      if (world.gameQueuesStatus !== 200) {
+        return {
+          status: world.gameQueuesStatus,
+          body: { errorCode: 'RPC_ERROR', httpStatus: world.gameQueuesStatus, message: 'assumed refusal' },
+        };
+      }
+      return { status: 200, body: world.gameQueues };
     }
     if (request.method === 'GET' && request.path === '/lol-lobby/v2/lobby') {
       if (world.lobby?.partyId === 'party-created-0001' && world.dropLobbyReadsAfterCreate > 0) {
@@ -299,6 +341,8 @@ async function setup(
     inviteBySummonerIdStatus: 200,
     switchMoves: true,
     customQueues: ASSUMED_CUSTOM_QUEUES,
+    gameQueues: ASSUMED_GAME_QUEUES,
+    gameQueuesStatus: 200,
     createStatus: 200,
     dropLobbyReadsAfterCreate: 0,
     ...options.world,
@@ -497,6 +541,7 @@ describe('CommandRunner: create_lobby', () => {
     expect(h.lcuRequests().map((request) => `${request.method} ${request.path}`)).toEqual([
       'GET /lol-lobby/v2/lobby',
       'GET /lol-game-queues/v1/custom',
+      'GET /lol-game-queues/v1/queues',
       'POST /lol-lobby/v2/lobby',
       'GET /lol-lobby/v2/lobby',
     ]);
@@ -543,12 +588,50 @@ describe('CommandRunner: create_lobby', () => {
     ).toBe(true);
   });
 
-  it('nacks client_rejected with the dialog list, and posts nothing, when the dialog names no draft entry', async () => {
+  /**
+   * The regression test for Bugs 1 and 2 (reviewer-caught, 2026-09-13): drives the real production
+   * `create_lobby` executor off the actual 16.18 `--verify-commands` capture of both
+   * `/lol-game-queues/v1/custom` (`custom-game-queues.json`, wordless mutators, `gameServerRegions: null`)
+   * and `/lol-game-queues/v1/queues` (`game-queues.json`, which names them), never invented dialog data. Before
+   * the fix this nacked twice over: `CustomGameQueuesSchema.safeParse` rejected the real body outright (Bug
+   * 1), and even patched, `customLobbyIdsFor` found no draft entry because the dialog itself names nothing
+   * (Bug 2). After the fix it resolves queueId/mutators.id 3110 with no human input.
+   */
+  it('resolves queueId 3110 for draft and creates the lobby, off the real 16.18 custom-game-queues.json + game-queues.json fixtures', async () => {
+    const dialogFixture = fixtureBody('custom-game-queues', '16.18');
+    const queuesFixture = fixtureBody('game-queues', '16.18');
+    const h = await setup({
+      world: { customQueues: dialogFixture, gameQueues: queuesFixture },
+      apiRoutes: {
+        [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([createLobby()]), empty],
+        [`POST ${commandAckPath(ID_A)}`]: [okAck],
+      },
+    });
+    await h.runner.pollNow();
+    expect(h.lcuRequests().map((request) => `${request.method} ${request.path}`)).toEqual([
+      'GET /lol-lobby/v2/lobby',
+      'GET /lol-game-queues/v1/custom',
+      'GET /lol-game-queues/v1/queues',
+      'POST /lol-lobby/v2/lobby',
+      'GET /lol-lobby/v2/lobby',
+    ]);
+    const posted = JSON.parse(h.lcuPosts()[0]?.body ?? '') as {
+      customGameLobby: { configuration: { mutators: { id: number } } };
+      queueId: number;
+    };
+    expect(posted.queueId).toBe(3110);
+    expect(posted.customGameLobby.configuration.mutators.id).toBe(3110);
+    expectAck(h, ID_A, { partyId: 'party-created-0001', lobbyName: 'Customs 09 Sep #1' });
+  });
+
+  it('nacks client_rejected with the dialog list, and posts nothing, when neither the dialog nor the queue list names a draft entry', async () => {
     const h = await setup({
       world: {
         customQueues: {
           subcategories: [{ mapId: 11, gameMode: 'CLASSIC', mutators: [{ id: 19 }, { id: 20 }] }],
         },
+        // Nothing here names id 20 as draft either, so the join (Bug 2 fix) still finds nothing.
+        gameQueues: [],
       },
       apiRoutes: {
         [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([createLobby()]), empty],
@@ -578,6 +661,19 @@ describe('CommandRunner: create_lobby', () => {
       ID_A,
       "client_rejected: /lol-game-queues/v1/custom lists no Summoner's Rift classic subcategory",
     );
+  });
+
+  it('nacks client_rejected, without ever POSTing, when the queue list GET fails (Bug 2: names come only from the join)', async () => {
+    const h = await setup({
+      world: { gameQueuesStatus: 404 },
+      apiRoutes: {
+        [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [page([createLobby()]), empty],
+        [`POST ${commandNackPath(ID_A)}`]: [okAck],
+      },
+    });
+    await h.runner.pollNow();
+    expect(h.lcuPosts()).toEqual([]);
+    expectNack(h, ID_A, 'client_rejected: /lol-game-queues/v1/queues answered 404 assumed refusal');
   });
 
   it('nacks already_in_lobby with the partyId and never dissolves the lobby (check 9)', async () => {
@@ -610,6 +706,7 @@ describe('CommandRunner: create_lobby', () => {
     expect(h.lcuRequests().map((request) => `${request.method} ${request.path}`)).toEqual([
       'GET /lol-lobby/v2/lobby',
       'GET /lol-game-queues/v1/custom',
+      'GET /lol-game-queues/v1/queues',
       'POST /lol-lobby/v2/lobby',
       'GET /lol-lobby/v2/lobby',
       'GET /lol-lobby/v2/lobby',
@@ -754,7 +851,9 @@ describe('CommandRunner: execute once', () => {
 describe('CommandRunner: the gate (check 10)', () => {
   it('with a kind flagged off: nack endpoint_unverified, no client call at all, one log line naming the row', async () => {
     const h = await setup({
-      runner: { gate: {} },
+      // The three kinds are verified for real (16.18) since M4.1's live run; override the gate off here to
+      // exercise the flagged-off path.
+      runner: { gate: { create_lobby: false, invite: false, switch_side: false } },
       apiRoutes: {
         [`GET ${COMMANDS_API_PATH}?clientConnected=true`]: [
           page([createLobby(ID_A), invite(OTHER, OTHER_SUMMONER_ID, ID_B)]),

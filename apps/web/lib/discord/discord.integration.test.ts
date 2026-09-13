@@ -4,12 +4,14 @@ import type { AddressInfo } from 'node:net';
 import type { Database } from '@customs/db';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { SWITCH_SIDE_ENABLED } from '../commands/gate';
 import { mintCompanionToken } from '../companionAuth';
 import { ensurePlayers } from '../ingest/players';
 import { ROSTER_STABLE_MS } from '../lobbyState';
 import { nightStart } from '../night';
 import { eogBody, testGameId } from '../testing/fixtures';
 import { resolveLocalStack } from '../testing/localStack';
+import { sideLine } from './embeds';
 
 /**
  * M3.1 and M3.3 end to end: the companion posts a lobby through the real route, the state
@@ -475,9 +477,10 @@ if (stack === null) {
       expect(fields['Sitting out']).toBe(
         'Sitting out: Player0 — nobody has sat out before, so somebody had to be first.',
       );
-      // The move, then M4.3's side line — the gate is off, so the message tells them to move
-      // themselves and no `switch_side` row exists to do it for them.
-      expect(fields.Seats).toBe('Swap: Player0 out, Player10 in.\nMove to your side in the lobby.');
+      // The move, then M4.3's side line. The whole pipeline runs here, so the sentence is the
+      // one the shipped gate picks: `sideLine(SWITCH_SIDE_ENABLED)`, not a literal that has to
+      // be rewritten the day a patch turns a write back off.
+      expect(fields.Seats).toBe(`Swap: Player0 out, Player10 in.\n${sideLine(SWITCH_SIDE_ENABLED)}`);
 
       // The ten in the two side fields are the other ten, and the sitter is in neither.
       const lines = teamLines(0);
@@ -526,7 +529,7 @@ if (stack === null) {
 
       const fields = fieldsOf(2);
       expect(fields['Sitting out']).toBe('Sitting out: Player1 — most games tonight.');
-      expect(fields.Seats).toBe('Swap: Player1 out, Player10 in.\nMove to your side in the lobby.');
+      expect(fields.Seats).toBe(`Swap: Player1 out, Player10 in.\n${sideLine(SWITCH_SIDE_ENABLED)}`);
     });
   });
 

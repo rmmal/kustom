@@ -1,0 +1,12 @@
+{
+  "id": "lobby-team",
+  "method": "POST",
+  "path": "/lol-lobby/v2/lobby/team/TEAM2",
+  "status": 204,
+  "capturedAt": "2026-09-12T21:12:57.854Z",
+  "patch": "16.18",
+  "clientVersion": "16.18.8175716+branch.releases-16-18.code.public.content.release.anticheat.vanguard",
+  "contentType": null,
+  "note": "no body, target 200; --verify-commands",
+  "body": null
+}

@@ -66,8 +66,13 @@ if (stack === null) {
   const created = new Set<string>();
   const lobbyIds = new Set<string>();
 
-  /** Every kind is gated off in production; the tests that queue rows say so explicitly. */
+  /**
+   * The production table since the writes were verified (16.18, 2026-09-12). Both are named at
+   * every call site: a case that wants rows passes {@link ON}, a case that wants none passes
+   * {@link OFF}, and neither depends on which way `COMMAND_KIND_ENABLED` happens to be set.
+   */
   const ON = { create_lobby: true, invite: true, switch_side: true } as const;
+  const OFF = { create_lobby: false, invite: false, switch_side: false } as const;
 
   let owner = { token: '', playerId: '', tokenId: '' };
   let other = { token: '', playerId: '', tokenId: '' };
@@ -676,12 +681,12 @@ if (stack === null) {
       return { lobbyId, split: splitOf(blue, red), playing: seats.map(poolMember) };
     }
 
-    it('queues nothing at all while the verification gate is off, which is today', async () => {
+    it('queues nothing at all while the verification gate is off', async () => {
       // Everyone on the wrong side: the most a balance could possibly ask for.
       const seats = cast.map((seat, index) => ({ ...seat, side: index < 5 ? 200 : 100 }) as Seat);
       const lobbyId = await lobbyWith(seats, 'balanced');
 
-      const result = await queueSwitchSideForBalance(db, eventFor(seats, lobbyId));
+      const result = await queueSwitchSideForBalance(db, eventFor(seats, lobbyId), { gate: OFF });
       expect(result.moves).toHaveLength(10);
       expect(result.queued).toBe(0);
       expect(await pendingFor(seats.map((seat) => seat.playerId))).toEqual([]);
@@ -718,10 +723,12 @@ if (stack === null) {
       }
     });
 
-    it('is the listener on the balanced hook, and that listener is harmless with the gate off', async () => {
+    it('is the listener on the balanced hook, so a real balance is what fills the queue', async () => {
       // The seam itself (`lib/commands/register.ts`), called the way `emitLobbyBalanced` calls
       // it: with the whole event and no client, reading the service client from the
-      // environment. Everything M2.5 does must still pass with this listener registered.
+      // environment — and with no `gate` argument anywhere, so this is the **shipped** table in
+      // `lib/commands/gate.ts`. It was the harmless-no-op case until the writes were verified
+      // (16.18, 2026-09-12); now it is the case that proves the listener is wired up at all.
       const { commandLobbyHook } = await import('@/lib/commands/register');
       const seats = cast.map((seat, index) => ({ ...seat, side: index < 5 ? 200 : 100 }) as Seat);
       const lobbyId = await lobbyWith(seats, 'balanced');
@@ -741,7 +748,14 @@ if (stack === null) {
         playing,
       });
 
-      expect(await pendingFor(seats.map((seat) => seat.playerId))).toEqual([]);
+      // All ten are on the wrong side, so all ten are queued, each with the split's side.
+      const rows = await pendingFor(seats.map((seat) => seat.playerId));
+      expect(rows).toHaveLength(10);
+      expect(rows.every((r) => r.kind === 'switch_side')).toBe(true);
+      const byPlayer = new Map(rows.map((r) => [r.target_player_id, r.payload]));
+      for (const [index, seat] of seats.entries()) {
+        expect(byPlayer.get(seat.playerId), seat.puuid).toEqual({ targetSide: index < 5 ? 100 : 200 });
+      }
     });
 
     it('never queues a spectator, or a friend whose companion was last seen eleven minutes ago', async () => {
@@ -893,8 +907,8 @@ if (stack === null) {
         seats.map((seat) => queue(seat.playerId, 'switch_side', { targetSide: 100 })),
       );
 
-      // No gate override: the production constant, which is off for every kind today.
-      const promoted = await promoteSplit(db, { lobbyId, splitId: splitIds[1] });
+      // The gate off for every kind: a reroll must not write a row a companion cannot run.
+      const promoted = await promoteSplit(db, { lobbyId, splitId: splitIds[1] }, { gate: OFF });
       expect(promoted.ok).toBe(true);
 
       const rows = await pendingFor(seats.map((seat) => seat.playerId));

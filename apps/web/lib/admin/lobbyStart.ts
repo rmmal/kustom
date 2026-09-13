@@ -57,7 +57,11 @@ export const NO_COMPANION_AROUND = 'Nobody has the companion running right now. 
  */
 export const LOBBY_ALREADY_OPENING = 'A lobby is already being opened.';
 
-/** The kind is flagged off in `lib/commands/gate.ts` because its reference row is not green. */
+/**
+ * The refusal for a kind flagged off in `lib/commands/gate.ts` because its reference row is not
+ * green. Unreachable in production since 2026-09-12 — both kinds this route needs are green — and
+ * kept because the gate is one boolean away from being off again on the next patch.
+ */
 export const LOBBY_WRITES_UNVERIFIED = "Opening lobbies isn't verified on this patch yet.";
 
 /** While the command is pending, on the page, naming the host that was picked. */
@@ -374,9 +378,9 @@ export interface StartLobbyOutcome extends StartLobbyPlan {
  *
  * **The gate first, before any read.** `create_lobby` **and** `invite` must both be green
  * (`lib/commands/gate.ts`): a lobby that opens and invites nobody is worse than no lobby, so
- * the two kinds gate this route together. With either off — which is every day until the
- * verification pass lands — this answers 409 with the "not verified" sentence and touches
- * nothing at all.
+ * the two kinds gate this route together. Both went green on 16.18 (2026-09-12), so the press
+ * gets a real lobby; with either off again — a patch breaks the path, or a test passes a `gate` —
+ * this answers 409 with the "not verified" sentence and touches nothing at all.
  *
  * Idempotent, and idempotent in the database rather than in this function (M4.9). The pending
  * `create_lobby` row is the lock in two places now: `decideStart` reads it and gives the

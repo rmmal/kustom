@@ -1,8 +1,8 @@
 import { companionLobbyPayloadSchema, companionLobbyResponseSchema } from '@customs/db/schemas';
 // Registers the command queue's `balanced` listener on `hooks.ts` at module load (M4.1).
 // Another side-effect import: with this line removed, a balance queues nothing and every M2.5
-// check still passes. It queues nothing today anyway — every kind's verification row is still
-// `unverified`, so the gate in `lib/commands/gate.ts` is off.
+// check still passes. Since the gate in `lib/commands/gate.ts` went green (16.18, 2026-09-12)
+// that is a real difference: this line is what puts `switch_side` rows on the queue.
 import '@/lib/commands/register';
 import { withCompanionAuth } from '@/lib/companionRoute';
 import { readServerEnv } from '@/lib/env';
