@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import { THEME_BOOTSTRAP, THEME_COLOR, THEME_DEFAULT } from '@/lib/theme';
 import './tokens.css';
 import './theme-gaming.css';
-import './theme-current.css';
 
 /**
  * The two families of `docs/05-design.md`: Archivo for anything read as language, IBM Plex
@@ -46,7 +45,7 @@ export const metadata = {
 
 /**
  * `viewport-fit` and no user scaling limits: the page is read at arm's length and a friend
- * must be able to zoom it. `themeColor` is Day's paper; the toggle rewrites the meta tag.
+ * must be able to zoom it. Phone chrome follows Night until the toggle writes Day.
  */
 export const viewport = {
   width: 'device-width',

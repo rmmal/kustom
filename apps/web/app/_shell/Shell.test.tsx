@@ -85,13 +85,13 @@ describe('the top bar', () => {
     expect(companion).toHaveAttribute('target', '_blank');
   });
 
-  it('offers Day, Night and Current, with Day marked', () => {
+  it('offers Day and Night, with Night marked', () => {
     draw('/');
 
     expect(screen.getByRole('group', { name: THEME_PICKER_LABEL })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.night })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.current })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: THEME_LABELS.night })).toBeChecked();
+    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Current' })).not.toBeInTheDocument();
   });
 });
 

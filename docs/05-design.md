@@ -13,10 +13,9 @@ Discord voice and about to be in a game. They have three questions, in this orde
 2. **Why these teams?**
 3. **What happened?**
 
-Everything below is ordered by those three questions. **Day is the default theme** (2026-09-12): a light
-gaming look. Night is the same system after dark. Current is Floodlit, isolated in `theme-current.css` so
-it can be deleted without touching Day or Night. Phone widths are the design width; the desktop layout adds
-a second column and a rail, not a bigger phone.
+Everything below is ordered by those three questions. **Night is the default theme** (2026-09-13): the
+gaming look after dark. Day is the same system in light. Phone widths are the design width; the desktop
+layout adds a second column and a rail, not a bigger phone.
 
 Tone, **amended 2026-09-09 by the user's own calibration**: *"it should look like an actual gaming product,
 modern, something like Blitz and so, with its own character and style."* v1 read this as a scoreboard in a
@@ -232,7 +231,7 @@ product rather than a document that happens to be dark.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ▍KUSTOM     Tonight  Leaderboard  Games  Stats  Fun   Day│Night│Current │
+│  ▍KUSTOM     Tonight  Leaderboard  Games  Stats  Fun          Day  Night │
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
 │   … page content, on the paper or the ink, under the floodlight … │
@@ -242,23 +241,25 @@ product rather than a document that happens to be dark.
 └───────────────────────────────────────────────────────────────┘
 ```
 
-### Themes — Day, Night, Current (2026-09-12)
+### Themes — Day and Night (2026-09-13)
 
-Three named looks, one `data-theme` on `<html>`, persisted in `localStorage` as `cn-theme`. A
-`beforeInteractive` script writes the attribute before first paint so a stored Night does not flash Day.
+Two named looks, one `data-theme` on `<html>`, persisted in `localStorage` as `cn-theme`. Night is the
+default and the `:root` tokens. A `beforeInteractive` script writes the stored name before first paint,
+and the toggle reads `data-theme` after mount so a refresh cannot show Day selected on a Night page.
+A leftover stored `current` becomes Night.
 
 | Name | File | What it is |
 |---|---|---|
-| **Day** (default) | `tokens.css` plus `theme-gaming.css` | Production gaming look on cool paper: two corner lamps, a faint pitch grid, HUD top bar with a gold underline, tracked uppercase tabs, pill filters, inset side rules on teams and scoreboards, tracker-dense match cards. Same Archivo + Plex Mono as Night. |
-| **Night** | same files, `[data-theme=night]` | The same system after dark: void ink, hotter gold, electric sides. No second typeface and no second layout. |
-| **Current** | `theme-current.css` only | Floodlit as it shipped. Isolated so it can be deleted: drop that file and its import, drop `current` from `THEME_ORDER` / `THEME_LABELS`, drop the Current assertions. |
+| **Night** (default) | `tokens.css` `:root` / `[data-theme=night]` plus `theme-gaming.css` | The gaming look after dark. |
+| **Day** | `[data-theme=day]` plus the same file | The same system on cool paper. Same Archivo + Plex Mono, same chips and cards. |
 
 Colour is still a team, a state, or nothing. Day and Night do not add a fourth colour, champion art, glass,
-or a second font. Admin is untouched. The gaming layer never edits Floodlit files; it only paints over them.
+or a second font. Admin is untouched.
 
-The theme control is a 44px radiogroup in the top bar (`Day` · `Night` · `Current`), Archivo `t-sm`, the
-chosen chip in `brand` on `brand-tint`. Phone: wordmark and the group on the first row, tabs on the second.
-Desktop: wordmark, tabs, group. The live pill stays in the status strip.
+The theme control is two 44px chips in the top bar (`Day` · `Night`), the same recipe as the window
+picker: Archivo `t-sm`, sentence case, the chosen chip in `brand` on `brand-tint`. Phone: wordmark and
+the chips on the first row, tabs on the second. Desktop: wordmark, tabs, chips. The live pill stays in
+the status strip.
 
 - **Wordmark.** `KUSTOM` in the display cut at `t-md`, upper case, letter-spacing `0.02em`, in `text`,
   preceded by a 3px × 18px `brand` bar (`▍`). That bar is the lamp and it is the entire logo. No image, no
@@ -277,7 +278,7 @@ Desktop: wordmark, tabs, group. The live pill stays in the status strip.
 - **Desktop (≥720px).** One row: wordmark left, tabs, theme group right.
 - **The live pill is not in the top bar.** It belongs to the status strip, next to the state it describes, and
   a product has one place for a piece of information. The top bar carries identity, destinations, and the
-  theme group (`Day` · `Night` · `Current`).
+  theme chips (`Day` · `Night`).
 - **Footer.** One line of links, `t-sm` `dim`, top border `line`, `sp-6` above it. The date and season are the
   status strip's slug line and are not repeated here. `Your games` appears only for a signed-in viewer and points at
   `/p/<their puuid>`. `Get the companion` points at the **releases page**, not the `.exe` — the tonight page

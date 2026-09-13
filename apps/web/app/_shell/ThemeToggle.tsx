@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   applyTheme,
   readTheme,
+  THEME_DEFAULT,
   THEME_LABELS,
   THEME_ORDER,
   THEME_PICKER_LABEL,
@@ -11,15 +12,16 @@ import {
 } from '@/lib/theme';
 
 /**
- * Day / Night / Current. Day is the default; Night is the same gaming look after dark;
- * Current is Floodlit and lives in `theme-current.css` so it can be deleted in one pass.
- *
- * Client for one reason: the choice is on this device. The first paint is already the
- * stored theme — the root layout's beforeInteractive script writes `data-theme` — so the
- * chips only have to match it.
+ * Day / Night. Night is the default. The first paint is already the stored theme — the
+ * root layout's beforeInteractive script writes `data-theme` — and this control syncs
+ * to that attribute after mount so a refresh cannot show Day selected on a Night page.
  */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<ThemeKind>(readTheme);
+  const [theme, setTheme] = useState<ThemeKind>(THEME_DEFAULT);
+
+  useEffect(() => {
+    setTheme(readTheme());
+  }, []);
 
   function pick(next: ThemeKind) {
     setTheme(next);

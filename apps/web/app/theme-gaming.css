@@ -75,17 +75,8 @@ html:not([data-theme="current"]) .cn-tab {
   border-bottom-width: 3px;
 }
 
-html:not([data-theme="current"]) .cn-themes {
-  border-radius: 999px;
-  background: var(--cn-bg);
-  box-shadow: inset 0 0 0 1px var(--cn-line);
-}
-
 html:not([data-theme="current"]) .cn-theme {
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-size: 0.6875rem;
-  font-weight: 600;
+  border-radius: 999px;
 }
 
 html:not([data-theme="current"]) .cn-footer {

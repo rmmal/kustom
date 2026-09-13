@@ -1,6 +1,5 @@
 /*
- * Tokens for the public pages. Day (default) and Night are the gaming look; Current
- * (Floodlit) is restored in `theme-current.css` and can be deleted with that file.
+ * Tokens for the public pages. Night is the default; Day is the same look in light.
  *
  * Nine colours per theme and everything else derived from them with color-mix(), so there is
  * no tenth colour to keep in step. `data-theme` is the whole switch. A beforeInteractive
@@ -12,24 +11,6 @@
  */
 
 :root,
-[data-theme="day"] {
-  color-scheme: light;
-
-  --cn-bg: #e8eef6;
-  --cn-surface: #ffffff;
-  --cn-raise: #d7e0ec;
-  --cn-line: #b7c3d4;
-  --cn-text: #0a1018;
-  --cn-dim: #445064;
-  --cn-blue: #1558c7;
-  --cn-red: #c2252c;
-  --cn-brand: #8f5600;
-  --cn-lit: inset 0 1px 0 color-mix(in srgb, #ffffff 80%, transparent);
-  --cn-floodlight:
-    radial-gradient(90% 55% at 8% -12%, color-mix(in srgb, #2f6fe0 14%, transparent), transparent 58%),
-    radial-gradient(80% 50% at 96% -8%, color-mix(in srgb, #c47a00 10%, transparent), transparent 52%);
-}
-
 [data-theme="night"] {
   color-scheme: dark;
 
@@ -46,6 +27,24 @@
   --cn-floodlight:
     radial-gradient(90% 55% at 8% -12%, color-mix(in srgb, var(--cn-blue) 16%, transparent), transparent 58%),
     radial-gradient(80% 50% at 96% -8%, color-mix(in srgb, var(--cn-brand) 12%, transparent), transparent 52%);
+}
+
+[data-theme="day"] {
+  color-scheme: light;
+
+  --cn-bg: #e8eef6;
+  --cn-surface: #ffffff;
+  --cn-raise: #d7e0ec;
+  --cn-line: #b7c3d4;
+  --cn-text: #0a1018;
+  --cn-dim: #445064;
+  --cn-blue: #1558c7;
+  --cn-red: #c2252c;
+  --cn-brand: #8f5600;
+  --cn-lit: inset 0 1px 0 color-mix(in srgb, #ffffff 80%, transparent);
+  --cn-floodlight:
+    radial-gradient(90% 55% at 8% -12%, color-mix(in srgb, #2f6fe0 14%, transparent), transparent 58%),
+    radial-gradient(80% 50% at 96% -8%, color-mix(in srgb, #c47a00 10%, transparent), transparent 52%);
 }
 
 :root {
