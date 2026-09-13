@@ -19,6 +19,10 @@ import type { Streak } from './streak';
  * into a delta where it is rendered: `-0` is a real value and does not survive a
  * `JSON.stringify` — which, now that these rows do make one, is a rule with teeth rather than a
  * precaution (`05-design.md`, "Rating delta").
+ *
+ * **`breakdown` is empty on the rail** (M5.30). `/leaderboard` asks the loader for the window's
+ * rated games so a row can open; the tonight rail does not, so those five rows stay the same
+ * size they were and never grow a `<details>`.
  */
 
 /** One row of the board. `05-design.md`, "Leaderboard row", is the layout for exactly this. */
@@ -65,6 +69,25 @@ export interface BoardRow {
    * and two hundred behind them has not become unsettled by the calendar.
    */
   settling: boolean;
+  /**
+   * The window's rated games, newest first, for the row's expand (M5.30). Empty when the
+   * loader was not asked for them (the rail) and when the player has none (a seed on
+   * `All time`). Rated only: an unrated row does not move the number the expand is explaining.
+   */
+  breakdown: readonly BoardGame[];
+}
+
+/** One rated game on a board row, slim enough to sit under every name on `/leaderboard`. */
+export interface BoardGame {
+  gameId: string;
+  /** `9 Sep`, formatted on the server in the group's zone. */
+  startedLabel: string;
+  durationS: number;
+  won: boolean;
+  side: SideValue;
+  /** The two mu values the delta is computed from, at render. Never a formatted delta. */
+  muBefore: number;
+  muAfter: number;
 }
 
 /** `mu_before` of the first counted game in the window and `mu_after` of the last. */

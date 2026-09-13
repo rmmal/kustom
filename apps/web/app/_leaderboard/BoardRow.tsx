@@ -1,13 +1,15 @@
+import { displayRating } from '@customs/core';
 import Link from 'next/link';
-import { gamesLabel, PROVEN_LABEL, RATING_LABEL, winLossLabel } from '@/lib/board/copy';
+import { gamesLabel, LOST, PROVEN_LABEL, RATING_LABEL, WON, winLossLabel } from '@/lib/board/copy';
 import { formatStreak } from '@/lib/board/streak';
-import type { BoardRow as BoardRowModel, Climb } from '@/lib/board/types';
+import type { BoardGame, BoardRow as BoardRowModel, Climb } from '@/lib/board/types';
+import { formatDuration } from '@/lib/discord/embeds';
 import { displayDelta, formatWebDelta, isGain } from '@/lib/ratingDisplay';
 import { isNameless, renderWebName } from '@/lib/tonight/copy';
 import { SettlingChip } from '../_board/parts';
 
 /**
- * One row of the board (M3.5, dressed for Floodlit in M3.19).
+ * One row of the board (M3.5, dressed for Floodlit in M3.19; expand in M5.30).
  *
  * **One component, two surfaces.** `/leaderboard` renders every row and the tonight page's
  * ≥1080px rail renders the first five of the same list (`05-design.md`, "What changes on the
@@ -23,6 +25,10 @@ import { SettlingChip } from '../_board/parts';
  * `Proven` prints nowhere on the row — it is the unlabelled primary number, named once in the
  * card header's legend. It still carries visually-hidden text, the same way the team card's
  * bare side sum does, so a screen reader is not left with an integer and no noun.
+ *
+ * **A row with games opens.** The expand is a `<details>`, closed by default, the same control
+ * `/games` and `/fun` use — no JavaScript, the games are in the first paint. The rail never
+ * sends a breakdown, so those five rows stay a flat `<li>`.
  */
 
 export interface BoardRowProps {
@@ -35,9 +41,31 @@ export interface BoardRowProps {
 
 export function BoardRow({ row, rank, viewerPuuid }: BoardRowProps) {
   const you = row.puuid === viewerPuuid;
+  const expandable = row.breakdown.length > 0;
 
   return (
     <li className={you ? 'cn-row cn-you' : 'cn-row'}>
+      {expandable ? (
+        <details className="cn-row-details">
+          <summary className="cn-row-summary">
+            <BoardRowLines row={row} rank={rank} mark />
+          </summary>
+          <ul className="cn-row-games">
+            {row.breakdown.map((game) => (
+              <BoardGameRow key={game.gameId} game={game} />
+            ))}
+          </ul>
+        </details>
+      ) : (
+        <BoardRowLines row={row} rank={rank} mark={false} />
+      )}
+    </li>
+  );
+}
+
+function BoardRowLines({ row, rank, mark }: { row: BoardRowModel; rank: number; mark: boolean }) {
+  return (
+    <>
       <div className="cn-row-top">
         {/* Rank 1 gets `brand` on the rank number only. No medals, no trophies, no emoji. */}
         <span className={rank === 1 ? 'cn-num cn-rank cn-rank-first' : 'cn-num cn-rank'}>{rank}</span>
@@ -62,6 +90,12 @@ export function BoardRow({ row, rank, viewerPuuid }: BoardRowProps) {
             renderWebName(row.name)
           )}
         </Link>
+        {/*
+         * The disclosure sits between the name and Proven so the primary number stays on the
+         * right edge, under the legend. The slot is reserved on every row so a seed with
+         * nothing to open does not shift that column.
+         */}
+        <span className={mark ? 'cn-row-mark' : 'cn-row-mark cn-row-mark-empty'} aria-hidden="true" />
         <span className="cn-num cn-proven">
           {row.proven}
           <span className="cn-sr"> {PROVEN_LABEL}</span>
@@ -104,6 +138,35 @@ export function BoardRow({ row, rank, viewerPuuid }: BoardRowProps) {
           {RATING_LABEL} <span className="cn-num">{row.rating}</span>
         </span>
       </div>
+    </>
+  );
+}
+
+/**
+ * One game under a board row: `Won` / `Lost`, the night, how long, and `1512 (+43)`.
+ *
+ * The same four facts `/p/[puuid]` prints at the head of a recent game, without the lineup
+ * and without the chance clause — those belong on the page a tap on the name already opens.
+ * The side is the 3px leading rule, the same dress, and never a wash behind the word.
+ */
+function BoardGameRow({ game }: { game: BoardGame }) {
+  const rating = displayRating(game.muAfter);
+  const delta = displayDelta(game.muBefore, game.muAfter);
+
+  return (
+    <li className={`cn-game cn-game-${game.side === 100 ? 'blue' : 'red'}`}>
+      <p className="cn-game-head">
+        <span className="cn-game-result">{game.won ? WON : LOST}</span>
+        <span className="cn-num cn-duration">{game.startedLabel}</span>
+        <span className="cn-num cn-duration">{formatDuration(game.durationS)}</span>
+        <span className="cn-num cn-game-rating">
+          {rating}
+          <span className="cn-sr"> {RATING_LABEL}</span>
+          <span className={isGain(delta) ? 'cn-delta cn-delta-up' : 'cn-delta'}>
+            {` (${formatWebDelta(delta)})`}
+          </span>
+        </span>
+      </p>
     </li>
   );
 }

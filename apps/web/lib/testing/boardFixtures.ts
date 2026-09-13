@@ -1,7 +1,7 @@
 import { displayRating, seedFromRank } from '@customs/core';
 import { rankLabel, SETTLING_GAMES } from '../board/copy';
 import { sortBoardRows } from '../board/order';
-import type { BoardRow, BoardView, PlayerBoardView, RecentGame } from '../board/types';
+import type { BoardGame, BoardRow, BoardView, PlayerBoardView, RecentGame } from '../board/types';
 import type { WindowKind } from '../night';
 import { provenRating, provenSortKey } from '../ratingDisplay';
 import type { PartnerRecord, PlayerStatsView } from '../stats/types';
@@ -58,6 +58,7 @@ export function workedBoardRows(): BoardRow[] {
         streak: games === 0 ? null : ({ kind: 'L', length: 2 } as const),
         climb: null,
         settling: games < SETTLING_GAMES,
+        breakdown: [],
       };
     }),
   );
@@ -223,6 +224,20 @@ export function emptyPlayerStats(window: WindowKind = 'all-time'): PlayerStatsVi
     awards: [],
     capped: false,
     cap: 2_000,
+  };
+}
+
+/** One rated game under a board row (M5.30). Dates are already formatted, like the loader. */
+export function workedBoardGame(overrides: Partial<BoardGame> = {}): BoardGame {
+  return {
+    gameId: 'game-1',
+    startedLabel: '8 Sep',
+    durationS: 2_052,
+    won: false,
+    side: 100,
+    muBefore: 23.9,
+    muAfter: 23.2,
+    ...overrides,
   };
 }
 

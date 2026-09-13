@@ -78,4 +78,11 @@ describe('the rail and the board render the same rows', () => {
     expect(mine).toHaveLength(1);
     expect(mine[0]?.textContent).toContain('Bilal');
   });
+
+  /** The rail is a snapshot: it never opens, even if a caller handed it games. */
+  it('does not grow a details when the rows have no breakdown', () => {
+    const { container } = render(<TopOfBoard rows={workedBoardRows().slice(0, 5)} viewerPuuid={null} />);
+
+    expect(container.querySelector('details')).toBeNull();
+  });
 });

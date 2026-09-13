@@ -13,6 +13,7 @@ import { WINDOW_ORDER } from '@/lib/board/window';
 import {
   emptyWindowBoard,
   workedBoard,
+  workedBoardGame,
   workedBoardRows,
   workedWindowBoard,
 } from '@/lib/testing/boardFixtures';
@@ -379,5 +380,73 @@ describe('a row inside a window', () => {
     draw();
 
     expect(rows()[0]?.querySelector('.cn-row-meta')?.textContent).toBe('41 games · 21W 20L · L2');
+  });
+});
+
+/**
+ * The per-game expand (M5.30): closed by default, a `<details>` so the games are in the first
+ * paint, and the name is still the link to `/p/[puuid]`.
+ */
+describe('the score breakdown', () => {
+  const withGames = () => {
+    const [first, ...rest] = workedBoardRows();
+    return workedBoard({
+      rows: [
+        {
+          ...(first as (typeof rest)[number]),
+          breakdown: [
+            workedBoardGame({
+              gameId: 'newer',
+              startedLabel: '9 Sep',
+              won: true,
+              side: 200,
+              muBefore: 23.9,
+              muAfter: 24.87,
+            }),
+            workedBoardGame({ gameId: 'older', startedLabel: '8 Sep' }),
+          ],
+        },
+        ...rest,
+      ],
+    });
+  };
+
+  it('is closed by default and still prints the two-line row', () => {
+    const { container } = draw(withGames());
+    const details = container.querySelector('details');
+
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute('open');
+    expect(details?.querySelector('.cn-row-meta')?.textContent).toContain('41 games');
+    expect(details?.querySelector('.cn-proven')?.textContent).toContain('1548');
+  });
+
+  it('lists each game with the result, the night and the rating change', () => {
+    const { container } = draw(withGames());
+    const games = [...(container.querySelectorAll('.cn-row-games .cn-game') ?? [])];
+
+    expect(games).toHaveLength(2);
+    expect(games[0]?.textContent).toContain('Won');
+    expect(games[0]?.textContent).toContain('9 Sep');
+    expect(games[0]?.textContent).toContain('1492');
+    expect(games[0]?.textContent).toContain('+58');
+    expect(games[1]?.textContent).toContain('Lost');
+    expect(games[1]?.textContent).toContain('8 Sep');
+    expect(games[1]?.className).toContain('cn-game-blue');
+  });
+
+  it('keeps the name as the link to the player page', () => {
+    draw(withGames());
+
+    expect(screen.getByRole('link', { name: 'Lena' })).toHaveAttribute('href', `/p/${workedPuuid('Lena')}`);
+  });
+
+  it('is a details element, not a button, so it works with JavaScript off', () => {
+    const { container } = draw(withGames());
+
+    expect(container.querySelector('details')?.tagName).toBe('DETAILS');
+    expect(container.querySelector('details summary')).not.toBeNull();
+    // The summary is announced as a button; it is not a `<button>`, which is the point.
+    expect(container.querySelector('button')).toBeNull();
   });
 });

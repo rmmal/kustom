@@ -2135,6 +2135,22 @@ and the group say them in lower case).
   reading — the board has not credited you with anything yet — and the still-settling sentence is what
   explains it.
 
+### Leaderboard row expand (M5.30) — 2026-09-13
+
+A row with rated games in the open window is a `<details>`, closed by default. The two-line row is the
+summary. Opening it lists those games newest first: `Won` / `Lost`, the night (`9 Sep`), the duration, and
+`1512 (+43)` on the right — the same four facts, the same delta glyphs, the same gain/loss weights as
+`Recent games` on `/p/[puuid]`. No lineup, no chance clause: those stay on the player page a tap on the name
+already opens.
+
+- The control is `<details>`, the same expand `/games` and `/fun` use. No JavaScript. The games are in the
+  first paint.
+- A 5px `dim` triangle sits between the name and Proven so the primary number stays on the right edge, under
+  the legend. The slot is reserved on every row so a seed with nothing to open does not shift that column.
+- The side is the 3px leading rule, blue or red, never a wash behind `Won`.
+- The tonight rail never opens: `loadTopPlayers` does not attach the breakdown.
+- Rated games only. An unrated row does not move the number the expand is explaining.
+
 ### Still-settling marker (M3.8)
 
 - The marker is a chip: the word `settling`, mono `t-xs`, `dim`, 1px hairline border, 3px radius, `sp-1`
