@@ -5,6 +5,8 @@ import { invitedLine, openingOnPcLine, START_LOBBY_BUTTON } from '@/lib/admin/lo
 import { NO_MORE_SPLITS } from '@/lib/admin/reroll';
 import type { BoardRow } from '@/lib/board/types';
 import { SWITCH_SIDE_ENABLED } from '@/lib/commands/gate';
+import { MYSTERY_EMPTY, MYSTERY_TITLE } from '@/lib/mystery/copy';
+import type { MysteryPageState } from '@/lib/mystery/service';
 import { NO_ACTIVE_SEASON_MESSAGE, NO_ACTIVE_SEASON_TONIGHT_MESSAGE } from '@/lib/season';
 import {
   extraMember,
@@ -51,6 +53,7 @@ function draw(
     topPlayers?: readonly BoardRow[];
     /** Tonight's `create_lobby`, which only an admin's render is ever given (M4.2). */
     lobbyStart?: LobbyStartView | null;
+    mystery?: MysteryPageState | null;
   } = {},
 ) {
   // Anonymous unless the test names a puuid or an admin: `null` used to mean both "signed
@@ -72,6 +75,7 @@ function draw(
       viewer={who}
       topPlayers={viewer.topPlayers ?? []}
       lobbyStart={viewer.lobbyStart ?? null}
+      mystery={viewer.mystery ?? null}
     />,
   );
 }
@@ -136,6 +140,17 @@ describe('idle: no lobby tonight', () => {
 
     expect(screen.getAllByText('How this works').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Run the companion').length).toBeGreaterThan(0);
+  });
+
+  it('puts Daily Mystery above the empty rack, so the idle page still has something to play', () => {
+    const { container } = draw(snapshot(null), {
+      mystery: { kind: 'empty', empty: { empty: true, expiresAt: '2026-09-14T21:00:00.000Z' } },
+    });
+
+    expect(screen.getByRole('heading', { name: MYSTERY_TITLE })).toBeInTheDocument();
+    expect(screen.getByText(MYSTERY_EMPTY)).toBeInTheDocument();
+    const blocks = [...container.querySelectorAll('.cn-col > .cn-block')];
+    expect(blocks[0]?.classList.contains('cn-mystery-home')).toBe(true);
   });
 
   /**

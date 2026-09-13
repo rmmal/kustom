@@ -16,14 +16,10 @@ export function generateMetadata() {
 
 export default async function MysteryPage() {
   const mystery = await loadMysteryOrNone();
-  const state = mystery ?? {
-    kind: 'empty' as const,
-    empty: { empty: true as const, expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-  };
 
   return (
     <main className="cn-page">
-      <MysteryLive initial={state} />
+      <MysteryLive initial={mystery} />
     </main>
   );
 }

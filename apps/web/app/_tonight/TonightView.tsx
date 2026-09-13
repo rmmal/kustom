@@ -175,6 +175,7 @@ export function TonightView({
          * this page is designed for, and on an idle page it is the only thing to do.
          */}
         {state.kind === 'idle' ? startLobby : null}
+        {idle ? <MysteryHome mystery={mystery} /> : null}
         {state.kind === 'idle' ? <Idle /> : null}
         {state.kind === 'filling' ? (
           <section className="cn-block">
@@ -195,6 +196,8 @@ export function TonightView({
         {/* M3.10's one quiet line, under the block and never per row. */}
         {hasNamelessRow(state) ? <p className="cn-hint">{NAMELESS_HINT}</p> : null}
 
+        {idle ? null : <MysteryHome mystery={mystery} />}
+
         {/*
          * `Your role tonight`, and the `That's me` list behind it (M3.6). **Last in the
          * column, in every state**, so appearing or disappearing cannot move the primary
@@ -202,12 +205,6 @@ export function TonightView({
          * rows at every count. It draws nothing at all for the common case — a visitor who
          * is not signed in and no live lobby.
          */}
-        {mystery === null ? null : (
-          <section className="cn-block cn-mystery-home">
-            <MysteryLive initial={mystery} />
-          </section>
-        )}
-
         <RoleTonight lobby={snapshot.lobby} viewer={viewer} onViewerChanged={onViewerChanged} />
       </main>
 
@@ -279,6 +276,20 @@ function LivePill() {
       <span className="cn-live-dot" aria-hidden="true" />
       <span className="cn-num cn-live-word">live</span>
     </span>
+  );
+}
+
+/**
+ * Today's Daily Mystery on `/`. Idle nights put it above the empty rack: ten
+ * seats are 480px, and a card under them is under the fold on the phone this
+ * page is designed for. A live lobby keeps the primary block first.
+ */
+function MysteryHome({ mystery }: { mystery: MysteryPageState | null }) {
+  if (mystery === null) return null;
+  return (
+    <section className="cn-block cn-mystery-home">
+      <MysteryLive initial={mystery} />
+    </section>
   );
 }
 
