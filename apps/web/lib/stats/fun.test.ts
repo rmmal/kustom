@@ -9,14 +9,17 @@ import {
   FIRST_BLOOD_TITLE,
   fearBanLine,
   funRoast,
+  LUCKY_TRASH,
   OTP_TITLE,
   otpLine,
   PENTA_EMPTY,
   PENTA_TITLE,
   POOL_EMPTY,
   QUADRA_TITLE,
+  ROBBED,
   TRIPLE_TITLE,
   TURRET_TITLE,
+  timesLine,
   VARIETY_TITLE,
   varietyLine,
   WON_UGLY,
@@ -146,6 +149,7 @@ describe('funFactsView', () => {
     const facts = funFactsView([remake], rosterFor([remake]));
     expect(facts.games).toBe(0);
     expect(facts.records.find((record) => record.id === 'kills')?.holders).toEqual([]);
+    expect(facts.fates.every((block) => block.holders.length === 0)).toBe(true);
   });
 
   it('names the highest and lowest CS at a role in one counted game', () => {
@@ -163,6 +167,8 @@ describe('funFactsView', () => {
     expect(funRoast(WON_UGLY)).toBe('كسب وهو زبالة');
     expect(funRoast(OTP_TITLE)).toBe('اكتر واحد معرق');
     expect(funRoast(VARIETY_TITLE)).toBe('لعيب بيلعب بشامبيونات مختلفة');
+    expect(funRoast(LUCKY_TRASH)).toBe('المحظوظ طرش');
+    expect(funRoast(ROBBED)).toBe('المظلوم بزيادة');
     expect(funRoast('not a /fun title')).toBeNull();
   });
 
@@ -476,6 +482,58 @@ describe('funFactsView', () => {
     const facts = funFactsView(games, rosterFor(games));
     expect(facts.pools.every((pool) => pool.rows.length === 0)).toBe(true);
     expect(facts.pools[0]?.empty).toBe(POOL_EMPTY);
+  });
+
+  it('ranks who was the worst scoreboard on a win and the best on a loss', () => {
+    const fine = { kills: 4, deaths: 4, assists: 4 };
+    const trash = { kills: 0, deaths: 8, assists: 1 };
+    const carry = { kills: 12, deaths: 2, assists: 8 };
+    const seat = (key: string, role: 'top' | 'jungle' | 'mid' | 'adc' | 'support') => ({
+      key,
+      role,
+      championId: 1,
+      ...fine,
+    });
+    const game = (id: string, at: string, passenger: 'bilal' | 'omar') =>
+      tenPlayerGame({
+        id,
+        at,
+        durationS: 1_800,
+        winner: 100,
+        blue: [
+          { key: passenger, role: 'support', championId: passenger === 'bilal' ? 12 : 35, ...trash },
+          seat('iris', 'top'),
+          seat('rami', 'jungle'),
+          seat('theo', 'mid'),
+          seat('hana', 'adc'),
+        ],
+        red: [
+          { key: 'lena', role: 'adc', championId: 103, ...carry },
+          seat('yuki', 'support'),
+          seat('nadia', 'top'),
+          seat('karim', 'jungle'),
+          seat(passenger === 'bilal' ? 'omar' : 'bilal', 'mid'),
+        ],
+      });
+    const games = [
+      game('fate-a', '2026-09-01T20:00:00Z', 'bilal'),
+      game('fate-b', '2026-09-02T20:00:00Z', 'bilal'),
+      game('fate-c', '2026-09-03T20:00:00Z', 'omar'),
+    ];
+    const facts = funFactsView(games, rosterFor(games));
+    const lucky = facts.fates.find((block) => block.id === 'lucky-trash');
+    const robbed = facts.fates.find((block) => block.id === 'robbed');
+    expect(lucky?.holders.map((row) => [row.name, row.valueLabel])).toEqual([
+      ['Bilal', timesLine(2)],
+      ['Omar', timesLine(1)],
+    ]);
+    expect(lucky?.holders[0]?.openings.map((row) => row.label)).toEqual([
+      '0/8/1 · Alistar',
+      '0/8/1 · Alistar',
+    ]);
+    expect(robbed?.holders.map((row) => [row.name, row.valueLabel])).toEqual([['Lena', timesLine(3)]]);
+    expect(robbed?.holders[0]?.openings).toHaveLength(3);
+    expect(robbed?.holders[0]?.openings[0]?.label).toBe('12/2/8 · Ahri');
   });
 
   it('names a fountain resident only when CS and takedowns are both that low', () => {

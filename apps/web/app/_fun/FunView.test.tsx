@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import type { QueueKind } from '@/lib/games/queue';
 import type { WindowKind } from '@/lib/night';
 import {
+  FATES_HEADING,
   FIRST_BLOOD_EMPTY,
   FIRST_BLOOD_TAKEN_TITLE,
   FIRST_BLOOD_TITLE,
   FUN_LABEL,
+  LUCKY_TRASH,
   MOST_BANNED_TITLE,
   MOST_PICKED_TITLE,
   OTP_TITLE,
@@ -14,6 +16,7 @@ import {
   PENTA_TITLE,
   POOL_EMPTY,
   POOLS_HEADING,
+  ROBBED,
   SEE_CHAMPS,
   SEE_GAMES,
   THIS_GAME,
@@ -73,6 +76,11 @@ describe('FunView', () => {
     expect(screen.getByText(POOLS_HEADING)).toBeInTheDocument();
     expect(screen.getByText(OTP_TITLE)).toBeInTheDocument();
     expect(screen.getByText(VARIETY_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(FATES_HEADING)).toBeInTheDocument();
+    expect(screen.getByText(LUCKY_TRASH)).toBeInTheDocument();
+    expect(screen.getByText(ROBBED)).toBeInTheDocument();
+    expect(screen.getByText('المحظوظ طرش')).toBeInTheDocument();
+    expect(screen.getByText('المظلوم بزيادة')).toBeInTheDocument();
     expect(screen.getAllByText(POOL_EMPTY).length).toBe(2);
     expect(screen.getByText(FIRST_BLOOD_EMPTY)).toBeInTheDocument();
     expect(screen.getByText(PENTA_TITLE)).toBeInTheDocument();
@@ -284,6 +292,62 @@ describe('FunView', () => {
     expect(within(otp).getByText('× 5')).toBeInTheDocument();
     expect(within(variety).getByText('Ahri')).toBeInTheDocument();
     expect(within(variety).getAllByText('× 1').length).toBe(5);
+  });
+
+  it('opens collapsed lucky-trash and robbed games under the count', () => {
+    const fine = { kills: 4, deaths: 4, assists: 4 };
+    const trash = { kills: 0, deaths: 8, assists: 1 };
+    const carry = { kills: 12, deaths: 2, assists: 8 };
+    const seat = (key: string, role: 'top' | 'jungle' | 'mid' | 'adc' | 'support') => ({
+      key,
+      role,
+      championId: 1,
+      ...fine,
+    });
+    const games = ['2026-09-01T20:00:00Z', '2026-09-02T20:00:00Z'].map((at, index) =>
+      tenPlayerGame({
+        id: `fate-${index}`,
+        at,
+        durationS: 1_800,
+        winner: 100,
+        blue: [
+          { key: 'bilal', role: 'support', championId: 12, ...trash },
+          seat('iris', 'top'),
+          seat('rami', 'jungle'),
+          seat('omar', 'mid'),
+          seat('theo', 'adc'),
+        ],
+        red: [
+          { key: 'lena', role: 'adc', championId: 103, ...carry },
+          seat('yuki', 'support'),
+          seat('nadia', 'top'),
+          seat('karim', 'jungle'),
+          seat('hana', 'mid'),
+        ],
+      }),
+    );
+    const facts = assembleFunFacts({
+      window: 'this-month',
+      games,
+      players: rosterFor(games),
+      range: MONTH,
+      capped: false,
+      cap: 2_000,
+      timeZone: 'Africa/Cairo',
+    });
+    render(<FunView facts={facts} />);
+    const lucky = screen.getByText(LUCKY_TRASH).closest('.cn-role-block') as HTMLElement;
+    const robbed = screen.getByText(ROBBED).closest('.cn-role-block') as HTMLElement;
+    expect(within(lucky).getByRole('link', { name: 'Bilal' })).toBeInTheDocument();
+    expect(within(lucky).getByText('2 times')).toBeInTheDocument();
+    expect(within(robbed).getByRole('link', { name: 'Lena' })).toBeInTheDocument();
+    expect(within(robbed).getByText('2 times')).toBeInTheDocument();
+    const card = lucky.querySelector('details');
+    expect(card).not.toBeNull();
+    expect(card).not.toHaveAttribute('open');
+    expect(within(lucky).getByText(SEE_GAMES)).toBeInTheDocument();
+    expect(within(lucky).getAllByText('0/8/1 · Alistar').length).toBe(2);
+    expect(within(robbed).getAllByText('12/2/8 · Ahri').length).toBe(2);
   });
 
   it('hides CS by role on ARAM', () => {

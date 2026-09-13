@@ -170,6 +170,11 @@ export const VARIETY_RULE = `Distinct champions across ${MIN_RECORD_GAMES} or mo
 export const POOL_EMPTY = `Nobody has ${MIN_RECORD_GAMES} counted games with a champion in this window.`;
 /** Opens one person's champion × games list. */
 export const SEE_CHAMPS = 'See champs';
+export const FATES_HEADING = 'Luck';
+export const LUCKY_TRASH = 'Lucky trash';
+export const LUCKY_TRASH_RULE = 'Lowest KDA on the winning side of a counted custom. Ranked by how often.';
+export const ROBBED = 'Most robbed';
+export const ROBBED_RULE = 'Highest KDA on the losing side of a counted custom. Ranked by how often.';
 
 export const NOBODY_THIS = 'Nobody qualifies.';
 
@@ -216,6 +221,9 @@ export const FUN_ROAST: Readonly<Record<string, string>> = {
   [POOLS_HEADING]: 'معرق ولا كرييتيف',
   [OTP_TITLE]: 'اكتر واحد معرق',
   [VARIETY_TITLE]: 'لعيب بيلعب بشامبيونات مختلفة',
+  [FATES_HEADING]: 'محظوظ ومظلوم',
+  [LUCKY_TRASH]: 'المحظوظ طرش',
+  [ROBBED]: 'المظلوم بزيادة',
   [MOST_DEATHS]: 'أكتر واحد بيموت',
   [SHORTEST_LIFE]: 'نزل ومات',
   [DEATHLESS_STREAK]: 'ما بيموتش',
@@ -286,6 +294,10 @@ export function varietyLine(unique: number, games: number): string {
 
 export function champTimesLine(count: number): string {
   return `× ${count}`;
+}
+
+export function timesLine(count: number): string {
+  return count === 1 ? '1 time' : `${count} times`;
 }
 
 export function matchDetail(startedAt: string, durationS: number): string {
