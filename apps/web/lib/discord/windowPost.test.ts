@@ -28,6 +28,7 @@ const board: BoardView = {
       streak: null,
       climb: null,
       settling: false,
+      breakdown: [],
     },
   ],
   range: 'Monday 1 Sep to Sunday 7 Sep',

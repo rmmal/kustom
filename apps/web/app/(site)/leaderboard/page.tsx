@@ -22,7 +22,8 @@ import '../../board.css';
  * different window than the URL names is a page whose links cannot be trusted.
  *
  * The one thing the session decides is which row gets the `brand` "you" rule. Nothing here
- * writes to the database.
+ * writes to the database. `includeBreakdown` is on so a row can open into the window's games
+ * (M5.30); the tonight rail asks `loadBoard` without it.
  */
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,11 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
   if (kind === null) notFound();
 
   const [board, viewer] = await Promise.all([
-    loadBoard(createPublicClient(), { window: kind, timeZone: nightTimeZone() }),
+    loadBoard(createPublicClient(), {
+      window: kind,
+      timeZone: nightTimeZone(),
+      includeBreakdown: true,
+    }),
     currentViewer(),
   ]);
 

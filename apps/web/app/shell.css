@@ -85,14 +85,13 @@
 .cn-themes {
   grid-area: theme;
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: var(--cn-sp-2);
   margin: 0;
   padding: 0;
   min-inline-size: 0;
-  border: 1px solid var(--cn-line);
-  border-radius: var(--cn-radius-row);
-  overflow: hidden;
-  background: var(--cn-surface);
+  border: 0;
+  background: transparent;
 }
 
 /* The lamp, and the entire logo: 3 x 18px of amber. No image, no crest, no favicon work. */
@@ -121,36 +120,30 @@
 .cn-theme {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 44px;
   padding: 0 var(--cn-sp-3);
-  border: 0;
-  border-inline-start: 1px solid var(--cn-line);
-  background: transparent;
-  color: var(--cn-dim);
+  border: 1px solid var(--cn-line);
+  border-radius: var(--cn-radius-row);
+  background: var(--cn-raise);
+  color: var(--cn-text);
   font-family: var(--cn-font-sans);
   font-size: var(--cn-t-sm);
   font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
   cursor: pointer;
-}
-
-.cn-theme:first-child {
-  border-inline-start: 0;
 }
 
 .cn-theme-on {
   color: var(--cn-brand);
   background: var(--cn-brand-tint);
+  border-color: var(--cn-brand);
+  box-shadow: inset 0 0 0 1px var(--cn-brand);
 }
 
 .cn-theme:active {
   background: var(--cn-pressed);
-}
-
-@media (max-width: 379px) {
-  .cn-theme {
-    padding: 0 var(--cn-sp-2);
-    font-size: var(--cn-t-xs);
-  }
 }
 
 .cn-tabs::-webkit-scrollbar {

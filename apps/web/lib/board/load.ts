@@ -4,15 +4,16 @@ import { inChunks } from '../chunks';
 import { readSeed, type StoredSeed, seedFor } from '../ingest/seed';
 // `LANE_ORDER` left with `roleRecord` (M5.20): `By role` is `lib/stats`' fold now.
 import { inLaneOrder } from '../laneOrder';
-import { type WindowKind, type WindowRange, windowRange } from '../night';
+import { DEFAULT_NIGHT_TIME_ZONE, type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
 import { provenRating, provenSortKey } from '../ratingDisplay';
 import { loadStreaks } from '../stats/load';
 import type { PlayerName } from '../tonight/types';
+import { boardBreakdown } from './breakdown';
 import { rankLabel, SETTLING_GAMES } from './copy';
 import { sortBoardRows } from './order';
 import { recentGames } from './recent';
-import type { BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate } from './types';
+import type { BoardGame, BoardRow, BoardView, PlayerBoardView, RecentGame, RecentTeammate } from './types';
 import { windowRangeLabel } from './window';
 
 /**
@@ -96,6 +97,11 @@ export interface BoardOptions {
   /** Injected in tests; `new Date()` otherwise. Never read inside the pure helpers. */
   now?: Date;
   timeZone?: string;
+  /**
+   * Attach each row's rated games for the `/leaderboard` expand (M5.30). Off by default:
+   * the tonight rail serializes these rows and does not open them.
+   */
+  includeBreakdown?: boolean;
 }
 
 /**
@@ -131,7 +137,7 @@ export async function loadBoard(client: PublicClient, options: BoardOptions): Pr
   };
 
   if (window !== 'all-time') {
-    return { window, ...slot, rows: sortBoardRows(await windowRows(client, season, range)) };
+    return { window, ...slot, rows: sortBoardRows(await windowRows(client, season, range, options)) };
   }
 
   /**
@@ -144,10 +150,14 @@ export async function loadBoard(client: PublicClient, options: BoardOptions): Pr
    * not either and equality is the point. With one season — M5.14 took season creation out —
    * `All time` and "this season" are the same list of games.
    */
-  const [players, ratings, streaks] = await Promise.all([
+  const timeZone = options.timeZone ?? DEFAULT_NIGHT_TIME_ZONE;
+  const [players, ratings, streaks, breakdowns] = await Promise.all([
     loadAllPlayers(client),
     loadRatings(client, season),
     loadStreaks(client, options),
+    options.includeBreakdown === true
+      ? loadAllTimeBreakdowns(client, season, timeZone)
+      : Promise.resolve(new Map<string, readonly BoardGame[]>()),
   ]);
   const runs = new Map(streaks.map((streak) => [streak.puuid, streak.current]));
 
@@ -169,6 +179,7 @@ export async function loadBoard(client: PublicClient, options: BoardOptions): Pr
       streak: runs.get(player.puuid) ?? null,
       climb: null,
       settling: games < SETTLING_GAMES,
+      breakdown: breakdowns.get(player.id) ?? [],
     };
   });
 
@@ -243,7 +254,12 @@ async function firstCountedGameAt(client: PublicClient, seasonId: string): Promi
  * A counted game is one the fold counted, which on a stored row is `mu_after is not null`.
  * An unrated game in the window counts nowhere here, exactly as on `/leaderboard` today.
  */
-async function windowRows(client: PublicClient, seasonId: string, range: WindowRange): Promise<BoardRow[]> {
+async function windowRows(
+  client: PublicClient,
+  seasonId: string,
+  range: WindowRange,
+  options: BoardOptions,
+): Promise<BoardRow[]> {
   const games = await loadSeasonGames(client, seasonId, { limit: SEASON_GAME_LIMIT, range });
   if (games.length === 0) return [];
 
@@ -276,6 +292,8 @@ async function windowRows(client: PublicClient, seasonId: string, range: WindowR
     loadPlayersByIds(client, playerIds),
     loadRatings(client, seasonId, playerIds),
   ]);
+  const timeZone = options.timeZone ?? DEFAULT_NIGHT_TIME_ZONE;
+  const includeBreakdown = options.includeBreakdown === true;
 
   return playerIds.flatMap((playerId) => {
     const player = players.get(playerId);
@@ -305,9 +323,64 @@ async function windowRows(client: PublicClient, seasonId: string, range: WindowR
         climb: { muBefore: first.row.muBefore as number, muAfter: last.row.muAfter as number },
         // **The all-time count**, not the window's: the chip is a fact about the rating.
         settling: (ratings.get(playerId)?.games ?? played.length) < SETTLING_GAMES,
+        breakdown: includeBreakdown ? playedBreakdown(played, timeZone) : [],
       },
     ];
   });
+}
+
+/**
+ * `All time`'s expand (M5.30): every rated game in the season, newest first, keyed by
+ * `player_id` so the row construction stays a map lookup.
+ *
+ * A second read rather than folding it into the all-time path's `ratings` query, because that
+ * path is the one the rail takes and the rail does not open.
+ */
+async function loadAllTimeBreakdowns(
+  client: PublicClient,
+  seasonId: string,
+  timeZone: string,
+): Promise<Map<string, readonly BoardGame[]>> {
+  const games = await loadSeasonGames(client, seasonId, { limit: SEASON_GAME_LIMIT });
+  if (games.length === 0) return new Map();
+
+  const byGame = new Map(games.map((game) => [game.id, game]));
+  const rows = await loadGameRows(
+    client,
+    games.map((game) => game.id),
+  );
+  const byPlayer = new Map<string, { row: PlayerGameRow; game: SeasonGame }[]>();
+  for (const row of rows) {
+    const game = byGame.get(row.gameId);
+    if (game === undefined || row.muBefore === null || row.muAfter === null) continue;
+    const played = byPlayer.get(row.playerId) ?? [];
+    played.push({ row, game });
+    byPlayer.set(row.playerId, played);
+  }
+
+  const out = new Map<string, readonly BoardGame[]>();
+  for (const [playerId, played] of byPlayer) {
+    out.set(playerId, playedBreakdown(played, timeZone));
+  }
+  return out;
+}
+
+function playedBreakdown(
+  played: readonly { row: PlayerGameRow; game: SeasonGame }[],
+  timeZone: string,
+): BoardGame[] {
+  return boardBreakdown(
+    played.map(({ row, game }) => ({
+      gameId: game.id,
+      startedAt: game.startedAt,
+      durationS: game.durationS,
+      won: row.side === game.winningSide,
+      side: row.side,
+      muBefore: row.muBefore as number,
+      muAfter: row.muAfter as number,
+    })),
+    timeZone,
+  );
 }
 
 /**

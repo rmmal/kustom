@@ -1,10 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   applyTheme,
   readTheme,
   THEME_COLOR,
-  THEME_COLOR_CURRENT_LIGHT,
   THEME_LABELS,
   THEME_PICKER_LABEL,
   THEME_STORAGE_KEY,
@@ -13,7 +12,7 @@ import { ThemeToggle } from './ThemeToggle';
 
 describe('ThemeToggle', () => {
   beforeEach(() => {
-    document.documentElement.dataset.theme = 'day';
+    document.documentElement.dataset.theme = 'night';
     localStorage.removeItem(THEME_STORAGE_KEY);
   });
 
@@ -22,33 +21,40 @@ describe('ThemeToggle', () => {
     localStorage.removeItem(THEME_STORAGE_KEY);
   });
 
-  it('marks Day by default and offers Night and Current', () => {
+  it('marks Night by default and offers Day', async () => {
     render(<ThemeToggle />);
 
     expect(screen.getByRole('group', { name: THEME_PICKER_LABEL })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.night })).not.toBeChecked();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.current })).not.toBeChecked();
-  });
-
-  it('writes Night onto the document and into localStorage', () => {
-    render(<ThemeToggle />);
-
-    fireEvent.click(screen.getByRole('radio', { name: THEME_LABELS.night }));
-
     expect(screen.getByRole('radio', { name: THEME_LABELS.night })).toBeChecked();
-    expect(document.documentElement.dataset.theme).toBe('night');
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('night');
+    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).not.toBeChecked();
+    expect(screen.queryByRole('radio', { name: 'Current' })).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: THEME_LABELS.night })).toBeChecked();
+    });
   });
 
-  it('can restore Current, the isolated Floodlit look', () => {
+  it('follows the document theme after mount, so a refresh cannot disagree', async () => {
+    document.documentElement.dataset.theme = 'day';
     render(<ThemeToggle />);
 
-    fireEvent.click(screen.getByRole('radio', { name: THEME_LABELS.current }));
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
+    });
+    expect(screen.getByRole('radio', { name: THEME_LABELS.night })).not.toBeChecked();
+  });
 
-    expect(screen.getByRole('radio', { name: THEME_LABELS.current })).toBeChecked();
-    expect(document.documentElement.dataset.theme).toBe('current');
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('current');
+  it('writes Day onto the document and into localStorage', async () => {
+    render(<ThemeToggle />);
+
+    fireEvent.click(screen.getByRole('radio', { name: THEME_LABELS.day }));
+
+    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
+    expect(document.documentElement.dataset.theme).toBe('day');
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('day');
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
+    });
   });
 });
 
@@ -62,11 +68,11 @@ describe('applyTheme', () => {
   });
 
   it('writes data-theme and localStorage', () => {
-    applyTheme('night');
+    applyTheme('day');
 
-    expect(document.documentElement.dataset.theme).toBe('night');
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('night');
-    expect(readTheme()).toBe('night');
+    expect(document.documentElement.dataset.theme).toBe('day');
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('day');
+    expect(readTheme()).toBe('day');
   });
 
   it('updates theme-color when the meta tag is present', () => {
@@ -79,30 +85,5 @@ describe('applyTheme', () => {
 
     applyTheme('night');
     expect(meta.getAttribute('content')).toBe(THEME_COLOR.night);
-  });
-
-  it('uses Floodlit light chrome when Current meets a light OS', () => {
-    const meta = document.createElement('meta');
-    meta.setAttribute('name', 'theme-color');
-    document.head.append(meta);
-
-    const original = window.matchMedia;
-    window.matchMedia = ((query: string) => ({
-      matches: query.includes('prefers-color-scheme: light'),
-      media: query,
-      onchange: null,
-      addListener() {},
-      removeListener() {},
-      addEventListener() {},
-      removeEventListener() {},
-      dispatchEvent() {
-        return false;
-      },
-    })) as typeof window.matchMedia;
-
-    applyTheme('current');
-    expect(meta.getAttribute('content')).toBe(THEME_COLOR_CURRENT_LIGHT);
-
-    window.matchMedia = original;
   });
 });

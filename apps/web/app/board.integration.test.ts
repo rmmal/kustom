@@ -391,6 +391,28 @@ if (stack === null) {
       expect(seeded?.streak).toEqual({ kind: 'L', length: 1 });
     });
 
+    it('leaves the breakdown empty unless the page asks for it', async () => {
+      const board = await loadBoard(anon, ALL_TIME);
+      const zoe = board.rows.find((row) => row.puuid === puuid.zoe);
+
+      expect(zoe?.breakdown).toEqual([]);
+    });
+
+    it('lists Zoe rated games newest first when the board asks for the expand', async () => {
+      const board = await loadBoard(anon, { ...ALL_TIME, includeBreakdown: true });
+      const zoe = board.rows.find((row) => row.puuid === puuid.zoe);
+      const seeded = board.rows.find((row) => row.puuid === puuid.nameless);
+
+      expect(
+        zoe?.breakdown.map((game) => ({ won: game.won, muBefore: game.muBefore, muAfter: game.muAfter })),
+      ).toEqual([
+        { won: false, muBefore: 25.6, muAfter: 25.2 },
+        { won: true, muBefore: 25, muAfter: 25.6 },
+      ]);
+      // A seed the fold never rated has nothing to open.
+      expect(seeded?.breakdown).toEqual([]);
+    });
+
     it('renders the nameless row as `Someone`, with the hint once and no puuid', async () => {
       const board = await loadBoard(anon, ALL_TIME);
       const html = renderToStaticMarkup(createElement(BoardView, { board, viewerPuuid: null }));
@@ -442,6 +464,18 @@ if (stack === null) {
       expect(wren).toMatchObject({ games: 2, wins: 1, losses: 1 });
       // The climb is the two mu values, never a formatted delta: 25 in, 25.2 out.
       expect(wren?.climb).toEqual({ muBefore: 25, muAfter: 25.2 });
+    });
+
+    it('opens last week into those two rated games when the board asks', async () => {
+      const board = await loadBoard(anon, { window: 'last-week', includeBreakdown: true, ...WEEK });
+      const wren = board.rows.find((row) => row.puuid === puuid.weekly);
+
+      expect(
+        wren?.breakdown.map((game) => ({ won: game.won, muBefore: game.muBefore, muAfter: game.muAfter })),
+      ).toEqual([
+        { won: false, muBefore: 25.6, muAfter: 25.2 },
+        { won: true, muBefore: 25, muAfter: 25.6 },
+      ]);
     });
 
     it('is their current rating on the running week, because that game is their last', async () => {

@@ -61,6 +61,7 @@ function row(overrides: Partial<BoardRow>): BoardRow {
     streak: null,
     climb: null,
     settling: false,
+    breakdown: [],
     ...overrides,
   };
 }
