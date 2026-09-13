@@ -245,12 +245,28 @@ export interface FunHolder extends PlayerRef {
   openings: FunOpening[];
 }
 
-/** A champion the group banned or picked, not tied to one person. */
+/** A champion the group banned or picked, or one person locked, with a count. */
 export interface FunChampRow {
   championId: number;
   champion: string;
   count: number;
   valueLabel: string;
+}
+
+/** One person on the one-trick or variety list, and every champion they locked. */
+export interface FunPoolRow extends PlayerRef {
+  valueLabel: string;
+  champs: FunChampRow[];
+}
+
+/** OTP or variety: ranked people, each with a collapsed champion × games pool. */
+export interface FunPool {
+  id: string;
+  title: string;
+  intro: string;
+  rule: string;
+  rows: FunPoolRow[];
+  empty: string;
 }
 
 /** A ranked season table — first-blood totals still use this shape. */
@@ -349,6 +365,11 @@ export interface FunFactsView {
   fearBans: FunSection<FunFearBan>;
   mostBanned: FunSection<FunChampRow>;
   mostPicked: FunSection<FunChampRow>;
+  /**
+   * Who locks the same champion and who never repeats one. Ranked people, each
+   * with a collapsed champion × games pool.
+   */
+  pools: FunPool[];
   csByRole: RoleCsPair[];
   records: FunRecord[];
   notes: string[];

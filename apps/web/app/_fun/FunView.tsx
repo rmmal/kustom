@@ -15,7 +15,9 @@ import {
   MOST_BANNED_RULE,
   MOST_PICKED_RULE,
   noCsAtRole,
+  POOLS_HEADING,
   RECORDS_HEADING,
+  SEE_CHAMPS,
   SEE_GAMES,
   THIEF_EMPTY,
   THIEF_TITLE,
@@ -29,6 +31,8 @@ import type {
   FunFearBan,
   FunHolder,
   FunOpening,
+  FunPool,
+  FunPoolRow,
   FunRecord,
   FunSection,
   PlayerRef,
@@ -47,10 +51,10 @@ import '../board-parts.css';
  *
  * A pure function of one snapshot. The numbers live in `lib/stats/fun.ts`; this file decides
  * nothing except order: first blood, multi-kill halls, first turret, deaths, steals,
- * fear bans, most banned / picked, then CS by role, then one-game records, then habits. The
- * Rift / ARAM picker is the same chips `/games` wears. CS-by-role, objective steals and most
- * banned are Rift only. Rows are labelled (name left, number right) so a long Riot ID cannot
- * wrap into the score.
+ * fear bans, most banned / picked, who they lock (OTP vs variety), then CS by role, then
+ * one-game records, then habits. The Rift / ARAM picker is the same chips `/games` wears.
+ * CS-by-role, objective steals and most banned are Rift only. Rows are labelled (name left,
+ * number right) so a long Riot ID cannot wrap into the score.
  */
 
 export function FunView({ facts }: { facts: FunFactsView }) {
@@ -93,6 +97,7 @@ export function FunView({ facts }: { facts: FunFactsView }) {
           <FearBans section={facts.fearBans} />
           {facts.queue === 'aram' ? null : <ChampTable section={facts.mostBanned} rule={MOST_BANNED_RULE} />}
           <ChampTable section={facts.mostPicked} rule={MOST_PICKED_RULE} />
+          <Pools pools={facts.pools} />
           {facts.queue === 'aram' ? null : <CsByRole pairs={facts.csByRole} />}
           <Records
             heading={RECORDS_HEADING}
@@ -106,7 +111,7 @@ export function FunView({ facts }: { facts: FunFactsView }) {
 }
 
 function isHabit(id: string): boolean {
-  return id === 'attendance' || id === 'comfort' || id === 'longest' || id === 'shortest';
+  return id === 'attendance' || id === 'longest' || id === 'shortest';
 }
 
 function FunHead({
@@ -152,6 +157,71 @@ function Museum({ museum }: { museum: FunSection<FunBloodGroup> }) {
         </div>
       </section>
     </section>
+  );
+}
+
+function Pools({ pools }: { pools: FunPool[] }) {
+  return (
+    <section className="cn-block">
+      <section className="cn-card cn-list-card">
+        <header className="cn-card-head cn-list-head cn-fun-head">
+          <FunHead title={POOLS_HEADING} />
+        </header>
+        {pools.map((pool) => (
+          <div key={pool.id} className="cn-role-block">
+            <FunHead title={pool.title} as="p" className="cn-stats-subtitle" />
+            <p className="cn-stats-intro">{pool.intro}</p>
+            {pool.rows.length === 0 ? (
+              <p className="cn-stats-empty">{pool.empty}</p>
+            ) : (
+              <ol className="cn-fun-groups">
+                {pool.rows.map((row) => (
+                  <PoolRow key={row.puuid} row={row} />
+                ))}
+              </ol>
+            )}
+            <p className="cn-award-rule">{pool.rule}</p>
+          </div>
+        ))}
+      </section>
+    </section>
+  );
+}
+
+function PoolRow({ row }: { row: FunPoolRow }) {
+  if (row.champs.length === 0) {
+    return (
+      <li className="cn-record cn-fun-holder">
+        <PlayerName player={row} />
+        <span className="cn-fun-stat">
+          <span className="cn-num cn-record-wl">{row.valueLabel}</span>
+        </span>
+      </li>
+    );
+  }
+
+  return (
+    <li className="cn-fun-group">
+      <details className="cn-fun-game">
+        <summary className="cn-record cn-fun-holder">
+          <PlayerName player={row} />
+          <span className="cn-fun-stat">
+            <span className="cn-num cn-record-wl">{row.valueLabel}</span>
+            <span className="cn-fun-toggle">{SEE_CHAMPS}</span>
+          </span>
+        </summary>
+        <ol className="cn-fun-openings">
+          {row.champs.map((champ) => (
+            <li key={champ.championId} className="cn-record cn-fun-holder">
+              <span className="cn-stats-name">{champ.champion}</span>
+              <span className="cn-fun-stat">
+                <span className="cn-num cn-record-wl">{champ.valueLabel}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      </details>
+    </li>
   );
 }
 

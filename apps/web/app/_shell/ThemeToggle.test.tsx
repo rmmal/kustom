@@ -1,13 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  applyTheme,
-  readTheme,
-  THEME_COLOR,
-  THEME_LABELS,
-  THEME_PICKER_LABEL,
-  THEME_STORAGE_KEY,
-} from '@/lib/theme';
+import { applyTheme, readTheme, THEME_COLOR, THEME_PICKER_LABEL, THEME_STORAGE_KEY } from '@/lib/theme';
 import { ThemeToggle } from './ThemeToggle';
 
 describe('ThemeToggle', () => {
@@ -21,17 +14,13 @@ describe('ThemeToggle', () => {
     localStorage.removeItem(THEME_STORAGE_KEY);
   });
 
-  it('marks Night by default and offers Day', async () => {
+  it('is a switch, Night on by default', () => {
     render(<ThemeToggle />);
 
-    expect(screen.getByRole('group', { name: THEME_PICKER_LABEL })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.night })).toBeChecked();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).not.toBeChecked();
-    expect(screen.queryByRole('radio', { name: 'Current' })).not.toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByRole('radio', { name: THEME_LABELS.night })).toBeChecked();
-    });
+    const toggle = screen.getByRole('switch', { name: THEME_PICKER_LABEL });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle).toHaveTextContent('Day');
+    expect(toggle).toHaveTextContent('Night');
   });
 
   it('follows the document theme after mount, so a refresh cannot disagree', async () => {
@@ -39,22 +28,21 @@ describe('ThemeToggle', () => {
     render(<ThemeToggle />);
 
     await waitFor(() => {
-      expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
+      expect(screen.getByRole('switch', { name: THEME_PICKER_LABEL })).toHaveAttribute(
+        'aria-checked',
+        'false',
+      );
     });
-    expect(screen.getByRole('radio', { name: THEME_LABELS.night })).not.toBeChecked();
   });
 
-  it('writes Day onto the document and into localStorage', async () => {
+  it('flips to Day on the document and in localStorage', () => {
     render(<ThemeToggle />);
 
-    fireEvent.click(screen.getByRole('radio', { name: THEME_LABELS.day }));
+    fireEvent.click(screen.getByRole('switch', { name: THEME_PICKER_LABEL }));
 
-    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
+    expect(screen.getByRole('switch', { name: THEME_PICKER_LABEL })).toHaveAttribute('aria-checked', 'false');
     expect(document.documentElement.dataset.theme).toBe('day');
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('day');
-    await waitFor(() => {
-      expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeChecked();
-    });
   });
 });
 

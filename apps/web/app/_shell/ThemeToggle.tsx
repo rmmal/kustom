@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   applyTheme,
+  otherTheme,
   readTheme,
   THEME_DEFAULT,
   THEME_LABELS,
@@ -12,9 +13,8 @@ import {
 } from '@/lib/theme';
 
 /**
- * Day / Night. Night is the default. The first paint is already the stored theme — the
- * root layout's beforeInteractive script writes `data-theme` — and this control syncs
- * to that attribute after mount so a refresh cannot show Day selected on a Night page.
+ * One switch, dressed like the nav tabs. Night is the default. After mount it
+ * reads `data-theme` so a refresh cannot disagree with the page.
  */
 export function ThemeToggle() {
   const [theme, setTheme] = useState<ThemeKind>(THEME_DEFAULT);
@@ -23,26 +23,26 @@ export function ThemeToggle() {
     setTheme(readTheme());
   }, []);
 
-  function pick(next: ThemeKind) {
+  function flip() {
+    const next = otherTheme(theme);
     setTheme(next);
     applyTheme(next);
   }
 
   return (
-    <fieldset className="cn-themes">
-      <legend className="cn-sr">{THEME_PICKER_LABEL}</legend>
+    <button
+      type="button"
+      className="cn-theme-toggle"
+      role="switch"
+      aria-checked={theme === 'night'}
+      aria-label={THEME_PICKER_LABEL}
+      onClick={flip}
+    >
       {THEME_ORDER.map((kind) => (
-        <label key={kind} className={kind === theme ? 'cn-theme cn-theme-on' : 'cn-theme'}>
-          <input
-            type="radio"
-            name="cn-theme"
-            className="cn-sr"
-            checked={kind === theme}
-            onChange={() => pick(kind)}
-          />
+        <span key={kind} className={kind === theme ? 'cn-theme-opt cn-theme-opt-on' : 'cn-theme-opt'}>
           {THEME_LABELS[kind]}
-        </label>
+        </span>
       ))}
-    </fieldset>
+    </button>
   );
 }

@@ -231,7 +231,7 @@ product rather than a document that happens to be dark.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ▍KUSTOM     Tonight  Leaderboard  Games  Stats  Fun          Day  Night │
+│  ▍KUSTOM     Tonight  Leaderboard  Games  Stats  Fun           Day Night │
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
 │   … page content, on the paper or the ink, under the floodlight … │
@@ -256,9 +256,9 @@ A leftover stored `current` becomes Night.
 Colour is still a team, a state, or nothing. Day and Night do not add a fourth colour, champion art, glass,
 or a second font. Admin is untouched.
 
-The theme control is two 44px chips in the top bar (`Day` · `Night`), the same recipe as the window
-picker: Archivo `t-sm`, sentence case, the chosen chip in `brand` on `brand-tint`. Phone: wordmark and
-the chips on the first row, tabs on the second. Desktop: wordmark, tabs, chips. The live pill stays in
+The theme control is one switch in the top bar (`Day` / `Night`), dressed like the nav tabs: Archivo,
+the same size and tracking, the active word underlined in `brand`. One tap flips. Phone: wordmark and
+the switch on the first row, tabs on the second. Desktop: wordmark, tabs, switch. The live pill stays in
 the status strip.
 
 - **Wordmark.** `KUSTOM` in the display cut at `t-md`, upper case, letter-spacing `0.02em`, in `text`,
@@ -272,13 +272,13 @@ the status strip.
   `Games`, `Stats`, `Companion ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
   `Games` with M5.25, `Stats` with M5.4, `Companion` is external and always there. A nav item that 404s is worse than a missing
   one. Keep the list in one exported array (`lib/nav.ts`) so no page hand-writes it.
-- **Phone.** Two rows: wordmark and the theme group (44px), then the tab row (44px, tabs left aligned,
+- **Phone.** Two rows: wordmark and the theme switch (44px), then the tab row (44px, tabs left aligned,
   horizontally scrollable with no scrollbar). Not sticky — a sticky bar costs 88px of a 700px screen on the
   one page people read in full.
-- **Desktop (≥720px).** One row: wordmark left, tabs, theme group right.
+- **Desktop (≥720px).** One row: wordmark left, tabs, theme switch right.
 - **The live pill is not in the top bar.** It belongs to the status strip, next to the state it describes, and
   a product has one place for a piece of information. The top bar carries identity, destinations, and the
-  theme chips (`Day` · `Night`).
+  theme switch (`Day` / `Night`).
 - **Footer.** One line of links, `t-sm` `dim`, top border `line`, `sp-6` above it. The date and season are the
   status strip's slug line and are not repeated here. `Your games` appears only for a signed-in viewer and points at
   `/p/<their puuid>`. `Get the companion` points at the **releases page**, not the `.exe` — the tonight page
@@ -2193,15 +2193,18 @@ are hidden on ARAM.
 Order under the strip: First Blood Museum (killer, champion, night), First Blood Donated only
 when the block named `firstBloodDeath` (hidden when empty — the live blob does not name who
 died), Pentakill / Quadrakill / Triple / Double museums, First Turret, Death Hall of Fame,
-Objective Thief (Rift), Fear Ban, Most banned (Rift), Most picked, then CS by role, one-game
-records, habits. First blood and vision are no longer printed as missing notes; the killer
+Objective Thief (Rift), Fear Ban, Most banned (Rift), Most picked, Who they lock (one-trick
+vs always a new champ), then CS by role, one-game records, habits. First blood and vision are no longer printed as missing notes; the killer
 museum is empty only when the stored block named no killer. Deaths and
 `longestTimeSpentLiving` are not a corpse. Multi-kill halls sum the stored count fields; a
 game with two triples is one opening labelled `2 triples`. First Turret is the
 `firstTowerKill` flag, never inferred from gold. Fear Ban is one sentence per person:
 `Omar's Shaco has been banned in 64% of games where they were available (16 of 25).` Most
 banned and Most picked are the lobby's champions, not a person's: `Shaco · 16 bans`,
-`Ahri · 12 picks`. One-game records include Longest killing spree from `largestKillingSpree`
+`Ahri · 12 picks`. Who they lock ranks people with at least five counted games that named a
+champion: **One-trick** is the highest share on one champion (`Shaco · 100% of 15 games`),
+**Always a new champ** is the most distinct champions (`12 champions · 15 games`). Each row
+is a closed `<details>` that opens **See champs** into `Ahri × 12`. One-game records include Longest killing spree from `largestKillingSpree`
 (at least three). Every English card title and record name carries an Egyptian 3ameya roast
 facing it on the right in brand (`مين فتحها`, `كنسهم كنس`, `كسب وهو زبالة`) — not فصحى and
 not a translation. Odd rows sit on `raise` so a long museum is a zebra.

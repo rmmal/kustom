@@ -160,8 +160,16 @@ export const SHORTEST = 'Shortest scored game';
 export const SHORTEST_RULE = 'The shortest counted game in the window.';
 export const NEVER_MISSES = 'Never misses';
 export const NEVER_MISSES_RULE = 'Most counted games in the window.';
-export const COMFORT = 'Comfort blanket';
-export const COMFORT_RULE = `Same champion in at least 35% of ${MIN_RECORD_GAMES} or more games.`;
+export const POOLS_HEADING = 'Who they lock';
+export const OTP_TITLE = 'One-trick';
+export const OTP_INTRO = 'Highest share of counted games on one champion.';
+export const OTP_RULE = `Most-played champion as a share of ${MIN_RECORD_GAMES} or more counted games.`;
+export const VARIETY_TITLE = 'Always a new champ';
+export const VARIETY_INTRO = 'Most distinct champions locked in counted games.';
+export const VARIETY_RULE = `Distinct champions across ${MIN_RECORD_GAMES} or more counted games.`;
+export const POOL_EMPTY = `Nobody has ${MIN_RECORD_GAMES} counted games with a champion in this window.`;
+/** Opens one person's champion × games list. */
+export const SEE_CHAMPS = 'See champs';
 
 export const NOBODY_THIS = 'Nobody qualifies.';
 
@@ -205,7 +213,9 @@ export const FUN_ROAST: Readonly<Record<string, string>> = {
   [LONGEST]: 'جيم ما بيخلصش',
   [SHORTEST]: 'خلصت بدري',
   [NEVER_MISSES]: 'عمره ما غاب',
-  [COMFORT]: 'نفس البطل كل ليلة',
+  [POOLS_HEADING]: 'معرق ولا كرييتيف',
+  [OTP_TITLE]: 'اكتر واحد معرق',
+  [VARIETY_TITLE]: 'لعيب بيلعب بشامبيونات مختلفة',
   [MOST_DEATHS]: 'أكتر واحد بيموت',
   [SHORTEST_LIFE]: 'نزل ومات',
   [DEATHLESS_STREAK]: 'ما بيموتش',
@@ -262,6 +272,20 @@ export function gamesCountLine(games: number): string {
 
 export function comfortLine(gamesOnChamp: number, games: number): string {
   return `${Math.round((gamesOnChamp / games) * 100)}% of ${games} games`;
+}
+
+export function otpLine(champion: string, gamesOnChamp: number, games: number): string {
+  return `${champion} · ${comfortLine(gamesOnChamp, games)}`;
+}
+
+export function varietyLine(unique: number, games: number): string {
+  const champs = unique === 1 ? '1 champion' : `${unique} champions`;
+  const nights = games === 1 ? '1 game' : `${games} games`;
+  return `${champs} · ${nights}`;
+}
+
+export function champTimesLine(count: number): string {
+  return `× ${count}`;
 }
 
 export function matchDetail(startedAt: string, durationS: number): string {

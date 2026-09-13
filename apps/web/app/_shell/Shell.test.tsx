@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { RELEASES_URL } from '@/lib/nav';
 import { HOW_THIS_WORKS_LINES } from '@/lib/shellCopy';
-import { THEME_LABELS, THEME_PICKER_LABEL } from '@/lib/theme';
+import { THEME_PICKER_LABEL } from '@/lib/theme';
 import { Shell } from './Shell';
 
 /**
@@ -85,13 +85,13 @@ describe('the top bar', () => {
     expect(companion).toHaveAttribute('target', '_blank');
   });
 
-  it('offers Day and Night, with Night marked', () => {
+  it('offers a Day / Night switch, Night on', () => {
     draw('/');
 
-    expect(screen.getByRole('group', { name: THEME_PICKER_LABEL })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.night })).toBeChecked();
-    expect(screen.getByRole('radio', { name: THEME_LABELS.day })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: 'Current' })).not.toBeInTheDocument();
+    const toggle = screen.getByRole('switch', { name: THEME_PICKER_LABEL });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle).toHaveTextContent('Day');
+    expect(toggle).toHaveTextContent('Night');
   });
 });
 

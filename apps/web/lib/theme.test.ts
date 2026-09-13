@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseTheme, THEME_BOOTSTRAP, THEME_DEFAULT, THEME_ORDER, THEME_STORAGE_KEY } from './theme';
+import {
+  otherTheme,
+  parseTheme,
+  THEME_BOOTSTRAP,
+  THEME_DEFAULT,
+  THEME_ORDER,
+  THEME_STORAGE_KEY,
+} from './theme';
 
 describe('parseTheme', () => {
   it('accepts Day and Night, and maps the old Current name to Night', () => {
@@ -16,6 +23,8 @@ describe('the default', () => {
   it('defaults to Night and offers only Day and Night', () => {
     expect(THEME_DEFAULT).toBe('night');
     expect(THEME_ORDER).toEqual(['day', 'night']);
+    expect(otherTheme('night')).toBe('day');
+    expect(otherTheme('day')).toBe('night');
   });
 
   it('writes the same names the bootstrap script reads, and migrates Current', () => {
