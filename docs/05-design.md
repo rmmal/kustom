@@ -231,7 +231,7 @@ product rather than a document that happens to be dark.
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ▍KUSTOM     Tonight  Leaderboard  Games  Stats  Fun           Day Night │
+│  ▍KUSTOM     Tonight  Leaderboard  Games  Stats  Fun  Mystery   Day Night │
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
 │   … page content, on the paper or the ink, under the floodlight … │
@@ -269,8 +269,8 @@ the status strip.
   Kustom. Six letters at 800 weight is also a better wordmark than thirteen.
 - **Nav.** Tabs, mono `t-xs`, `0.08em`, lower case is wrong here — these are destinations, so Archivo `t-sm`
   500 in `dim`, the current one in `text` with a 2px `brand` underline. Order: `Tonight`, `Leaderboard`,
-  `Games`, `Stats`, `Companion ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
-  `Games` with M5.25, `Stats` with M5.4, `Companion` is external and always there. A nav item that 404s is worse than a missing
+  `Games`, `Stats`, `Fun`, `Mystery`, `Companion ↗`. **A tab is rendered only if its route exists**: `Leaderboard` lands with M3.5,
+  `Games` with M5.25, `Stats` with M5.4, `Fun` with M5.24, `Mystery` with M5.32, `Companion` is external and always there. A nav item that 404s is worse than a missing
   one. Keep the list in one exported array (`lib/nav.ts`) so no page hand-writes it.
 - **Phone.** Two rows: wordmark and the theme switch (44px), then the tab row (44px, tabs left aligned,
   horizontally scrollable with no scrollbar). Not sticky — a sticky bar costs 88px of a 700px screen on the
@@ -947,7 +947,7 @@ placement are the designer's and are untouched.
 | past the ten | *(shipped)* `Around` | shipped, kept |
 | nameless hint | *(shipped)* `Names fill in after someone's first game.` | shipped, kept |
 | no season | *(shipped, M3.17)* `No season is active, so tonight's games are not being saved. An admin can start one.` | shipped, kept |
-| nav | `Tonight` · `Leaderboard` · `Games` · `Stats` · `Companion ↗` | product 2026-09-09 — **changed** from `Get the app`; `Games` added 2026-09-12 (M5.25) |
+| nav | `Tonight` · `Leaderboard` · `Games` · `Stats` · `Fun` · `Mystery` · `Companion ↗` | product 2026-09-09 — **changed** from `Get the app`; `Games` added 2026-09-12 (M5.25); `Mystery` added 2026-09-13 (M5.32) |
 | footer | `How this works` · `Get the companion` · `Your games` | product 2026-09-09 |
 | how this works, line 1 | `Nobody checks in. The companion app on somebody's PC reads the League lobby and sends who is in it.` | product 2026-09-09 |
 | how this works, line 2 | `The bot makes three splits and posts the fairest, with the win chance and the rating gap. An admin can step to the next one. Nothing is picked at random.` | product 2026-09-09 — **changed** |
@@ -2900,3 +2900,27 @@ Listed because each one is a thing a page like this drifts into:
 - No skeleton shimmer. A dark room does not want a moving grey rectangle; empty states are one sentence.
 - No toasts. Realtime already changes the thing you are looking at.
 - No numbers rendered in a proportional font, ever.
+
+## Daily Mystery (M5.32)
+
+One accountless guessing game per civil day, on `/` and `/mystery`. Floodlit's own rules still win: no
+emoji, no named leaderboard, no purple, no champion art. The visitor is a cookie. The League player is
+the one on the scoreboard. Those are different people and the page never pretends otherwise.
+
+- **The crime is the large type.** KDA in the display cut, then two or three hook lines (deaths, CS,
+  duration). That is the whole above-the-fold card.
+- **Six names, two columns, 44px.** Same button recipe as reroll. A second tap locks the guess. There is
+  no username field.
+- **Clues are a list, not a quiz.** `Clue 1 · Champion` then the word. Reveal is one button under the
+  names. The page never prints a clue the visitor has not asked for.
+- **After the lock, the card becomes the case file.** Correct / Wrong, it was <name>, the full
+  performance, then `Who did everyone blame?` as labelled bars. Community numbers are absent from the
+  play state because they are not in the props.
+- **First Detective is a sentence, not a medal.** Brand colour, no trophy. Later visitors get `Someone
+  has already claimed today's First Detective.` and never a name.
+- **Percentile is a bucket** (`Top 5%` … `Top 50%`) or nothing. Under ten correct guesses the page stays
+  quiet.
+- **Share copies a spoiler-free line.** `Daily Mystery #184 — solved with 1 clue. Top 15%.` Never the
+  player.
+- **Countdown** to the next civil midnight in `CUSTOMS_NIGHT_TZ`, mono, under a hairline. Same clock
+  the rotation uses. Not the 06:00 night boundary.

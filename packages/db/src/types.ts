@@ -654,6 +654,184 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_mysteries: {
+        Row: {
+          id: string
+          day: string
+          challenge_number: number
+          game_id: string
+          mystery_player_id: string
+          interesting_score: number
+          category: string
+          suspect_ids: string[]
+          hook: Json
+          active_from: string
+          expires_at: string
+          first_correct_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          day: string
+          challenge_number: number
+          game_id: string
+          mystery_player_id: string
+          interesting_score: number
+          category: string
+          suspect_ids: string[]
+          hook: Json
+          active_from: string
+          expires_at: string
+          first_correct_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          day?: string
+          challenge_number?: number
+          game_id?: string
+          mystery_player_id?: string
+          interesting_score?: number
+          category?: string
+          suspect_ids?: string[]
+          hook?: Json
+          active_from?: string
+          expires_at?: string
+          first_correct_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_mysteries_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_mysteries_mystery_player_id_fkey"
+            columns: ["mystery_player_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_mystery_clues: {
+        Row: {
+          id: string
+          challenge_id: string
+          clue_type: string
+          clue_value: string
+          reveal_order: number
+        }
+        Insert: {
+          id?: string
+          challenge_id: string
+          clue_type: string
+          clue_value: string
+          reveal_order: number
+        }
+        Update: {
+          id?: string
+          challenge_id?: string
+          clue_type?: string
+          clue_value?: string
+          reveal_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_mystery_clues_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "daily_mysteries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_mystery_sessions: {
+        Row: {
+          challenge_id: string
+          visitor_id: string
+          clues_revealed: number
+          started_at: string
+          last_request_at: string
+          request_count: number
+        }
+        Insert: {
+          challenge_id: string
+          visitor_id: string
+          clues_revealed?: number
+          started_at: string
+          last_request_at: string
+          request_count?: number
+        }
+        Update: {
+          challenge_id?: string
+          visitor_id?: string
+          clues_revealed?: number
+          started_at?: string
+          last_request_at?: string
+          request_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_mystery_sessions_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "daily_mysteries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_mystery_attempts: {
+        Row: {
+          id: string
+          challenge_id: string
+          visitor_id: string
+          guessed_player_id: string
+          correct: boolean
+          clues_used: number
+          completion_time_ms: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          challenge_id: string
+          visitor_id: string
+          guessed_player_id: string
+          correct: boolean
+          clues_used: number
+          completion_time_ms: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          challenge_id?: string
+          visitor_id?: string
+          guessed_player_id?: string
+          correct?: boolean
+          clues_used?: number
+          completion_time_ms?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_mystery_attempts_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "daily_mysteries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_mystery_attempts_guessed_player_id_fkey"
+            columns: ["guessed_player_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       players_public: {

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import type { BoardRow } from '@/lib/board/types';
+import type { MysteryPageState } from '@/lib/mystery/service';
 import { createPublicClient } from '@/lib/publicClient';
 import { loadTonight } from '@/lib/tonight/load';
 import type { LobbyStartView } from '@/lib/tonight/lobbyStart';
@@ -75,9 +76,16 @@ export interface TonightLiveProps {
    * which is made with the anon key and cannot see that table.
    */
   lobbyStart?: LobbyStartView | null;
+  mystery?: MysteryPageState | null;
 }
 
-export function TonightLive({ initial, viewer, topPlayers, lobbyStart = null }: TonightLiveProps) {
+export function TonightLive({
+  initial,
+  viewer,
+  topPlayers,
+  lobbyStart = null,
+  mystery = null,
+}: TonightLiveProps) {
   const [snapshot, setSnapshot] = useState(initial);
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -198,6 +206,7 @@ export function TonightLive({ initial, viewer, topPlayers, lobbyStart = null }: 
       lobbyStart={lobbyStart}
       onViewerChanged={onViewerChanged}
       onLobbyStarted={refreshServer}
+      mystery={mystery}
     />
   );
 }

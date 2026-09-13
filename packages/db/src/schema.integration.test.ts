@@ -414,7 +414,16 @@ if (stack === null) {
     });
 
     it('does not let anon read the private tables', async () => {
-      for (const table of ['companion_tokens', 'companion_commands', 'discord_config', 'window_posts']) {
+      for (const table of [
+        'companion_tokens',
+        'companion_commands',
+        'discord_config',
+        'window_posts',
+        'daily_mysteries',
+        'daily_mystery_clues',
+        'daily_mystery_sessions',
+        'daily_mystery_attempts',
+      ]) {
         const result = await rest('anon', `${table}?select=*&limit=1`);
         expect(result.ok, `${table} must not be readable by anon`).toBe(false);
       }

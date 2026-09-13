@@ -7,7 +7,7 @@ import { isCurrentTab, NAV_ITEMS, RELEASE_EXE_URL, RELEASES_URL, WORDMARK } from
  */
 
 describe('the nav list', () => {
-  it('is the routes that exist, now that Fun joined', () => {
+  it('is the routes that exist, now that Mystery joined', () => {
     // `Stats` joined with M5.4, which is the rule working: a tab appears the day its route does.
     expect(NAV_ITEMS.map((item) => item.label)).toEqual([
       'Tonight',
@@ -15,6 +15,7 @@ describe('the nav list', () => {
       'Games',
       'Stats',
       'Fun',
+      'Mystery',
       'Companion ↗',
     ]);
   });
@@ -72,6 +73,12 @@ describe('which tab is current', () => {
     expect(isCurrentTab(tab('Fun'), '/fun')).toBe(true);
     expect(isCurrentTab(tab('Fun'), '/stats')).toBe(false);
     expect(isCurrentTab(tab('Stats'), '/fun')).toBe(false);
+  });
+
+  it('underlines Mystery on its own page and never on Tonight', () => {
+    expect(isCurrentTab(tab('Mystery'), '/mystery')).toBe(true);
+    expect(isCurrentTab(tab('Mystery'), '/')).toBe(false);
+    expect(isCurrentTab(tab('Tonight'), '/mystery')).toBe(false);
   });
 
   it('never underlines an external destination', () => {

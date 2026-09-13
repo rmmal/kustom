@@ -194,6 +194,31 @@ export function nightEnd(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE):
   return nightStart(new Date(nightStart(now, timeZone).getTime() + 26 * 60 * 60 * 1000), timeZone);
 }
 
+/**
+ * Daily Mystery (M5.32) rotates on the **civil midnight**, not the 06:00 night boundary.
+ * The group asked for one calendar-day challenge (`13 September → Mystery #N`) and a
+ * countdown to 12:00 AM. Sit-out and windows stay on 06:00; this clock is only the puzzle.
+ */
+export function civilDayStart(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): Date {
+  const civil = civilTimeIn(now, timeZone);
+  return instantOfCivilTime(
+    { year: civil.year, month: civil.month, day: civil.day, hour: 0, minute: 0, second: 0 },
+    timeZone,
+  );
+}
+
+/** `2026-09-13` in the configured zone — the unique key for today's mystery. */
+export function civilDayKey(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): string {
+  const civil = civilTimeIn(now, timeZone);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${civil.year}-${pad(civil.month)}-${pad(civil.day)}`;
+}
+
+/** The next 00:00 in `timeZone`. DST-safe the same way {@link nightEnd} is. */
+export function nextCivilMidnight(now: Date, timeZone: string = DEFAULT_NIGHT_TIME_ZONE): Date {
+  return civilDayStart(new Date(civilDayStart(now, timeZone).getTime() + 26 * 60 * 60 * 1000), timeZone);
+}
+
 /* ---------------------------------------------------------------------------
  * Window boundaries (M5.9): which week and which month a game belongs to.
  *

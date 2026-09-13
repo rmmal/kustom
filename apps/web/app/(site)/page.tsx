@@ -1,5 +1,6 @@
 import { loadTopPlayersOrNone } from '@/lib/board/load';
 import { LEADERBOARD_WINDOW } from '@/lib/board/window';
+import { loadMysteryOrNone } from '@/lib/mystery/load';
 import { createPublicClient } from '@/lib/publicClient';
 import { getServiceClient } from '@/lib/supabase';
 import { loadTonight } from '@/lib/tonight/load';
@@ -8,6 +9,7 @@ import { nightTimeZone, tonightStart } from '@/lib/tonight/night';
 import { viewerIsAdmin } from '@/lib/tonight/viewer';
 import { currentViewerState } from '@/lib/viewer';
 import { TonightLive } from '../_tonight/TonightLive';
+import '../mystery.css';
 import '../tonight.css';
 
 /**
@@ -20,7 +22,9 @@ import '../tonight.css';
  *
  * Reads go through the **anon key** and RLS (`lib/publicClient.ts`). The one thing the session
  * decides is whether the reroll control is drawn, and the route behind it re-checks the
- * session server-side anyway. Nothing on this page writes to the database.
+ * session server-side anyway. Daily Mystery (M5.32) is the exception: creating today's
+ * challenge is a service-role write, and a failure there logs and leaves the card off so
+ * this page still answers "am I in".
  */
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +33,7 @@ const RAIL_BOARD_ROWS = 5;
 
 export default async function TonightPage() {
   const client = createPublicClient();
-  const [snapshot, viewer, topPlayers] = await Promise.all([
+  const [snapshot, viewer, topPlayers, mystery] = await Promise.all([
     loadTonight(client, { nightStart: tonightStart(), timeZone: nightTimeZone() }),
     currentViewerState(),
     // The rail, read once with the page and never re-read on a Realtime event: it is the one
@@ -49,6 +53,7 @@ export default async function TonightPage() {
       window: LEADERBOARD_WINDOW,
       timeZone: nightTimeZone(),
     }),
+    loadMysteryOrNone(),
   ]);
 
   /**
@@ -63,5 +68,13 @@ export default async function TonightPage() {
     ? await loadLobbyStartOrNone(getServiceClient(), { timeZone: nightTimeZone() })
     : null;
 
-  return <TonightLive initial={snapshot} viewer={viewer} topPlayers={topPlayers} lobbyStart={lobbyStart} />;
+  return (
+    <TonightLive
+      initial={snapshot}
+      viewer={viewer}
+      topPlayers={topPlayers}
+      lobbyStart={lobbyStart}
+      mystery={mystery}
+    />
+  );
 }
