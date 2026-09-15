@@ -4,10 +4,14 @@
  * goes through `post()` below, which throws for any other path. Create a lobby, invite, switch side. Nothing
  * else, ever (`CLAUDE.md` "Never automate gameplay").
  *
- * Every path here is `unverified` in docs/03-lcu-reference.md until a person runs the companion's
- * `--verify-commands` mode against a live client. The response bodies are therefore taken as `unknown` and
- * never depended on: the companion re-reads `GET /lol-lobby/v2/lobby` (verified) after each write and builds
- * its result from that.
+ * All three are `verified (16.18, 2026-09-12)` in docs/03-lcu-reference.md as of a live `--verify-commands`
+ * run (`ui-live-3110` accepted for create, `[{ toSummonerId }]` for invite, the bare `POST .../team/TEAM2` for
+ * switch). The response bodies are still taken as `unknown` and never depended on, verified or not: the
+ * companion re-reads `GET /lol-lobby/v2/lobby` (verified) after each write and builds its result from that.
+ * A future patch can still change the accepted ids or refuse the shape; `createLobbyCandidates` /
+ * `postCreateLobbyCandidates` stay in `verify-commands` for exactly that (re-probing after a patch), even
+ * though the production create path (`createLobbyBody` via `postCreateLobby`, driven by `commandRunner.ts`)
+ * has only ever sent the single accepted `ui` shape with the live dialog's own id.
  *
  * Where the request shapes come from (2026-09-10, after the first live run on 16.17 refused the community
  * body with `500 INVALID_LOBBY`):
@@ -24,7 +28,10 @@
  *  - this Mac's `LeagueClient.log` for the lobby the user created from the UI on 2026-09-08: the party the
  *    server built was `queueId: 3100, gameTypeConfigId: 19, mapId: 11, allowSpectators: "ALL",
  *    gameCustomization: { aramMapMutator: "NONE", spectatorGridDelayEnabled: "true" }`.
- * None of that is a captured POST, so every body stays a **candidate** until the probe pins one.
+ * None of that was a captured POST at the time, so every body was a **candidate** until the 16.18 probe pinned
+ * one: `ui-live-3110` (the `ui` shape, live dialog id, `queueId === mutators.id`), first tried and accepted
+ * with no fallback needed. See `packages/lcu/fixtures/16.18/create-lobby.json` for the accepted request and
+ * the lobby it produced.
  *
  * `LOBBY_WRITE_VERIFICATION` is the per-kind gate the companion reads. It is flipped by hand, in the same
  * edit that turns the reference row green, and `writes.test.ts` refuses a `verified: true` whose row in
@@ -37,6 +44,7 @@ import {
   type CustomGameMutator,
   type CustomGameQueues,
   type CustomGameSubcategory,
+  type GameQueue,
   JsonValueSchema,
   type TeamId,
 } from './schemas.js';
@@ -53,9 +61,9 @@ export type WriteVerification =
  * While false, the companion answers `endpoint_unverified` for that kind and makes no client call.
  */
 export const LOBBY_WRITE_VERIFICATION: Readonly<Record<LobbyWriteKind, WriteVerification>> = {
-  create_lobby: { verified: false },
-  invite: { verified: false },
-  switch_side: { verified: false },
+  create_lobby: { verified: true, patch: '16.18', date: '2026-09-12' },
+  invite: { verified: true, patch: '16.18', date: '2026-09-12' },
+  switch_side: { verified: true, patch: '16.18', date: '2026-09-12' },
 };
 
 export function isLobbyWriteVerified(kind: LobbyWriteKind): boolean {
@@ -350,15 +358,42 @@ function mutatorText(mutator: CustomGameMutator): string {
 }
 
 /**
- * The dialog entry for a pick mode, by its name/pickMode words (`GAME_CFG_..._DRAFT`, `SimulPickStrategy`,
- * `AllRandomPickStrategy`, ...). When the words are empty, as they were for the client's own blind config
- * (id 19, queue 3100), blind falls back to that known id; every other mode is null: nothing here guesses.
+ * The words for the dialog mutator's own id, joined against `GET /lol-game-queues/v1/queues` by
+ * `queue.id === mutator.id` (verified 16.18: the dialog's mutator ids *are* queue ids — 3100, 3110, 3120,
+ * 3130 for the four Summoner's Rift customs — and unlike the dialog, this list names them: "SR Blind Pick
+ * Custom", "SR Draft Pick Custom", "SR All Random", "SR Tournament Draft"). Empty when there is no queue
+ * list or no matching entry, which is exactly the "guess nothing" case `chooseCustomLobbyMutator` already had.
+ */
+function queueText(queues: ReadonlyMap<number, GameQueue>, mutatorId: number): string {
+  const queue = queues.get(mutatorId);
+  if (queue === undefined) {
+    return '';
+  }
+  return `${queue.name ?? ''} ${queue.gameTypeConfig?.name ?? ''} ${queue.gameTypeConfig?.pickMode ?? ''} ${queue.gameTypeConfig?.banMode ?? ''}`.toUpperCase();
+}
+
+/**
+ * The dialog entry for a pick mode. **16.18 finding:** the dialog's own `mutators[]` carry no descriptive
+ * text on this patch — `name` is just the `id` as a string, `pickMode`/`banMode` are always `""`, for every
+ * mode, not only blind (see `CustomGameMutatorSchema`). So matching the dialog's own words alone (the old
+ * approach) resolves nothing beyond the one blind id we already had evidence for. The fix: join each
+ * mutator's `id` against `queues` (`GET /lol-game-queues/v1/queues`, `queue.id === mutator.id`) and match
+ * words there too — that list *does* name the Summoner's Rift customs. `queues` is optional so a caller
+ * without it (or an older/hand-written test) still gets the mutator-text-only behavior and the known-id
+ * blind fallback below.
  */
 export function chooseCustomLobbyMutator(
   subcategory: CustomGameSubcategory,
   mode: CustomLobbyMode,
+  queues?: readonly GameQueue[] | null,
 ): CustomGameMutator | null {
-  const byWords = subcategory.mutators.find((mutator) => MODE_WORDS[mode](mutatorText(mutator)));
+  const byId = new Map<number, GameQueue>();
+  for (const queue of queues ?? []) {
+    byId.set(queue.id, queue);
+  }
+  const byWords = subcategory.mutators.find((mutator) =>
+    MODE_WORDS[mode](`${mutatorText(mutator)} ${queueText(byId, mutator.id)}`.trim()),
+  );
   if (byWords !== undefined) {
     return byWords;
   }
@@ -375,13 +410,21 @@ export function chooseCustomLobbyMutator(
   return null;
 }
 
-/** The ids the dialog would send for a mode: its mutator id for both fields. Null when it cannot be told. */
-export function customLobbyIdsFor(config: CustomGameQueues, mode: CustomLobbyMode): CustomLobbyIds | null {
+/**
+ * The ids the dialog would send for a mode: its mutator id for both fields. Null when it cannot be told.
+ * `queues` (`GET /lol-game-queues/v1/queues`) is what names the dialog's otherwise wordless entries on
+ * 16.18; pass it whenever it was read (production always does, see `commandRunner.ts`).
+ */
+export function customLobbyIdsFor(
+  config: CustomGameQueues,
+  mode: CustomLobbyMode,
+  queues?: readonly GameQueue[] | null,
+): CustomLobbyIds | null {
   const subcategory = summonersRiftSubcategory(config);
   if (subcategory === null) {
     return null;
   }
-  const mutator = chooseCustomLobbyMutator(subcategory, mode);
+  const mutator = chooseCustomLobbyMutator(subcategory, mode, queues);
   return mutator === null ? null : { queueId: mutator.id, mutatorId: mutator.id };
 }
 

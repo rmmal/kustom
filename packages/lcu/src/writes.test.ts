@@ -16,7 +16,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { LcuClient, type LcuResponse } from './client.js';
 import { LIVE_CLIENT_DATA, WRITE_ENDPOINTS } from './endpoints.js';
 import { readFixture } from './fixtures.js';
-import { type CustomGameQueues, CustomGameQueuesSchema, LcuErrorSchema } from './schemas.js';
+import {
+  type CustomGameQueues,
+  CustomGameQueuesSchema,
+  type GameQueue,
+  GameQueuesSchema,
+  LcuErrorSchema,
+  LobbySchema,
+} from './schemas.js';
 import {
   type CannedRoute,
   type FakeLcu,
@@ -250,6 +257,44 @@ describe('request bodies (read from the 16.17 client, unverified as POSTs)', () 
     expect(KNOWN_CUSTOM_LOBBY_IDS).toEqual({ blindQueueId: 3100, blindGameTypeConfigId: 19 });
   });
 
+  /**
+   * The regression test for Bug 2 (reviewer-caught, 2026-09-13): the real 16.18 `--verify-commands` capture
+   * has dialog entries with **no** descriptive `name`/`pickMode`/`banMode` on any mode (`custom-game-queues.json`
+   * mutators are all `{ name: "<id>", pickMode: "", banMode: "" }`), so the old word-matching-only
+   * `chooseCustomLobbyMutator` resolved nothing for draft and every other non-blind mode on this patch. The
+   * fix joins the dialog's mutator ids against `game-queues.json` (`GET /lol-game-queues/v1/queues`), which
+   * *does* name them ("SR Draft Pick Custom" for 3110, etc). This drives the join off the two real fixtures
+   * end to end, never invented data, and is what would have caught both the schema bug (Bug 1: parsing the
+   * fixture at all) and the resolution bug (Bug 2) before the flip shipped.
+   */
+  it('resolves queueId/mutatorId 3110 for draft from the real 16.18 custom-game-queues.json + game-queues.json fixtures', () => {
+    const dialogRead = readFixture('16.18', 'custom-game-queues');
+    const queuesRead = readFixture('16.18', 'game-queues');
+    expect(dialogRead.ok, dialogRead.ok ? '' : dialogRead.reason).toBe(true);
+    expect(queuesRead.ok, queuesRead.ok ? '' : queuesRead.reason).toBe(true);
+    if (!dialogRead.ok || !queuesRead.ok) {
+      throw new Error('unreachable: asserted ok above');
+    }
+    const dialog = CustomGameQueuesSchema.parse(dialogRead.envelope.body);
+    const queues: GameQueue[] = GameQueuesSchema.parse(queuesRead.envelope.body);
+
+    // The finding this fixture pins: the dialog itself names nothing.
+    const rift = summonersRiftSubcategory(dialog);
+    expect(rift).not.toBeNull();
+    for (const mutator of rift?.mutators ?? []) {
+      expect(mutator.name).toBe(String(mutator.id));
+      expect(mutator.pickMode).toBe('');
+      expect(mutator.banMode).toBe('');
+    }
+    // Without the queue list, nothing resolves for draft (the bug, reproduced).
+    expect(customLobbyIdsFor(dialog, 'draft')).toBeNull();
+    // With it (the fix), the join finds it by id -> name.
+    expect(customLobbyIdsFor(dialog, 'draft', queues)).toEqual({ queueId: 3110, mutatorId: 3110 });
+    expect(customLobbyIdsFor(dialog, 'blind', queues)).toEqual({ queueId: 3100, mutatorId: 3100 });
+    expect(customLobbyIdsFor(dialog, 'tournamentDraft', queues)).toEqual({ queueId: 3130, mutatorId: 3130 });
+    expect(customLobbyIdsFor(dialog, 'allRandom', queues)).toEqual({ queueId: 3120, mutatorId: 3120 });
+  });
+
   it('inviteBody is a one-element array keyed by summoner id or puuid', () => {
     expect(inviteBody({ method: 'summonerId', summonerId: 2686822975473024 })).toEqual([
       { toSummonerId: 2686822975473024 },
@@ -302,6 +347,80 @@ describe('the 2026-09-09 capture', () => {
       expect(read.envelope.status).toBe(404);
       expect(LcuErrorSchema.parse(read.envelope.body).message).toBe('LOBBY_NOT_FOUND');
     }
+  });
+});
+
+describe('the 2026-09-12 capture (16.18, all three writes accepted)', () => {
+  it('pins the accepted create: ui-live-3110, queueId === mutators.id, and the lobby that came back', () => {
+    for (const id of ['create-lobby--ui-live-3110', 'create-lobby']) {
+      const read = readFixture('16.18', id);
+      expect(read.ok, `${id} exists`).toBe(true);
+      if (!read.ok) {
+        continue;
+      }
+      expect(read.envelope.method).toBe('POST');
+      expect(read.envelope.path).toBe('/lol-lobby/v2/lobby');
+      expect(read.envelope.status).toBe(200);
+      expect(read.envelope.request).toEqual({
+        customGameLobby: {
+          configuration: {
+            gameMode: 'CLASSIC',
+            gameMutator: '',
+            gameServerRegion: '',
+            mapId: 11,
+            mutators: { id: 3110 },
+            spectatorPolicy: 'AllAllowed',
+            spectatorDelayEnabled: true,
+            teamSize: 5,
+            hidePublicly: false,
+            aramMapMutator: 'NONE',
+          },
+          lobbyName: 'customs-verify',
+          hidePublicly: false,
+          lobbyPassword: '[redacted]',
+        },
+        queueId: 3110,
+      });
+      const lobby = LobbySchema.parse(read.envelope.body);
+      expect(lobby.gameConfig.queueId).toBe(3110);
+      expect(lobby.gameConfig.isCustom).toBe(true);
+      expect(lobby.gameConfig.customMutatorName).toBe('TeamBuilderDraftPickStrategy');
+      expect(lobby.gameConfig.customLobbyName).toBe('customs-verify');
+    }
+  });
+
+  it('pins the accepted invite: [{ toSummonerId }] answered 200 with a Pending invitations[] row', () => {
+    const read = readFixture('16.18', 'lobby-invitations');
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      return;
+    }
+    expect(read.envelope.status).toBe(200);
+    expect(read.envelope.request).toEqual([{ toSummonerId: 55838205 }]);
+    expect(read.envelope.body).toEqual([
+      {
+        invitationId: '',
+        invitationType: 'invalid',
+        state: 'Pending',
+        timestamp: '',
+        toPuuid: '',
+        toSummonerId: 55838205,
+        toSummonerName: '',
+      },
+    ]);
+  });
+
+  it('pins the accepted switch: POST /team/TEAM2 with no body answered 204', () => {
+    const read = readFixture('16.18', 'lobby-team');
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      return;
+    }
+    expect(read.envelope.method).toBe('POST');
+    expect(read.envelope.path).toBe('/lol-lobby/v2/lobby/team/TEAM2');
+    expect(read.envelope.status).toBe(204);
+    expect(read.envelope.body).toBeNull();
+    expect(read.envelope).not.toHaveProperty('request');
   });
 });
 

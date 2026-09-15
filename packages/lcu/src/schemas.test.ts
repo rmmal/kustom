@@ -18,9 +18,11 @@ import { FIXTURES_DIR, type FixtureEnvelope, patchFromVersion, readFixture } fro
 import {
   AliasLookupSchema,
   BOT_PUUID,
+  CustomGameQueuesSchema,
   EogStatsBlockSchema,
   GameflowPhaseSchema,
   GameflowSessionSchema,
+  GameQueuesSchema,
   GameVersionSchema,
   KNOWN_GAMEFLOW_PHASES,
   KNOWN_TIERS,
@@ -868,6 +870,39 @@ describe('fixture guard', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * The two dialog-data fixtures from the 16.18 `--verify-commands` run that pinned `create_lobby` (Bug 1/2,
+ * reviewer-caught, 2026-09-13): `custom-game-queues.json` has `gameServerRegions: null`, not absent, and
+ * every dialog mutator is wordless; `game-queues.json` is what names them. Pinned on 16.18 specifically
+ * (not `PATCH`/16.17, which never captured either endpoint by GET).
+ */
+describe('custom-game-queues.json and game-queues.json from fixtures/16.18', () => {
+  it('CustomGameQueuesSchema parses the real capture, including the null gameServerRegions', () => {
+    const read = readFixture('16.18', 'custom-game-queues');
+    if (!read.ok) {
+      throw new Error(`fixture 16.18/custom-game-queues: ${read.reason}`);
+    }
+    const body = read.envelope.body as Record<string, unknown>;
+    expect(body.gameServerRegions).toBeNull();
+    const parsed = CustomGameQueuesSchema.parse(body);
+    expect(parsed.gameServerRegions).toBeNull();
+    expect(parsed.subcategories.length).toBeGreaterThan(0);
+  });
+
+  it("GameQueuesSchema parses the real queue list and names the Summoner's Rift customs", () => {
+    const read = readFixture('16.18', 'game-queues');
+    if (!read.ok) {
+      throw new Error(`fixture 16.18/game-queues: ${read.reason}`);
+    }
+    const parsed = GameQueuesSchema.parse(read.envelope.body);
+    const byId = new Map(parsed.map((queue) => [queue.id, queue]));
+    expect(byId.get(3100)?.name).toBe('SR Blind Pick Custom');
+    expect(byId.get(3110)?.name).toBe('SR Draft Pick Custom');
+    expect(byId.get(3120)?.name).toBe('SR All Random');
+    expect(byId.get(3130)?.name).toBe('SR Tournament Draft');
   });
 });
 

@@ -101,7 +101,10 @@ export function switchSideMoves(split: SidedSplit, playing: readonly SeatedMembe
 export interface QueueSwitchSideResult {
   /** Rows from an earlier split that this write failed with `superseded`. */
   superseded: number;
-  /** Rows written now. Zero while the verification gate is off, which is today. */
+  /**
+   * Rows written now. Real rows since the `switch_side` row went green on 16.18 (2026-09-12);
+   * zero only when the gate is off again — a `gate` override, or the row back to `unverified`.
+   */
   queued: number;
   /** Everyone the split moves, before the token check. For the log and the tests. */
   moves: SwitchSideMove[];
@@ -125,8 +128,9 @@ export interface QueueSwitchSideOptions {
  * **Supersede first, always.** Failing the previous split's rows in the same write that queues
  * the new ones is what keeps "at most one pending `switch_side` per player" true.
  *
- * With the gate off — which is every day until the switch-side row in `docs/03-lcu-reference.md`
- * turns green — this writes nothing at all and does not read the database either.
+ * **The switch-side row in `docs/03-lcu-reference.md` went green on 16.18 (2026-09-12)**, so this
+ * writes rows. With the gate off again — a `gate` override, or the row back to `unverified`
+ * because a patch broke the path — it writes nothing at all and does not read the database either.
  */
 export async function queueSwitchSideForBalance(
   client: ServiceClient,

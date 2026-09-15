@@ -351,8 +351,10 @@ export async function runVerifyCommands(options: VerifyCommandsOptions): Promise
       }
     }
 
-    const autoBlind = rift === null ? null : chooseCustomLobbyMutator(rift, 'blind');
-    const autoDraft = rift === null ? null : chooseCustomLobbyMutator(rift, 'draft');
+    const autoBlind =
+      rift === null ? null : chooseCustomLobbyMutator(rift, 'blind', queues.ok ? queues.json : null);
+    const autoDraft =
+      rift === null ? null : chooseCustomLobbyMutator(rift, 'draft', queues.ok ? queues.json : null);
     report.say(
       `  auto-picked dialog entries: blind ${autoBlind === null ? 'none' : autoBlind.id}, draft ${autoDraft === null ? 'none' : autoDraft.id}`,
     );

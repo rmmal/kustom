@@ -181,6 +181,9 @@ describe('teamsEmbed, the fields that only sometimes exist', () => {
   it('prints one Seats line per move, swap and open slot', () => {
     const embed = teamsEmbed(
       workedTeamsInput({
+        // Named, like the worked example above: this case is about the move lines, so it must
+        // not move the day `SWITCH_SIDE_ENABLED` flips.
+        switchSideEnabled: false,
         sitOut: { names: ['Omar'], reason: 'most-games' },
         seats: [
           { kind: 'swap', sitter: 'Omar', mover: 'Nadia' },
@@ -547,6 +550,8 @@ describe('the small formatters', () => {
 
   it('escapes the name in every line that prints one', () => {
     const base = workedTeamsInput({
+      // Named: the case is about escaping, not about which side sentence ships today.
+      switchSideEnabled: false,
       sitOut: { names: ['Dark_Wolf'], reason: 'most-games' },
       seats: [{ kind: 'swap', sitter: 'Dark_Wolf', mover: 'a`b' }],
     });

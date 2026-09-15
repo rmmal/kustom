@@ -45,7 +45,7 @@ exports[`a night, from the tenth join to the result > posts one teams embed on b
       "fields": [
         {
           "name": "Seats",
-          "value": "Move to your side in the lobby.",
+          "value": "You'll be moved to your side — if not, move yourself.",
         },
         {
           "inline": true,

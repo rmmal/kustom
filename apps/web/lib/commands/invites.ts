@@ -32,8 +32,10 @@ import { type CommandToQueue, enqueueCommands } from './queue';
  * production the upper bound is a no-op — nothing is created in the future — and it is what
  * makes an injected clock name exactly one night, which the tests rely on.
  *
- * All of it is gated: with `invite` not green in `03-lcu-reference.md` this module reads nothing
- * and writes nothing, which is every day until the verification pass turns the row.
+ * All of it is gated, and **the `invite` row went green on 16.18 (2026-09-12)**, so this module
+ * reads and writes for real from here on. The gate stays in the code because it is the thing that
+ * turns it all off again in one edit: a `gate` override in a test, or the reference row going back
+ * to `unverified` after a patch breaks the path, and this module reads nothing and writes nothing.
  */
 
 /** Clause (a): a companion token seen this recently means their client was up. */
@@ -227,7 +229,7 @@ export interface FanOutResult {
   alreadyQueued: number;
   /** Dropped by the cap. */
   trimmed: number;
-  /** True when `invite` is not green yet: nothing was read and nothing was written. */
+  /** True when `invite` is gated off: nothing was read and nothing was written. */
   gated: boolean;
 }
 

@@ -1,0 +1,27 @@
+{
+  "id": "lobby-invitations",
+  "method": "POST",
+  "path": "/lol-lobby/v2/lobby/invitations",
+  "status": 200,
+  "capturedAt": "2026-09-12T21:12:37.594Z",
+  "patch": "16.18",
+  "clientVersion": "16.18.8175716+branch.releases-16-18.code.public.content.release.anticheat.vanguard",
+  "contentType": null,
+  "request": [
+    {
+      "toSummonerId": 55838205
+    }
+  ],
+  "note": "[{ toSummonerId }]; --verify-commands",
+  "body": [
+    {
+      "invitationId": "",
+      "invitationType": "invalid",
+      "state": "Pending",
+      "timestamp": "",
+      "toPuuid": "",
+      "toSummonerId": 55838205,
+      "toSummonerName": ""
+    }
+  ]
+}

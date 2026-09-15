@@ -56,12 +56,14 @@ const MAX_NAME_LENGTH = 32;
 
 /**
  * The gate is **off** — no `switch_side` row is queued for anybody, so the only thing that can
- * put a player on their side is the player.
+ * put a player on their side is the player. Not what production prints since 16.18 (2026-09-12),
+ * when the row went green; it is what it prints again if a patch breaks the path.
  */
 export const SIDE_LINE_MANUAL = 'Move to your side in the lobby.';
 
 /**
- * The gate is **on**. It still ends with `move yourself`, because a companion that is closed,
+ * The gate is **on**, which it has been since 16.18 (2026-09-12), so this is the live sentence.
+ * It still ends with `move yourself`, because a companion that is closed,
  * offline, or looking at a side that already holds five moves nobody (M4.3, "the bounce") — and
  * the embed is posted at the moment of balancing, before any companion has polled, so it can
  * only ever say what is about to happen.

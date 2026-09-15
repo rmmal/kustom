@@ -18,9 +18,11 @@
  *  7. **Read before write.** Every executor GETs `/lol-lobby/v2/lobby` and compares: a second `create_lobby`
  *     finds a lobby and nacks `already_in_lobby`; a second `invite` finds the invitee and acks `done` without a
  *     POST; a second `switch_side` finds the player already there and acks `done` without a POST.
- *  8. **Ids from the client, never constants.** `create_lobby` reads `/lol-game-queues/v1/custom` and takes
- *     the draft entry of the Summoner's Rift subcategory as the body's `queueId`/`mutators.id`, exactly as the
- *     client's own dialog does; when the dialog lists no entry it can name as draft, the command is
+ *  8. **Ids from the client, never constants.** `create_lobby` reads `/lol-game-queues/v1/custom` for the
+ *     Summoner's Rift subcategory's entries and `/lol-game-queues/v1/queues` to name them (16.18: the
+ *     dialog's own entries carry no descriptive text at all, so the mode is resolved by joining the two on
+ *     `id`, see `customLobbyIdsFor`), and takes the draft entry's id as the body's `queueId`/`mutators.id`,
+ *     exactly as the client's own dialog does; when the join names no entry as draft, the command is
  *     `client_rejected` with the list in the nack, and nothing is posted.
  *
  * Polling: every `nextPollInMs` (5 s) while the client is connected, every `DISCONNECTED_POLL_INTERVAL_MS`
@@ -54,6 +56,7 @@ import {
   describeMutators,
   describeWriteResponse,
   GameflowPhaseSchema,
+  GameQueuesSchema,
   inviteWithFallback,
   isLobbyWriteVerified,
   type LcuClient,
@@ -77,6 +80,11 @@ export const LOBBY_PATH = readEndpoint('lobby').path;
 export const GAMEFLOW_PHASE_PATH = readEndpoint('gameflow-phase').path;
 /** Where a create body's `queueId` / `mutators.id` come from: the client's own Create Custom dialog data. */
 export const CUSTOM_GAME_QUEUES_PATH = readEndpoint('custom-game-queues').path;
+/**
+ * The dialog's own mutator entries carry no descriptive text on 16.18 (`CustomGameMutatorSchema`), so the
+ * mode is resolved by joining their ids against this list's names instead (`customLobbyIdsFor`).
+ */
+export const GAME_QUEUES_PATH = readEndpoint('game-queues').path;
 /** The pick mode a `create_lobby` opens (docs/04-decisions.md, 2026-09-09: the group plays draft). */
 export const CREATE_LOBBY_MODE: CustomLobbyMode = 'draft';
 /** The poll while the client is away: the answer is empty by contract, so this is a heartbeat, not a queue. */
@@ -465,7 +473,19 @@ export class CommandRunner {
         `${CUSTOM_GAME_QUEUES_PATH} answered ${describeWriteResponse(dialog)}; no lobby created`,
       );
     }
-    const ids = customLobbyIdsFor(dialog.json, CREATE_LOBBY_MODE);
+    // The dialog's own entries carry no descriptive text on 16.18 (schemas.ts, CustomGameMutatorSchema); the
+    // queue list names them by the same id, so it is read here and joined in `customLobbyIdsFor`.
+    const queues = await context.client.get(GAME_QUEUES_PATH, GameQueuesSchema);
+    if (!queues.ok) {
+      if (queues.reason === 'network') {
+        return failed('not_connected', describeWriteResponse(queues), true);
+      }
+      return failed(
+        'client_rejected',
+        `${GAME_QUEUES_PATH} answered ${describeWriteResponse(queues)}; no lobby created`,
+      );
+    }
+    const ids = customLobbyIdsFor(dialog.json, CREATE_LOBBY_MODE, queues.json);
     if (ids === null) {
       const rift = summonersRiftSubcategory(dialog.json);
       return failed(
