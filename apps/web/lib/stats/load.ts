@@ -5,6 +5,8 @@ import type { GamesHistoryView } from '../games/types';
 import { gamesHistoryView } from '../games/view';
 import { type WindowKind, type WindowRange, windowRange } from '../night';
 import type { PublicClient } from '../publicClient';
+import type { VersusView } from '../versus/types';
+import { versusView } from '../versus/view';
 import type { AwardRender } from './awards';
 import { countedGames, playerStreaks } from './fold';
 import { assembleFunFacts } from './funView';
@@ -71,6 +73,10 @@ export interface StatsOptions {
   focusPuuid?: string | null | undefined;
   /** `/games` and `/fun`: which map. Absent is Summoner's Rift. */
   queue?: QueueKind | undefined;
+  /** `/1v1?a=`: the left pick, a puuid. */
+  leftPuuid?: string | undefined;
+  /** `/1v1?b=`: the right pick, a puuid. */
+  rightPuuid?: string | undefined;
 }
 
 export async function loadFunFacts(client: PublicClient, options: StatsOptions): Promise<FunFactsView> {
@@ -78,6 +84,15 @@ export async function loadFunFacts(client: PublicClient, options: StatsOptions):
   const read = await readWindow(client, options, { withGameMode: true });
   const games = read.games.filter((game) => matchesQueue(game.gameMode, queue, game.mapId));
   return assembleFunFacts({ ...read, games }, queue);
+}
+
+export async function loadVersus(client: PublicClient, options: StatsOptions): Promise<VersusView> {
+  const read = await readWindow(client, options, { withGameMode: true });
+  return versusView({
+    ...read,
+    ...(options.leftPuuid === undefined ? {} : { leftPuuid: options.leftPuuid }),
+    ...(options.rightPuuid === undefined ? {} : { rightPuuid: options.rightPuuid }),
+  });
 }
 
 export async function loadGamesHistory(
