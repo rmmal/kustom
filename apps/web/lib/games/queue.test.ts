@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { gamesHref, gamesQuery } from './href';
-import { GAMES_QUEUE, gameModeFromRaw, isRatedGameMode, mapIdFromRaw, matchesQueue, parseQueue } from './queue';
+import {
+  GAMES_QUEUE,
+  gameModeFromRaw,
+  isRatedGameMode,
+  mapIdFromRaw,
+  matchesQueue,
+  parseQueue,
+} from './queue';
 
 describe('parseQueue', () => {
   it("treats a missing parameter as Summoner's Rift", () => {

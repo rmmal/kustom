@@ -67,10 +67,7 @@ export function mapIdFromRaw(raw: unknown): number | null {
  * Howling Abyss is map 12, or `ARAM` / `KIWI` when the blob has no map. Rift is map 11, or
  * `CLASSIC` / a missing mode (every night captured before this page existed was Rift).
  */
-export function queueKindOf(
-  gameMode: string | null | undefined,
-  mapId?: number | null,
-): QueueKind | null {
+export function queueKindOf(gameMode: string | null | undefined, mapId?: number | null): QueueKind | null {
   if (mapId === HOWLING_ABYSS_MAP_ID) return 'aram';
   if (mapId === SUMMONERS_RIFT_MAP_ID) return 'sr';
   const mode = (gameMode ?? '').trim().toUpperCase();

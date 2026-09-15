@@ -53,10 +53,7 @@ import type {
  * `/fun` passes `{ allMaps: true }` after it has already filtered by `?queue=`: Howling Abyss
  * still has records, they just are not this page's.
  */
-export function countedGames(
-  games: readonly StatsGame[],
-  options?: { allMaps?: boolean },
-): StatsGame[] {
+export function countedGames(games: readonly StatsGame[], options?: { allMaps?: boolean }): StatsGame[] {
   return games
     .filter((game) => {
       const players = game.rows.map(toFoldPlayer);
